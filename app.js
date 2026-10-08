@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.24.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.25.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1262,18 +1262,23 @@ function memoriserTemoin(mdp) {
   })().catch(e => console.warn('Témoin du mot de passe non enregistré :', e));
 }
 
+// Mise à jour des données des anciennes versions (au démarrage et après chaque fichier réuni).
+function migrerTout() {
+  migrerCodes();
+  migrerNoms();
+  migrerSeuils();
+  migrerSeances();
+  migrerGroupes();
+  migrerNotesOrphelines();
+}
+
 // Déchiffre un fichier de la clé et le fusionne avec le carnet de cet appareil.
 async function importerTexte(texte) {
   for (;;) {
     const mdp = await obtenirMdp(false);
     try {
       const n = Donnees.fusionner(await Cle.dechiffrer(texte, mdp));
-      migrerCodes();
-      migrerNoms();
-      migrerSeuils();
-      migrerSeances();
-      migrerGroupes();
-      migrerNotesOrphelines();
+      migrerTout();
       memoriserTemoin(mdp); // ce mot de passe ouvre le carnet de la clé : c'est désormais le bon
       return { mdp, n };
     } catch (e) {
@@ -1295,9 +1300,39 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
   } catch {
     throw new Error('Dossier introuvable : vérifie que la clé est bien branchée.');
   }
+  // Récupération à la main : en plus de carnet-eps.json, on réunit les carnets plus récents posés à côté
+  // ou dans « Sauvegardes » (ex. le fichier enregistré sur la tablette). Les copies datées faites par
+  // l'ordinateur ne sont jamais plus récentes que carnet-eps.json : elles ne sont pas relues pour rien.
+  // (Un fichier déjà réuni n'est pas repris tant qu'il n'a pas changé : utile si l'horloge de la tablette avance.)
+  const dejaVus = Donnees.meta().carnetsReunis || {};
+  const plusRecents = silencieux ? [] : (await Cle.autresCarnets(dossier))
+    .filter(c => c.date > Cle.dateCarnet(texte) && dejaVus[c.nom] !== c.date)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const aReunir = [...(texte.trim() ? [{ nom: Cle.NOM_FICHIER, texte }] : []), ...plusRecents];
   let mdp, n = 0;
-  if (texte.trim()) ({ mdp, n } = await importerTexte(texte));
-  else mdp = await obtenirMdp(true);
+  const repris = [], ignores = [];
+  for (const c of aReunir) {
+    if (!mdp) {
+      // Le premier fichier donne le mot de passe (demandé si besoin, vérifié par le fichier lui-même).
+      const r = await importerTexte(c.texte);
+      ({ mdp } = r);
+      n += r.n;
+    } else {
+      try {
+        n += Donnees.fusionner(await Cle.dechiffrer(c.texte, mdp));
+      } catch (e) {
+        if (!(e instanceof Cle.ErreurMdp)) throw e;
+        ignores.push(c.nom); // chiffré avec un autre mot de passe
+        continue;
+      }
+    }
+    if (c.nom !== Cle.NOM_FICHIER) repris.push(c.nom);
+  }
+  if (aReunir.length > 1) migrerTout();
+  if (plusRecents.length) {
+    Donnees.reglerMeta('carnetsReunis', { ...dejaVus, ...Object.fromEntries(plusRecents.map(c => [c.nom, c.date])) });
+  }
+  if (!mdp) mdp = await obtenirMdp(true);
   const sortie = await Cle.chiffrer(Donnees.exporter(), mdp);
   let nomCopie = null;
   try {
@@ -1315,7 +1350,9 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
   rendre();
   if (silencieux) return;
   const recup = n ? ` · ${n} élément${n > 1 ? 's' : ''} récupéré${n > 1 ? 's' : ''} de la clé` : '';
-  toast(`Clé à jour ✔ (dossier « ${dossier.name} »)${recup}`, 'ok');
+  toast(`Clé à jour ✔ (dossier « ${dossier.name} »)${recup}`
+    + (repris.length ? `\nRepris aussi : ${repris.join(', ')}` : '')
+    + (ignores.length ? `\n⚠ Ignoré (autre mot de passe) : ${ignores.join(', ')}` : ''), ignores.length ? 'erreur' : 'ok');
 }
 
 // Bouton 💾 : sur ordinateur, enregistre dans le dossier de la clé (choisi la première fois) ;
@@ -1804,12 +1841,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) rapp
     toast('Impossible de lire les données de cet appareil. Restaure ton carnet depuis la clé (bouton 🔑).', 'erreur');
     await Donnees.charger().catch(() => {});
   }
-  migrerCodes();
-  migrerNoms();
-  migrerSeuils();
-  migrerSeances();
-  migrerGroupes();
-  migrerNotesOrphelines();
+  migrerTout();
   Donnees.surChangement(majPastille);
   Donnees.surChangement(planifierSauvegardeAuto);
   rendre();

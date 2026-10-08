@@ -106,6 +106,31 @@ const Cle = (() => {
   // Le carnet principal, toujours au même nom dans le dossier choisi.
   const fichierCarnet = dossier => dossier.getFileHandle(NOM_FICHIER, { create: true });
 
+  // Date d'enregistrement d'un carnet, écrite en clair dans son en-tête (pas besoin du mot de passe).
+  const dateCarnet = texte => { try { return JSON.parse(texte).enregistreLe || ''; } catch { return ''; } };
+
+  // Les autres carnets du dossier de la clé et de « Sauvegardes » (ex. « carnet-eps (1).json » venu de la tablette) :
+  // [{ nom, texte, date }]. Les fichiers qui ne sont pas des carnets sont ignorés.
+  async function autresCarnets(dossier) {
+    const trouves = [];
+    const parcourir = async (rep, prefixe) => {
+      for await (const [nom, h] of rep.entries()) {
+        if (h.kind !== 'file' || !/\.json$/i.test(nom) || (!prefixe && nom === NOM_FICHIER)) continue;
+        try {
+          const f = await h.getFile();
+          const texte = await f.text();
+          if (JSON.parse(texte).app !== APP) continue;
+          trouves.push({ nom: prefixe + nom, texte, date: dateCarnet(texte) || new Date(f.lastModified).toISOString() });
+        } catch { /* pas un carnet */ }
+      }
+    };
+    await parcourir(dossier, '');
+    let sous = null;
+    try { sous = await dossier.getDirectoryHandle('Sauvegardes'); } catch { /* pas encore de dossier « Sauvegardes » */ }
+    if (sous) await parcourir(sous, 'Sauvegardes/');
+    return trouves;
+  }
+
   // Copie datée dans le sous-dossier « Sauvegardes » (pour revenir à une version antérieure).
   async function copieDatee(dossier, texte) {
     const d = new Date();
@@ -200,7 +225,7 @@ const Cle = (() => {
   }
 
   return {
-    accesDirect, ErreurMdp, chiffrer, dechiffrer, creerTemoin, verifierTemoin, memoriser, dossierMemorise, choisirDossier,
-    fichierCarnet, copieDatee, nettoyerCopies, autoriser, lire, ecrire, partagerOuTelecharger, enregistrerSurCle, modeTablette,
+    NOM_FICHIER, accesDirect, ErreurMdp, chiffrer, dechiffrer, creerTemoin, verifierTemoin, memoriser, dossierMemorise, choisirDossier,
+    fichierCarnet, dateCarnet, autresCarnets, copieDatee, nettoyerCopies, autoriser, lire, ecrire, partagerOuTelecharger, enregistrerSurCle, modeTablette,
   };
 })();
