@@ -137,6 +137,23 @@ button, .bouton {
 .classe-info { font-size: 12px; color: var(--texte2); }
 .modif { border: 0; background: none; min-height: 0; padding: 6px 10px; color: var(--texte2); }
 .ajout { margin: 8px; border-style: dashed; background: none; }
+/* Ordre des classes : appui long sur une classe, puis glisser. */
+#liste-classes li { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#liste-classes li.en-deplacement {
+  position: relative; z-index: 1; background: var(--accent-doux); outline: 2px solid var(--accent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .2); transform: scale(1.03);
+}
+#liste-classes.tri-en-cours { touch-action: none; }
+.astuce-classes { margin: 4px 16px 0; font-size: 12px; }
+
+/* Ascenseur (écran tactile) : piste invisible, curseur fin qui s'épaissit quand on le tient. */
+.ascenseur { position: fixed; right: 0; width: 26px; z-index: 15; pointer-events: none; }
+.ascenseur-curseur { position: absolute; top: 0; right: 0; width: 26px; pointer-events: auto; touch-action: none; cursor: grab; }
+.ascenseur-curseur::after {
+  content: ''; position: absolute; top: 4px; bottom: 4px; right: 3px; width: 6px; border-radius: 6px;
+  background: var(--texte2); opacity: .45; transition: width .15s, opacity .15s;
+}
+.ascenseur.actif .ascenseur-curseur::after { width: 10px; opacity: .8; background: var(--accent); }
 main { flex: 1; min-width: 0; overflow: auto; padding: 16px; padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .voile { position: fixed; inset: 0; background: rgba(0, 0, 0, .35); z-index: 19; }
 

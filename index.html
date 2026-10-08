@@ -61,10 +61,13 @@
     <aside class="classes" id="classes">
       <div class="classes-titre">Classes</div>
       <ul id="liste-classes"></ul>
+      <p class="aide astuce-classes" id="astuce-classes" hidden>Appui long sur une classe pour la déplacer.</p>
       <button class="ajout" data-action="ajout-classe">+ Nouvelle classe</button>
     </aside>
     <div class="voile" id="voile" data-action="menu" hidden></div>
     <main id="vue"></main>
+    <!-- Ascenseur (écran tactile) : curseur fin à droite, à faire glisser pour parcourir la page. -->
+    <div class="ascenseur" id="ascenseur" aria-hidden="true" hidden><div class="ascenseur-curseur"></div></div>
   </div>
 
   <div class="saisie" id="saisie" hidden>

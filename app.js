@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.22.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.23.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -108,8 +108,9 @@ const classeCode = v => (CODES[v] ? ' code-' + v : '');
 
 /* ---------- Données dérivées ---------- */
 
+// Ordre choisi par le prof (champ `ordre`, réglé par appui long + glisser), sinon alphabétique.
 function classesTriees() {
-  return Donnees.liste('classes').sort((a, b) => collator.compare(a.nom, b.nom));
+  return Donnees.liste('classes').sort((a, b) => (a.ordre ?? Infinity) - (b.ordre ?? Infinity) || collator.compare(a.nom, b.nom));
 }
 
 function classeActive() {
@@ -386,16 +387,86 @@ function rendreClasses() {
   const active = classeActive();
   const classes = classesTriees();
   $('#liste-classes').innerHTML = classes.map(c => `
-    <li class="${c.id === active?.id ? 'active' : ''}">
-      <button class="classe" data-classe="${c.id}">
+    <li class="${c.id === active?.id ? 'active' : ''}" data-id="${c.id}">
+      <button class="classe" data-classe="${c.id}" title="Appui long pour changer l’ordre des classes">
         <span class="classe-nom">${esc(c.nom)}</span>
         <span class="classe-info">${esc(c.niveau || '')}${c.niveau ? ' · ' : ''}${elevesDe(c.id).length} élèves</span>
       </button>
       ${c.id === active?.id ? `<button class="modif" data-modif-classe="${c.id}" title="Modifier la classe" aria-label="Modifier la classe">✎</button>` : ''}
     </li>`).join('') || '<li class="aide">Aucune classe</li>';
+  $('#astuce-classes').hidden = classes.length < 2;
 }
 
+/* ---------- Ordre des classes : appui long, puis glisser ----------
+   Un appui bref ouvre la classe ; un glissement rapide fait défiler la liste ;
+   un appui long « décolle » la classe, qu'on fait alors glisser à sa nouvelle place. */
+
+const APPUI_LONG = 450; // ms
+let glisse = null; // { li, pointeur, x0, y0, minuteur, actif }
+let finGlisse = 0;  // pour ignorer le « clic » qui suit le lâcher
+
+function annulerGlisse(remettre = false) {
+  if (!glisse) return;
+  clearTimeout(glisse.minuteur);
+  glisse.li.classList.remove('en-deplacement');
+  $('#liste-classes').classList.remove('tri-en-cours');
+  glisse = null;
+  if (remettre) rendreClasses();
+}
+
+$('#liste-classes').addEventListener('pointerdown', e => {
+  const li = e.target.closest('li[data-id]');
+  if (!li || e.button > 0 || e.target.closest('.modif')) return;
+  annulerGlisse();
+  glisse = { li, pointeur: e.pointerId, x0: e.clientX, y0: e.clientY, actif: false };
+  glisse.minuteur = setTimeout(() => {
+    glisse.actif = true;
+    li.classList.add('en-deplacement');
+    $('#liste-classes').classList.add('tri-en-cours');
+    try { li.setPointerCapture(glisse.pointeur); } catch { /* rien à faire */ }
+    navigator.vibrate?.(30); // petit retour sur tablette Android
+  }, APPUI_LONG);
+});
+
+$('#liste-classes').addEventListener('pointermove', e => {
+  if (!glisse || e.pointerId !== glisse.pointeur) return;
+  if (!glisse.actif) {
+    // Le doigt bouge avant la fin de l'appui long : c'est un défilement, pas un déplacement.
+    if (Math.hypot(e.clientX - glisse.x0, e.clientY - glisse.y0) > 10) annulerGlisse();
+    return;
+  }
+  // La classe prend la place de celle qui est sous le doigt.
+  const liste = $('#liste-classes'), li = glisse.li;
+  const autres = [...liste.querySelectorAll('li[data-id]')].filter(x => x !== li);
+  const avant = autres.find(x => { const r = x.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+  if (avant) { if (li.nextElementSibling !== avant) liste.insertBefore(li, avant); }
+  else if (liste.lastElementChild !== li) liste.append(li);
+});
+
+$('#liste-classes').addEventListener('pointerup', e => {
+  if (!glisse || e.pointerId !== glisse.pointeur) return;
+  if (!glisse.actif) return annulerGlisse();
+  finGlisse = Date.now();
+  // Nouvel ordre = ordre à l'écran ; on n'écrit que les classes dont la place change.
+  [...$('#liste-classes').querySelectorAll('li[data-id]')].forEach((x, k) => {
+    const c = Donnees.get('classes', x.dataset.id);
+    if (c && c.ordre !== k) Donnees.ecrire('classes', { ...c, ordre: k });
+  });
+  annulerGlisse(true);
+});
+
+$('#liste-classes').addEventListener('pointercancel', () => annulerGlisse(true));
+// Pendant le déplacement, le doigt ne doit pas faire défiler la liste.
+$('#liste-classes').addEventListener('touchmove', e => { if (glisse?.actif) e.preventDefault(); }, { passive: false });
+// Pas de menu « copier / sélectionner » sur l'appui long.
+$('#liste-classes').addEventListener('contextmenu', e => { if (e.target.closest('li[data-id]')) e.preventDefault(); });
+// Le lâcher n'ouvre pas la classe.
+$('#liste-classes').addEventListener('click', e => {
+  if (Date.now() - finGlisse < 400) { e.stopPropagation(); e.preventDefault(); }
+}, true);
+
 function rendreVue() {
+  planifierAscenseur(); // recalculé une fois la vue dessinée
   const v = $('#vue');
   const c = classeActive();
   if (!c) {
@@ -795,6 +866,61 @@ function notifAuto(message, erreur = false) {
   n.hidden = false;
   clearTimeout(notifAuto.minuteur);
   notifAuto.minuteur = setTimeout(() => { n.hidden = true; }, erreur ? 6000 : 2500);
+}
+
+/* ---------- Ascenseur (écran tactile) ----------
+   Sur tablette, le navigateur cache les barres de défilement : un curseur fin, collé au bord droit,
+   permet de parcourir d'un geste une longue liste d'élèves ou une grande grille. Sur ordinateur,
+   la barre de défilement habituelle suffit. */
+
+const ascenseurPossible = () => matchMedia('(pointer: coarse)').matches;
+
+// Ce qui défile en hauteur : la grille (Notes, Entraînement) si elle déborde, sinon la page.
+function zoneDefilement() {
+  const g = $('#vue .grille-scroll');
+  return g && g.scrollHeight > g.clientHeight + 1 ? g : $('#vue');
+}
+
+function majAscenseur() {
+  const a = $('#ascenseur');
+  const z = ascenseurPossible() ? zoneDefilement() : null;
+  const reste = z ? z.scrollHeight - z.clientHeight : 0;
+  if (!z || reste < 40) { a.hidden = true; return; } // rien (ou presque) à faire défiler
+  const r = z.getBoundingClientRect();
+  const hauteur = Math.max(48, (r.height * z.clientHeight) / z.scrollHeight); // assez grand pour le doigt
+  a.hidden = false;
+  a.style.top = r.top + 'px';
+  a.style.height = r.height + 'px';
+  const curseur = a.firstElementChild;
+  curseur.style.height = hauteur + 'px';
+  curseur.style.transform = `translateY(${((r.height - hauteur) * z.scrollTop) / reste}px)`;
+}
+
+let majAscenseurPrevue = false;
+const planifierAscenseur = () => {
+  if (majAscenseurPrevue) return;
+  majAscenseurPrevue = true;
+  requestAnimationFrame(() => { majAscenseurPrevue = false; majAscenseur(); });
+};
+document.addEventListener('scroll', planifierAscenseur, true); // (capture : la grille défile aussi)
+window.addEventListener('resize', planifierAscenseur);
+
+let tirage = null; // { zone, y0, haut0, ratio }
+$('#ascenseur .ascenseur-curseur').addEventListener('pointerdown', e => {
+  const zone = zoneDefilement(), a = $('#ascenseur');
+  tirage = {
+    zone, y0: e.clientY, haut0: zone.scrollTop,
+    ratio: (zone.scrollHeight - zone.clientHeight) / Math.max(1, a.clientHeight - e.currentTarget.offsetHeight),
+  };
+  a.classList.add('actif');
+  e.preventDefault();
+  try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* le doigt suit quand même tant qu'il reste sur le curseur */ }
+});
+$('#ascenseur .ascenseur-curseur').addEventListener('pointermove', e => {
+  if (tirage) tirage.zone.scrollTop = tirage.haut0 + (e.clientY - tirage.y0) * tirage.ratio;
+});
+for (const fin of ['pointerup', 'pointercancel']) {
+  $('#ascenseur .ascenseur-curseur').addEventListener(fin, () => { tirage = null; $('#ascenseur').classList.remove('actif'); });
 }
 
 /* ---------- Saisie des notes ---------- */
