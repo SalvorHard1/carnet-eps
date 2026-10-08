@@ -21,12 +21,6 @@
     <button id="btn-maj" class="primaire">Recharger</button>
   </div>
 
-  <div id="rappel-cle" class="bandeau rappel" role="status" hidden>
-    <span>⚠ Des modifications ne sont pas encore sur la clé.</span>
-    <button class="primaire" data-action="sauvegarder">Enregistrer sur la clé</button>
-    <button data-action="rappel-plus-tard">Plus tard</button>
-  </div>
-
   <header class="barre">
     <button class="icone" data-action="menu" id="btn-menu" aria-label="Classes">☰</button>
     <h1>Carnet EPS <span class="titre-etab">S-A</span></h1>
@@ -37,16 +31,31 @@
       <button data-vue="entrainement"><span class="libelle-long">Entraînement</span><span class="libelle-court">Entraîn.</span></button>
     </nav>
     <div class="groupe-sauvegarde">
-      <button class="sauver" id="btn-sauver" data-action="sauvegarder">
-        <span class="sauver-icone" aria-hidden="true">💾</span><span id="etat-cle">Sauvegarder</span>
+      <!-- Un seul bouton pour tout ce qui touche à la clé : sa couleur donne l'état, il ouvre le menu de la clé. -->
+      <button class="sauver" id="btn-sauver" data-action="cle" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-cle">
+        <span class="sauver-icone" aria-hidden="true">🔑</span><span id="etat-cle">Ma clé</span>
       </button>
-      <label class="bouton restaurer" title="Restaurer / importer un fichier de sauvegarde (carnet-eps.json ou une copie du dossier Sauvegardes)">
-        <span aria-hidden="true">📂</span><span class="libelle-restaurer">Restaurer</span>
-        <input type="file" accept=".json,application/json" id="fichier-restaurer" hidden>
-      </label>
-      <button class="options-cle" data-action="cle" title="Options de sauvegarde : clé USB, restauration, mot de passe…" aria-label="Options de sauvegarde">⋯</button>
     </div>
   </header>
+
+  <!-- Menu de la clé : les deux gestes, et l'aide en dessous. -->
+  <div class="menu-cle" id="menu-cle" role="menu" hidden>
+    <p class="menu-cle-etat" id="menu-cle-etat"></p>
+    <button class="choix-cle" data-menu-cle="recuperer" role="menuitem">
+      <span class="choix-icone" aria-hidden="true">⬇</span>
+      <span class="choix-texte"><b>Récupérer depuis la clé</b><small>En arrivant sur cet appareil</small></span>
+    </button>
+    <label class="bouton choix-cle" data-menu-cle-fichier role="menuitem">
+      <span class="choix-icone" aria-hidden="true">⬇</span>
+      <span class="choix-texte"><b>Récupérer depuis la clé</b><small>Choisis carnet-eps.json sur la clé</small></span>
+      <input type="file" accept=".json,application/json" data-importer hidden>
+    </label>
+    <button class="choix-cle primaire" data-menu-cle="enregistrer" role="menuitem">
+      <span class="choix-icone" aria-hidden="true">⬆</span>
+      <span class="choix-texte"><b>Enregistrer sur la clé</b><small>En partant</small></span>
+    </button>
+    <button class="lien menu-cle-aide" data-menu-cle="aide" role="menuitem">Aide et dépannage…</button>
+  </div>
 
   <div class="corps">
     <aside class="classes" id="classes">

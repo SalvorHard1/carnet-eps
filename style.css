@@ -475,17 +475,26 @@ button.badge-disp:hover { filter: brightness(1.1); }
 .modale summary { cursor: pointer; color: var(--texte2); font-size: 14px; }
 .options { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 
-/* Panneau « Ma clé » : état + deux gros boutons (Récupérer / Enregistrer) */
-.etat-cle-panneau { margin: 0; padding: 10px 12px; border-radius: 10px; font-weight: 600; }
-.etat-cle-panneau.ok { background: var(--accent-doux); }
-.etat-cle-panneau.attente { background: #fdecc8; color: #5c3b00; }
-.gestes-cle { display: flex; flex-direction: column; gap: 10px; }
-.gros-bouton { width: 100%; min-height: 68px; justify-content: flex-start; gap: 14px; padding: 12px 16px; border-radius: 14px; text-align: left; }
-.gros-bouton .gb-icone { font-size: 28px; line-height: 1; flex: none; width: 32px; text-align: center; }
-.gros-bouton .gb-texte { display: flex; flex-direction: column; gap: 2px; }
-.gros-bouton .gb-titre { font-size: 16px; font-weight: 700; }
-.gros-bouton .gb-sous { font-size: 13px; font-weight: 400; opacity: .85; }
-.depannage summary { cursor: pointer; color: var(--texte2); }
+/* Menu « Ma clé » : sous le bouton 🔑, l'état + les deux gestes (Récupérer / Enregistrer) */
+.menu-cle {
+  position: fixed; right: 8px; z-index: 50; width: min(340px, calc(100vw - 16px));
+  display: flex; flex-direction: column; gap: 8px; padding: 10px;
+  background: var(--surface); border: 1px solid var(--bord); border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .22); animation: apparait .15s ease-out;
+}
+.menu-cle-etat { margin: 0; padding: 8px 10px; border-radius: 10px; font-size: 13px; font-weight: 600; }
+.menu-cle-etat.ok { background: var(--accent-doux); }
+.menu-cle-etat.attente { background: #fdecc8; color: #5c3b00; }
+.choix-cle { width: 100%; min-height: 60px; justify-content: flex-start; gap: 12px; padding: 10px 14px; border-radius: 12px; text-align: left; }
+.choix-cle .choix-icone { font-size: 24px; line-height: 1; flex: none; width: 28px; text-align: center; }
+.choix-cle .choix-texte { display: flex; flex-direction: column; gap: 2px; }
+.choix-cle b { font-size: 15px; }
+.choix-cle small { font-size: 12px; font-weight: 400; opacity: .85; }
+.menu-cle-aide { align-self: center; padding: 6px; font-size: 13px; }
+/* Tablette : modifications pas encore sur la clé → le bouton orange clignote doucement. */
+.barre .sauver.rappel { animation: appel-cle 1.6s ease-out infinite; }
+@keyframes appel-cle { 0% { box-shadow: 0 0 0 0 rgba(242, 140, 24, .8); } 70%, 100% { box-shadow: 0 0 0 9px rgba(242, 140, 24, 0); } }
+@media (prefers-reduced-motion: reduce) { .barre .sauver.rappel { animation: none; } }
 
 /* Guide de la clé */
 .guide h3 { margin: 14px 0 6px; font-size: 16px; }
@@ -518,7 +527,6 @@ button.badge-disp:hover { filter: brightness(1.1); }
   background: var(--accent-doux); color: var(--texte);
 }
 .bandeau + .barre { padding-top: 8px; }
-.bandeau.rappel { background: #fdecc8; color: #5c3b00; }
 
 /* ================= Adaptation tablette / téléphone ================= */
 

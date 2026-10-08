@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.21.1'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.22.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -771,21 +771,20 @@ function majPastille() {
     : etatAuto === 'erreur' ? ['erreur', 'Clé absente ?', 'Enregistrement impossible : branche la clé puis clique ici']
     : ['attente', 'À enregistrer', 'Des modifications ne sont pas encore sur la clé — cliquer pour enregistrer'];
   const b = $('#btn-sauver');
-  b.className = 'sauver etat-' + etat;
+  b.className = 'sauver etat-' + etat + (etat === 'attente' && !Cle.accesDirect ? ' rappel' : '');
   b.title = info;
   $('#etat-cle').textContent = texte;
 }
 
 /* ---------- Tablette : rappel d'enregistrer sur la clé ----------
    Sur tablette, rien ne part tout seul sur la clé, et le navigateur ne laisse pas toujours retenir la fermeture.
-   Un bandeau le rappelle au lancement et à chaque retour dans l'appli, tant que des modifications n'y sont pas. */
+   Tant que des modifications n'y sont pas, le bouton 🔑 reste orange et clignote doucement ;
+   au lancement et à chaque retour dans l'appli, un petit message le rappelle en plus. */
 
 const aEnregistrer = () => { const m = Donnees.meta(); return m.modifieLe > m.dernierEnvoi; };
 
-function majRappelCle(montrer = false) {
-  const r = $('#rappel-cle');
-  if (Cle.accesDirect || !aEnregistrer()) r.hidden = true; // ordinateur (sauvegarde auto) ou tout est sur la clé
-  else if (montrer) r.hidden = false;
+function rappelerCle() {
+  if (!Cle.accesDirect && aEnregistrer()) notifAuto('🔑 Pense à enregistrer sur la clé : bouton « À enregistrer » en haut.');
 }
 
 // Petite notification discrète en bas de l'écran (ne vole pas le focus de la saisie).
@@ -1238,45 +1237,70 @@ async function exporterTablette() {
   });
 }
 
-/* ---------- Panneau « Ma clé » ----------
-   Deux gestes, les mêmes sur tous les appareils : ⬇ Récupérer en arrivant, ⬆ Enregistrer en partant.
-   (Sur ordinateur, les deux font la même chose : lire la clé, réunir, réécrire.) Le reste est rangé dans « Dépannage ». */
+/* ---------- Menu « Ma clé » ----------
+   Le bouton 🔑 ouvre un petit menu avec les deux gestes, les mêmes sur tous les appareils :
+   ⬇ Récupérer en arrivant, ⬆ Enregistrer en partant. (Sur ordinateur, les deux font la même chose :
+   lire la clé, réunir, réécrire.) Le reste est rangé dans « Aide et dépannage ». */
 
-// Gros bouton à deux lignes ; `fichier` : bouton qui ouvre directement le sélecteur de fichiers (tablette).
-const grosBouton = ({ icone, titre, sous, attrs = '', classe = '', fichier = false }) => {
-  const contenu = `<span class="gb-icone" aria-hidden="true">${icone}</span>
-    <span class="gb-texte"><span class="gb-titre">${titre}</span><span class="gb-sous">${sous}</span></span>`;
-  return fichier
-    ? `<label class="bouton gros-bouton ${classe}">${contenu}<input type="file" accept=".json,application/json" data-importer hidden></label>`
-    : `<button type="button" class="gros-bouton ${classe}" ${attrs}>${contenu}</button>`;
-};
+function ouvrirMenuCle(ouvrir) {
+  const menu = $('#menu-cle'), bouton = $('#btn-sauver');
+  ouvrir ??= menu.hidden;
+  if (ouvrir) {
+    const m = Donnees.meta();
+    const etat = $('#menu-cle-etat');
+    etat.textContent = !m.dernierEnvoi ? 'Ce carnet n’a encore jamais été enregistré sur une clé.'
+      : aEnregistrer() ? '🟠 Des modifications ne sont pas encore sur la clé.'
+        : `✅ Tout est sur la clé (${dateHeure(m.dernierEnvoi)})`;
+    etat.className = 'menu-cle-etat ' + (m.dernierEnvoi && !aEnregistrer() ? 'ok' : 'attente');
+    // Ordinateur : le bouton lit le dossier de la clé ; tablette : il ouvre directement le choix du fichier.
+    $('[data-menu-cle="recuperer"]', menu).hidden = !Cle.accesDirect;
+    $('[data-menu-cle-fichier]', menu).hidden = Cle.accesDirect;
+    $('[data-menu-cle="enregistrer"] small', menu).textContent =
+      Cle.accesDirect && mdpSession ? 'Automatique ici tant que la clé est branchée' : 'En partant';
+    // Juste sous la barre (sa hauteur varie avec la largeur de l'écran).
+    menu.style.top = $('.barre').getBoundingClientRect().bottom + 6 + 'px';
+  }
+  menu.hidden = !ouvrir;
+  bouton.setAttribute('aria-expanded', ouvrir);
+  if (ouvrir) menu.querySelector('.choix-cle:not([hidden])')?.focus();
+}
+
+// Pendant la lecture / l'écriture de la clé, le bouton 🔑 montre que ça travaille.
+async function actionCle(action) {
+  const b = $('#btn-sauver');
+  b.disabled = true;
+  b.className = 'sauver etat-encours';
+  try { await action(); } finally { b.disabled = false; majPastille(); }
+}
+
+$('#menu-cle').addEventListener('click', e => {
+  const choix = e.target.closest('[data-menu-cle]')?.dataset.menuCle;
+  if (!choix) return;
+  ouvrirMenuCle(false);
+  if (choix === 'aide') return lancer(panneauCle);
+  lancer(() => actionCle(sauvegarder));
+});
+$('#menu-cle').addEventListener('change', e => {
+  const f = e.target.matches('[data-importer]') && e.target.files[0];
+  e.target.value = ''; // pour pouvoir rechoisir le même fichier la fois suivante
+  ouvrirMenuCle(false);
+  if (f) lancer(() => actionCle(() => importerFichier(f)));
+});
+// Fermeture : toucher ailleurs, ou Échap.
+document.addEventListener('click', e => {
+  if (!$('#menu-cle').hidden && !e.target.closest('#menu-cle, [data-action="cle"]')) ouvrirMenuCle(false);
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !$('#menu-cle').hidden) { ouvrirMenuCle(false); $('#btn-sauver').focus(); }
+});
+
+/* ---------- Aide et dépannage de la clé ---------- */
 
 async function panneauCle() {
   const dossier = await Cle.dossierMemorise();
-  const m = Donnees.meta();
-  const auto = Cle.accesDirect && dossier && mdpSession;
-  const etat = !m.dernierEnvoi
-    ? '<p class="etat-cle-panneau attente">Ce carnet n’a encore jamais été enregistré sur une clé.</p>'
-    : aEnregistrer()
-      ? '<p class="etat-cle-panneau attente">🟠 Des modifications de cet appareil ne sont pas encore sur la clé.</p>'
-      : `<p class="etat-cle-panneau ok">✅ Tout est sur la clé — dernier enregistrement : ${dateHeure(m.dernierEnvoi)}</p>`;
-  const premiereFois = Cle.accesDirect && !dossier ? ' La première fois, choisis le dossier du carnet sur ta clé.' : '';
-
   const corps = `
-    ${etat}
-    <div class="gestes-cle">
-      ${grosBouton({
-        icone: '⬇', titre: 'Récupérer depuis la clé', fichier: !Cle.accesDirect, attrs: 'data-cle="recuperer"',
-        sous: (Cle.accesDirect ? 'En arrivant : reprend ce qui a été fait sur un autre appareil.' : 'En arrivant : choisis <b>carnet-eps.json</b> sur la clé.') + premiereFois,
-      })}
-      ${grosBouton({
-        icone: '⬆', titre: 'Enregistrer sur la clé', classe: 'primaire', attrs: 'data-cle="enregistrer"',
-        sous: auto ? 'Ici c’est automatique tant que la clé est branchée.' : 'En partant : la clé reçoit tes modifications.' + premiereFois,
-      })}
-    </div>
     <button type="button" class="lien" data-cle="guide">❓ Comment ça marche ? (tablette ⇄ ordinateur)</button>
-    <details class="depannage">
-      <summary>Dépannage</summary>
+    <div class="depannage">
       <div class="options">
         ${dossier ? `<p class="aide">Dossier du carnet sur cet ordinateur : <b>${esc(dossier.name)}</b></p>
           <button type="button" data-cle="changer">Changer de dossier</button>` : ''}
@@ -1288,9 +1312,9 @@ async function panneauCle() {
           <button type="button" data-cle="maj-appli" title="Recharge la dernière version de l’appli (tes données ne sont pas touchées)">🔄 Mettre à jour l’appli</button>
         </div>
       </div>
-    </details>`;
+    </div>`;
 
-  const { d } = ouvrirModale('Ma clé USB', corps, '<span class="espace"></span><button type="button" data-fermer>Fermer</button>');
+  const { d } = ouvrirModale('Aide et dépannage — clé USB', corps, '<span class="espace"></span><button type="button" data-fermer>Fermer</button>');
   const occupe = async action => {
     d.classList.add('occupe');
     try { await action(); d.fermer(); } catch (e) { signalerErreur(e); } finally { d.classList.remove('occupe'); }
@@ -1300,8 +1324,6 @@ async function panneauCle() {
     const b = ev.target.closest('[data-cle]');
     if (!b) return;
     switch (b.dataset.cle) {
-      case 'recuperer': // ordinateur (sur tablette, c'est le sélecteur de fichiers qui s'ouvre)
-      case 'enregistrer': return occupe(sauvegarder);
       case 'guide': d.fermer(); return lancer(afficherGuide);
       case 'maj-appli': return lancer(forcerMiseAJour);
       case 'changer': return occupe(async () => synchroniser(await choisirDossierCle(), { copie: true }));
@@ -1331,7 +1353,7 @@ async function afficherGuide() {
         <li><b>⬇ En arrivant</b> sur un appareil : <b>Récupérer depuis la clé</b>.<br>
           <span class="aide">Tu retrouves ce que tu as fait sur l’autre appareil.</span></li>
         <li><b>⬆ En partant</b> : <b>Enregistrer sur la clé</b>.<br>
-          <span class="aide">Sur ordinateur, c’est automatique tant que la clé est branchée. Sur tablette, un bandeau orange te le rappelle.</span></li>
+          <span class="aide">Sur ordinateur, c’est automatique tant que la clé est branchée. Sur tablette, le bouton 🔑 devient orange et clignote tant qu’il reste quelque chose à enregistrer.</span></li>
       </ol>
       <h3>Bon à savoir</h3>
       <ul class="bon-a-savoir">
@@ -1354,7 +1376,7 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-cle-guide]');
   if (!b) return;
   b.closest('dialog').fermer();
-  lancer(panneauCle);
+  ouvrirMenuCle(true);
 });
 
 /* ---------- Mises à jour de l'appli (service worker) ---------- */
@@ -1469,7 +1491,7 @@ document.addEventListener('click', e => {
   if (ds.supprimerEleve) return lancer(() => supprimerEleve(ds.supprimerEleve));
   switch (ds.action) {
     case 'menu': return basculerMenu();
-    case 'cle': return lancer(panneauCle);
+    case 'cle': return ouvrirMenuCle();
     case 'guide': return lancer(afficherGuide);
     case 'sauvegarder': return lancer(sauvegarder);
     case 'maj-appli': return lancer(boutonVersion);
@@ -1479,9 +1501,7 @@ document.addEventListener('click', e => {
     case 'ajout-seance': return lancer(() => editerSeance());
     case 'ajout-eleve': return lancer(ajouterEleve);
     case 'coller-liste': return lancer(collerListe);
-    case 'vue-eleves': ui.vue = 'eleves'; memoriserUi(); return rendre();
-    case 'rappel-plus-tard': $('#rappel-cle').hidden = true; return;
-  }
+    case 'vue-eleves': ui.vue = 'eleves'; memoriserUi(); return rendre();  }
 });
 
 // Modification d'une note ou d'une fiche élève
@@ -1615,7 +1635,7 @@ window.addEventListener('beforeunload', e => {
 });
 
 // Tablette : retour dans l'appli (après être passé à une autre appli) → rappel si besoin.
-document.addEventListener('visibilitychange', () => { if (!document.hidden) majRappelCle(true); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) rappelerCle(); });
 
 /* ---------- Démarrage ---------- */
 
@@ -1636,9 +1656,8 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) majR
   migrerNotesOrphelines();
   Donnees.surChangement(majPastille);
   Donnees.surChangement(planifierSauvegardeAuto);
-  Donnees.surChangement(() => majRappelCle()); // disparaît dès que tout est sur la clé
   rendre();
-  majRappelCle(true);
+  rappelerCle();
   if (!ui.guideVu) lancer(afficherGuide); // premier lancement sur cet appareil : on explique le principe de la clé
   navigator.storage?.persist?.().catch(() => {});
   enregistrerServiceWorker();
