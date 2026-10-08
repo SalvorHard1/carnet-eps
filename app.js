@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.27.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.28.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1305,12 +1305,13 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
   // Chacun est réuni une fois, quelle que soit sa date (carnet-eps.json a pu être réécrit entre-temps par
   // l'enregistrement automatique) ; réunir ne peut rien écraser. Les copies datées de l'ordinateur sont écartées.
   const dejaVus = Donnees.meta().carnetsReunis || {};
-  const plusRecents = silencieux ? [] : (await Cle.autresCarnets(dossier))
-    .filter(c => dejaVus[c.nom] !== c.date)
-    .sort((a, b) => b.date.localeCompare(a.date));
+  const autres = silencieux ? [] : await Cle.autresCarnets(dossier);
+  const plusRecents = autres.filter(c => dejaVus[c.nom] !== c.date).sort((a, b) => b.date.localeCompare(a.date));
   const aReunir = [...(texte.trim() ? [{ nom: Cle.NOM_FICHIER, texte }] : []), ...plusRecents];
   let mdp, n = 0;
   const repris = [], ignores = [];
+  // Fichiers de la tablette dont le contenu est déjà dans le carnet (réunis maintenant ou lors d'une fois précédente).
+  const tabletteReunis = autres.filter(c => Cle.estFichierTablette(c.fichier) && dejaVus[c.nom] === c.date);
   for (const c of aReunir) {
     if (!mdp) {
       // Le premier fichier donne le mot de passe (demandé si besoin, vérifié par le fichier lui-même).
@@ -1327,6 +1328,7 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
       }
     }
     if (c.nom !== Cle.NOM_FICHIER) repris.push(c.nom);
+    if (c.fichier && Cle.estFichierTablette(c.fichier)) tabletteReunis.push(c);
   }
   if (aReunir.length > 1) migrerTout();
   if (plusRecents.length) {
@@ -1341,8 +1343,14 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
   } catch {
     throw new Error('Impossible d’écrire sur la clé (retirée ou protégée en écriture ?).');
   }
+  let supprimes = 0;
   if (copie) {
     try { await Cle.nettoyerCopies(dossier); } catch (e) { console.warn('Ménage des copies datées impossible :', e); }
+    // Fichiers de la tablette repris : leur contenu est dans carnet-eps.json et dans la copie datée qui vient
+    // d'être faite → on les retire de la clé (un fichier ignoré, ex. autre mot de passe, n'est jamais supprimé).
+    for (const c of tabletteReunis) {
+      try { await c.rep.removeEntry(c.fichier); supprimes++; } catch (e) { console.warn('Fichier de la tablette non supprimé :', c.nom, e); }
+    }
   }
   if (!silencieux) etatAuto = null;
   Donnees.marquerEnvoi();
@@ -1352,6 +1360,7 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
   const recup = n ? ` · ${n} élément${n > 1 ? 's' : ''} récupéré${n > 1 ? 's' : ''} de la clé` : '';
   toast(`Clé à jour ✔ (dossier « ${dossier.name} »)${recup}`
     + (repris.length ? `\nRepris aussi : ${repris.join(', ')}` : '')
+    + (supprimes ? `\n${supprimes} fichier${supprimes > 1 ? 's' : ''} de la tablette retiré${supprimes > 1 ? 's' : ''} de la clé (contenu gardé dans le carnet)` : '')
     + (ignores.length ? `\n⚠ Ignoré (autre mot de passe) : ${ignores.join(', ')}` : ''), ignores.length ? 'erreur' : 'ok');
 }
 
@@ -1577,7 +1586,8 @@ async function afficherGuide() {
         <li>Oublié de récupérer avant de travailler ? <b>Pas grave</b> : récupère maintenant, tout sera réuni.</li>
         <li><b>Le même mot de passe sur tous tes appareils.</b> Note-le bien : s’il est perdu, le carnet de la clé est illisible, pour toi aussi.</li>
         <li>Sur la tablette, le fichier enregistré porte un nom du type <b>carnet-eps-tablette_date_heure.json</b> :
-          pose-le sur la clé <b>à côté</b> de carnet-eps.json, sans rien remplacer ni renommer. L’ordinateur le reprend tout seul.</li>
+          pose-le sur la clé <b>à côté</b> de carnet-eps.json, sans rien remplacer ni renommer. L’ordinateur le reprend tout seul,
+          puis le retire de la clé (son contenu est alors dans carnet-eps.json).</li>
         <li>Sur la clé, le carnet est le fichier <b>carnet-eps.json</b> : garde-le <b>toujours au même endroit</b>, ne le renomme pas.
           Le dossier « Sauvegardes » à côté contient des copies datées faites par l’ordinateur.</li>
         <li>Sur un ordinateur qui n’est pas le tien : avant de partir, enregistre sur la clé puis efface les données du site dans le navigateur.</li>

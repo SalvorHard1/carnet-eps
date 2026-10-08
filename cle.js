@@ -132,7 +132,7 @@ const Cle = (() => {
           const f = await h.getFile();
           const texte = await f.text();
           if (JSON.parse(texte).app !== APP) continue;
-          trouves.push({ nom: prefixe + nom, texte, date: dateCarnet(texte) || new Date(f.lastModified).toISOString() });
+          trouves.push({ nom: prefixe + nom, fichier: nom, rep, texte, date: dateCarnet(texte) || new Date(f.lastModified).toISOString() });
         } catch { /* pas un carnet */ }
       }
     };
@@ -205,7 +205,9 @@ const Cle = (() => {
     : !android && typeof navigator.canShare === 'function' ? 'partager' : 'telecharger';
 
   // Nom unique pour le fichier de la tablette : il se pose à côté de carnet-eps.json, sans rien remplacer
-  // ni renommer, et l'ordinateur le réunit tout seul au carnet (une seule fois).
+  // ni renommer, et l'ordinateur le réunit tout seul au carnet (une seule fois), puis le retire de la clé.
+  // (Android ajoute parfois « (1) » au nom : il est toujours reconnu.)
+  const estFichierTablette = nom => /^carnet-eps-tablette_.*\.json$/i.test(nom);
   function nomFichierTablette() {
     const d = new Date();
     const deux = n => String(n).padStart(2, '0');
@@ -247,6 +249,6 @@ const Cle = (() => {
 
   return {
     NOM_FICHIER, accesDirect, ErreurMdp, chiffrer, dechiffrer, creerTemoin, verifierTemoin, memoriser, dossierMemorise, choisirDossier, contientCarnet, estDossierCopies,
-    fichierCarnet, dateCarnet, autresCarnets, copieDatee, nettoyerCopies, autoriser, lire, ecrire, partagerOuTelecharger, enregistrerSurCle, modeTablette,
+    fichierCarnet, dateCarnet, autresCarnets, copieDatee, nettoyerCopies, autoriser, lire, ecrire, partagerOuTelecharger, enregistrerSurCle, estFichierTablette, modeTablette,
   };
 })();
