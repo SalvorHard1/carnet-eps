@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.26.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.27.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1422,10 +1422,14 @@ async function importerFichier(fichier) {
 
 // Tablette : prépare le fichier chiffré, puis un bouton dédié l'envoie vers la clé
 // (la fenêtre d'enregistrement ou de partage doit partir directement d'un toucher de l'utilisateur).
+// Le fichier porte un nom unique (carnet-eps-tablette_date_heure.json) : il se pose à côté de carnet-eps.json,
+// sans remplacer ni renommer ; l'ordinateur le reprend tout seul à « Récupérer depuis la clé ».
+const APRES_DEPOT = '<br><span class="aide">Ne remplace rien et ne renomme rien : l’ordinateur reprendra ce fichier tout seul à « Récupérer depuis la clé ».</span>';
 const CONSIGNES_TABLETTE = {
-  enregistrer: 'Touche le bouton ci-dessous : dans la fenêtre qui s’ouvre, va sur ta <b>clé USB</b>, dans le dossier du carnet, et remplace l’ancien <b>carnet-eps.json</b>.',
-  partager: 'Touche le bouton ci-dessous, choisis <b>« Enregistrer dans Fichiers »</b>, ouvre ta clé USB (dossier du carnet) et remplace l’ancien <b>carnet-eps.json</b>.',
-  telecharger: 'Touche le bouton ci-dessous : <b>carnet-eps.json</b> arrive dans <b>Téléchargements</b>. Avec l’appli <b>Fichiers</b>, déplace-le ensuite sur ta clé USB, dans le dossier du carnet, en remplaçant l’ancien.',
+  enregistrer: 'Touche le bouton ci-dessous : dans la fenêtre qui s’ouvre, va sur ta <b>clé USB</b>, dans le dossier du carnet (celui de <b>carnet-eps.json</b>), et enregistre.' + APRES_DEPOT,
+  partager: 'Touche le bouton ci-dessous, choisis <b>« Enregistrer dans Fichiers »</b>, puis ouvre ta clé USB, dossier du carnet (celui de <b>carnet-eps.json</b>).' + APRES_DEPOT,
+  telecharger: 'Touche le bouton ci-dessous : le fichier arrive dans <b>Téléchargements</b>. Avec l’appli <b>Mes fichiers</b>, déplace-le sur ta clé USB, '
+    + 'dans le dossier du carnet (celui de <b>carnet-eps.json</b>).' + APRES_DEPOT,
 };
 
 async function exporterTablette() {
@@ -1437,7 +1441,9 @@ async function exporterTablette() {
       if (!fait) return; // fenêtre fermée sans enregistrer : on peut réessayer
       Donnees.marquerEnvoi();
       d.fermer();
-      toast(Cle.modeTablette === 'telecharger' ? 'Fichier dans Téléchargements ✔ — pense à le déplacer sur la clé.' : 'Fichier enregistré sur la clé ✔', 'ok');
+      toast(Cle.modeTablette === 'telecharger'
+        ? 'Fichier dans Téléchargements ✔ — déplace-le sur la clé, à côté de carnet-eps.json (sans remplacer).'
+        : 'Fichier enregistré sur la clé ✔', 'ok');
     }).catch(signalerErreur);
   });
 }
@@ -1570,6 +1576,8 @@ async function afficherGuide() {
         <li><b>Rien n’est écrasé</b> : les modifications des deux appareils sont réunies. Si un même élément a changé des deux côtés, c’est la version la plus récente qui reste.</li>
         <li>Oublié de récupérer avant de travailler ? <b>Pas grave</b> : récupère maintenant, tout sera réuni.</li>
         <li><b>Le même mot de passe sur tous tes appareils.</b> Note-le bien : s’il est perdu, le carnet de la clé est illisible, pour toi aussi.</li>
+        <li>Sur la tablette, le fichier enregistré porte un nom du type <b>carnet-eps-tablette_date_heure.json</b> :
+          pose-le sur la clé <b>à côté</b> de carnet-eps.json, sans rien remplacer ni renommer. L’ordinateur le reprend tout seul.</li>
         <li>Sur la clé, le carnet est le fichier <b>carnet-eps.json</b> : garde-le <b>toujours au même endroit</b>, ne le renomme pas.
           Le dossier « Sauvegardes » à côté contient des copies datées faites par l’ordinateur.</li>
         <li>Sur un ordinateur qui n’est pas le tien : avant de partir, enregistre sur la clé puis efface les données du site dans le navigateur.</li>

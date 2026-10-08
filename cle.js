@@ -204,13 +204,22 @@ const Cle = (() => {
   const modeTablette = typeof window.showSaveFilePicker === 'function' ? 'enregistrer'
     : !android && typeof navigator.canShare === 'function' ? 'partager' : 'telecharger';
 
+  // Nom unique pour le fichier de la tablette : il se pose à côté de carnet-eps.json, sans rien remplacer
+  // ni renommer, et l'ordinateur le réunit tout seul au carnet (une seule fois).
+  function nomFichierTablette() {
+    const d = new Date();
+    const deux = n => String(n).padStart(2, '0');
+    return `carnet-eps-tablette_${d.getFullYear()}-${deux(d.getMonth() + 1)}-${deux(d.getDate())}_${deux(d.getHours())}h${deux(d.getMinutes())}.json`;
+  }
+
   // Renvoie false si l'utilisateur a fermé la fenêtre sans enregistrer.
   async function enregistrerSurCle(texte) {
+    const nom = nomFichierTablette();
     if (modeTablette === 'enregistrer') {
       let h;
       try {
         h = await window.showSaveFilePicker({
-          suggestedName: NOM_FICHIER, id: 'carnet-eps',
+          suggestedName: nom, id: 'carnet-eps',
           types: [{ description: 'Carnet EPS', accept: { 'application/json': ['.json'] } }],
         });
       } catch (e) {
@@ -220,7 +229,7 @@ const Cle = (() => {
       await ecrire(h, texte);
       return true;
     }
-    await partagerOuTelecharger(texte);
+    await partagerOuTelecharger(texte, nom);
     return true;
   }
 
