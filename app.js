@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.25.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.26.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1300,13 +1300,13 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
   } catch {
     throw new Error('Dossier introuvable : vérifie que la clé est bien branchée.');
   }
-  // Récupération à la main : en plus de carnet-eps.json, on réunit les carnets plus récents posés à côté
-  // ou dans « Sauvegardes » (ex. le fichier enregistré sur la tablette). Les copies datées faites par
-  // l'ordinateur ne sont jamais plus récentes que carnet-eps.json : elles ne sont pas relues pour rien.
-  // (Un fichier déjà réuni n'est pas repris tant qu'il n'a pas changé : utile si l'horloge de la tablette avance.)
+  // Récupérer / Enregistrer (pas l'enregistrement automatique) : en plus de carnet-eps.json, on réunit les
+  // autres carnets posés à côté ou dans « Sauvegardes » (ex. le fichier enregistré sur la tablette).
+  // Chacun est réuni une fois, quelle que soit sa date (carnet-eps.json a pu être réécrit entre-temps par
+  // l'enregistrement automatique) ; réunir ne peut rien écraser. Les copies datées de l'ordinateur sont écartées.
   const dejaVus = Donnees.meta().carnetsReunis || {};
   const plusRecents = silencieux ? [] : (await Cle.autresCarnets(dossier))
-    .filter(c => c.date > Cle.dateCarnet(texte) && dejaVus[c.nom] !== c.date)
+    .filter(c => dejaVus[c.nom] !== c.date)
     .sort((a, b) => b.date.localeCompare(a.date));
   const aReunir = [...(texte.trim() ? [{ nom: Cle.NOM_FICHIER, texte }] : []), ...plusRecents];
   let mdp, n = 0;
@@ -1360,12 +1360,29 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
 async function sauvegarder() {
   if (!Cle.accesDirect) return exporterTablette();
   let dossier = await Cle.dossierMemorise();
+  // « Sauvegardes » mémorisé par erreur (anciennes versions) : on l'oublie et on redemande le bon dossier.
+  if (dossier && Cle.estDossierCopies(dossier)) dossier = null;
   if (!dossier) dossier = await choisirDossierCle();
   await synchroniser(dossier, { copie: true });
 }
 
+// Choix du dossier du carnet sur la clé (ordinateur), avec une explication avant et des garde-fous après.
 async function choisirDossierCle() {
+  const { resultat } = ouvrirModale('Dossier du carnet sur la clé', `
+    <p>Dans la fenêtre qui va s’ouvrir, va dans le dossier de ta clé qui contient <b>carnet-eps.json</b>
+      et le dossier <b>Sauvegardes</b>, puis clique sur <b>« Sélectionner un dossier »</b>.</p>
+    <p class="aide">Les fichiers n’y sont pas affichés, seulement les dossiers : c’est normal.
+      N’entre pas dans « Sauvegardes ». L’appli s’en souviendra pour la suite.</p>`,
+  boutonsModale('Choisir le dossier'));
+  if ((await resultat).action !== 'ok') throw new Annule();
   const dossier = await Cle.choisirDossier();
+  if (Cle.estDossierCopies(dossier)) {
+    throw new Error('Ça, c’est le dossier des copies datées. Recommence et choisis le dossier juste au-dessus, celui qui contient « Sauvegardes ».');
+  }
+  if (!(await Cle.contientCarnet(dossier))
+    && !(await confirmer(`Il n’y a pas de carnet dans « ${dossier.name} ». En commencer un nouveau dans ce dossier ?`, 'Oui, ici'))) {
+    throw new Annule();
+  }
   await Cle.memoriser(dossier);
   return dossier;
 }
@@ -1380,7 +1397,7 @@ function planifierSauvegardeAuto() {
   clearTimeout(minuteurAuto);
   minuteurAuto = setTimeout(async () => {
     const dossier = await Cle.dossierMemorise();
-    if (!dossier || (await dossier.queryPermission({ mode: 'readwrite' })) !== 'granted') return;
+    if (!dossier || Cle.estDossierCopies(dossier) || (await dossier.queryPermission({ mode: 'readwrite' })) !== 'granted') return;
     etatAuto = 'encours';
     majPastille();
     try {

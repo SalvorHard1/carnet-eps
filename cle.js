@@ -103,19 +103,31 @@ const Cle = (() => {
 
   const choisirDossier = () => window.showDirectoryPicker({ id: 'carnet-eps', mode: 'readwrite' });
 
+  // Le dossier contient-il déjà un carnet (non vide) ?
+  async function contientCarnet(dossier) {
+    try { return (await (await dossier.getFileHandle(NOM_FICHIER)).getFile()).size > 0; } catch { return false; }
+  }
+
+  // « Sauvegardes » n'est jamais le dossier du carnet : c'est celui des copies datées, juste en dessous.
+  const estDossierCopies = dossier => dossier.name.toLowerCase() === 'sauvegardes';
+
   // Le carnet principal, toujours au même nom dans le dossier choisi.
   const fichierCarnet = dossier => dossier.getFileHandle(NOM_FICHIER, { create: true });
+
+  // Nom des copies datées que l'ordinateur range dans « Sauvegardes ».
+  const MOTIF_COPIE = /^carnet-eps_(\d{4})-(\d{2})-(\d{2})_(\d{2})h(\d{2})\.json$/;
 
   // Date d'enregistrement d'un carnet, écrite en clair dans son en-tête (pas besoin du mot de passe).
   const dateCarnet = texte => { try { return JSON.parse(texte).enregistreLe || ''; } catch { return ''; } };
 
   // Les autres carnets du dossier de la clé et de « Sauvegardes » (ex. « carnet-eps (1).json » venu de la tablette) :
-  // [{ nom, texte, date }]. Les fichiers qui ne sont pas des carnets sont ignorés.
+  // [{ nom, texte, date }]. Sont laissés de côté : les fichiers qui ne sont pas des carnets, et les copies datées
+  // faites par l'ordinateur (simples doubles de carnet-eps.json).
   async function autresCarnets(dossier) {
     const trouves = [];
     const parcourir = async (rep, prefixe) => {
       for await (const [nom, h] of rep.entries()) {
-        if (h.kind !== 'file' || !/\.json$/i.test(nom) || (!prefixe && nom === NOM_FICHIER)) continue;
+        if (h.kind !== 'file' || !/\.json$/i.test(nom) || (!prefixe && nom === NOM_FICHIER) || MOTIF_COPIE.test(nom)) continue;
         try {
           const f = await h.getFile();
           const texte = await f.text();
@@ -146,7 +158,7 @@ const Cle = (() => {
   // Seuls les fichiers créés par l'appli (carnet-eps_AAAA-MM-JJ_HHhMM.json) sont concernés.
   async function nettoyerCopies(dossier, aGarder = 20) {
     const sous = await dossier.getDirectoryHandle('Sauvegardes', { create: true });
-    const motif = /^carnet-eps_(\d{4})-(\d{2})-(\d{2})_(\d{2})h(\d{2})\.json$/;
+    const motif = MOTIF_COPIE;
     const copies = [];
     for await (const [nom, h] of sous.entries()) {
       const m = nom.match(motif);
@@ -225,7 +237,7 @@ const Cle = (() => {
   }
 
   return {
-    NOM_FICHIER, accesDirect, ErreurMdp, chiffrer, dechiffrer, creerTemoin, verifierTemoin, memoriser, dossierMemorise, choisirDossier,
+    NOM_FICHIER, accesDirect, ErreurMdp, chiffrer, dechiffrer, creerTemoin, verifierTemoin, memoriser, dossierMemorise, choisirDossier, contientCarnet, estDossierCopies,
     fichierCarnet, dateCarnet, autresCarnets, copieDatee, nettoyerCopies, autoriser, lire, ecrire, partagerOuTelecharger, enregistrerSurCle, modeTablette,
   };
 })();
