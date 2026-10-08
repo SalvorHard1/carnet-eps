@@ -105,13 +105,6 @@ button, .bouton {
 .barre .sauver.etat-encours .sauver-icone { animation: clignote .6s ease-in-out infinite alternate; }
 .barre .sauver.etat-ok { background: #1b7a3d; color: #fff; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .35); }
 .barre .sauver.etat-erreur { background: #d62828; color: #fff; }
-.barre .restaurer {
-  border-radius: 20px; font-weight: 600; white-space: nowrap; gap: 6px; padding: 8px 14px; cursor: pointer;
-  background: rgba(255, 255, 255, .14); color: #fff; border: 1px solid rgba(255, 255, 255, .5);
-}
-.barre .restaurer:hover { background: rgba(255, 255, 255, .26); }
-.barre .options-cle { font-size: 20px; font-weight: 700; padding: 4px 10px; border-radius: 20px; line-height: 1; }
-.barre .options-cle:hover { background: rgba(255, 255, 255, .18); }
 @keyframes clignote { to { opacity: .25; } }
 .notif-auto {
   position: fixed; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 90;
@@ -156,8 +149,6 @@ main { flex: 1; min-width: 0; overflow: auto; padding: 16px; padding-bottom: cal
   .barre h1 { display: none; }
   .barre .sauver { padding: 8px 12px; }
   #etat-cle { display: none; } /* sur téléphone, la couleur du bouton suffit */
-  .barre .restaurer { padding: 8px 10px; }
-  .libelle-restaurer { display: none; }
   main { padding: 10px; }
 }
 
@@ -284,6 +275,9 @@ main { flex: 1; min-width: 0; overflow: auto; padding: 16px; padding-bottom: cal
 .grille tfoot .col-nom { z-index: 3; font-weight: 600; }
 .grille .col-moy { text-align: center; font-weight: 700; min-width: 80px; padding: 0 10px; background: var(--surface2); }
 .grille thead .col-moy { padding: 8px 10px; }
+.grille thead .col-moy .eval-info { font-weight: 400; white-space: nowrap; }
+/* Vue « Toute l'année » : la moyenne annuelle se détache des moyennes de période. */
+.grille .moy-annee { border-left: 2px solid var(--bord); }
 .cellule {
   display: block; width: 100%; height: 44px; border: 0; background: transparent;
   text-align: center; font-size: 16px; /* 16px : évite le zoom automatique sur iPad */
@@ -463,6 +457,30 @@ button.badge-disp:hover { filter: brightness(1.1); }
 .modale details { border-top: 1px solid var(--bord); padding-top: 10px; }
 .modale summary { cursor: pointer; color: var(--texte2); font-size: 14px; }
 .options { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+
+/* Panneau « Ma clé » : état + deux gros boutons (Récupérer / Enregistrer) */
+.etat-cle-panneau { margin: 0; padding: 10px 12px; border-radius: 10px; font-weight: 600; }
+.etat-cle-panneau.ok { background: var(--accent-doux); }
+.etat-cle-panneau.attente { background: #fdecc8; color: #5c3b00; }
+.gestes-cle { display: flex; flex-direction: column; gap: 10px; }
+.gros-bouton { width: 100%; min-height: 68px; justify-content: flex-start; gap: 14px; padding: 12px 16px; border-radius: 14px; text-align: left; }
+.gros-bouton .gb-icone { font-size: 28px; line-height: 1; flex: none; width: 32px; text-align: center; }
+.gros-bouton .gb-texte { display: flex; flex-direction: column; gap: 2px; }
+.gros-bouton .gb-titre { font-size: 16px; font-weight: 700; }
+.gros-bouton .gb-sous { font-size: 13px; font-weight: 400; opacity: .85; }
+.depannage summary { cursor: pointer; color: var(--texte2); }
+
+/* Guide de la clé */
+.guide h3 { margin: 14px 0 6px; font-size: 16px; }
+.guide p { margin: 6px 0; }
+.schema-cle { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 4px 0 10px; font-weight: 600; }
+.schema-cle .appareil { padding: 10px 14px; border-radius: 12px; background: var(--surface2); white-space: nowrap; }
+.schema-cle .appareil.cle { background: var(--accent); color: var(--accent-texte); }
+.schema-cle .fleche { font-size: 22px; color: var(--texte2); }
+.gestes { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.gestes li { padding: 10px 12px; border-radius: 10px; background: var(--fond); }
+.bon-a-savoir { margin: 0; padding-left: 20px; }
+.bon-a-savoir li { margin-bottom: 6px; }
 .etapes { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .etapes li { display: flex; flex-direction: column; }
 .modale.occupe { pointer-events: none; }

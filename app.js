@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.19.1'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.21.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -273,6 +273,81 @@ const prochainOrdre = classeId =>
 const evalsDe = classeId => Donnees.liste('evals', e => e.classeId === classeId)
   .sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.cree - b.cree);
 
+/* ---------- Périodes de l'année (trimestres / semestres) ----------
+   Réglage commun à toutes les classes, enregistré dans le carnet (il suit donc sur la clé).
+   Seules les dates de fin sont retenues, en « MM-JJ » : le réglage resservira l'année suivante.
+   Une évaluation appartient à une période d'après sa date. */
+
+const PERIODES_DEFAUT = { type: 'trimestres', trimestres: ['11-30', '02-28'], semestres: ['01-31'] };
+const reglagePeriodes = () => ({ ...PERIODES_DEFAUT, ...Donnees.get('reglages', 'periodes') });
+
+// Place d'un jour dans l'année scolaire (août = début) ; le 29 février compte comme le 28.
+const rangAnnee = md => {
+  const [m, j] = md.split('-').map(Number);
+  return ((m + 4) % 12) * 100 + (m === 2 && j === 29 ? 28 : j);
+};
+
+const MOIS_COURTS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+const jourMois = md => { const [m, j] = md.split('-').map(Number); return `${j === 1 ? '1er' : j} ${MOIS_COURTS[m - 1]}`; };
+const lendemain = md => { const d = new Date(`2001-${md}T12:00`); d.setDate(d.getDate() + 1); return d.toLocaleDateString('sv').slice(5); };
+
+// [{ id: 'P1', code: 'T1', fin: '11-30', texte: 'rentrée → 30 nov.' }, …] ; la dernière va jusqu'à la fin de l'année.
+function periodesAnnee() {
+  const r = reglagePeriodes();
+  const fins = r[r.type] || PERIODES_DEFAUT[r.type];
+  const lettre = r.type === 'semestres' ? 'S' : 'T';
+  return [...fins, null].map((fin, k) => ({
+    id: 'P' + (k + 1), code: lettre + (k + 1), fin,
+    texte: `${k ? jourMois(lendemain(fins[k - 1])) : 'rentrée'} → ${fin ? jourMois(fin) : 'fin d’année'}`,
+  }));
+}
+
+function periodeDe(date) {
+  if (!date) return null;
+  const rang = rangAnnee(date.slice(5));
+  return periodesAnnee().find(p => !p.fin || rang <= rangAnnee(p.fin)).id;
+}
+
+// Période affichée dans l'onglet Notes : 'annee' ou 'P1', 'P2'… (retour à l'année si la période n'existe plus).
+const periodeAffichee = () => (periodesAnnee().some(p => p.id === ui.periode) ? ui.periode : 'annee');
+
+async function editerPeriodes() {
+  const r = reglagePeriodes();
+  // Les dates sont montrées dans l'année scolaire en cours.
+  const auj = aujourdhui(), debut = +auj.slice(0, 4) - (+auj.slice(5, 7) < 8 ? 1 : 0);
+  const versDate = md => `${+md.slice(0, 2) >= 8 ? debut : debut + 1}-${md}`.replace(/-02-29$/, '-02-28');
+  const champ = (type, k) => `<label>Fin du ${type === 'semestres' ? 'S' : 'T'}${k + 1}
+    <input type="date" name="${type}-${k}" required value="${versDate(r[type][k])}"></label>`;
+  const { d, resultat } = ouvrirModale('Périodes de l’année', `
+    <p class="aide">Les évaluations sont rangées dans une période d’après leur date. Réglage commun à toutes les classes.</p>
+    <label>Découpage<select name="type">
+      <option value="trimestres" ${r.type === 'trimestres' ? 'selected' : ''}>Trimestres</option>
+      <option value="semestres" ${r.type === 'semestres' ? 'selected' : ''}>Semestres</option>
+    </select></label>
+    <div class="ligne" data-type="trimestres">${champ('trimestres', 0)}${champ('trimestres', 1)}
+      <span class="aide">le T3 va jusqu’à la fin de l’année</span></div>
+    <div class="ligne" data-type="semestres">${champ('semestres', 0)}
+      <span class="aide">le S2 va jusqu’à la fin de l’année</span></div>
+    <p class="aide">Les dates sont gardées d’une année sur l’autre : il suffit de les ajuster à la rentrée.</p>`,
+  boutonsModale('Enregistrer'));
+  const selType = $('[name="type"]', d);
+  // Seules les dates du découpage choisi sont visibles (et obligatoires).
+  const majType = () => d.querySelectorAll('[data-type]').forEach(z => {
+    z.hidden = z.dataset.type !== selType.value;
+    z.querySelectorAll('input').forEach(i => { i.disabled = z.hidden; });
+  });
+  selType.addEventListener('change', majType);
+  majType();
+  const res = await resultat;
+  if (res.action !== 'ok') return;
+  const type = res.data.type;
+  const fins = Object.keys(res.data).filter(k => k.startsWith(type + '-')).map(k => res.data[k].slice(5))
+    .sort((a, b) => rangAnnee(a) - rangAnnee(b));
+  if (new Set(fins).size < fins.length) return toast('Deux périodes ne peuvent pas finir le même jour.', 'erreur');
+  Donnees.ecrire('reglages', { ...Donnees.get('reglages', 'periodes'), id: 'periodes', type, [type]: fins });
+  rendre();
+}
+
 // Ancien code « NN » (non noté) → « NE ».
 function migrerCodes() {
   for (const n of Donnees.liste('notes', n => n.valeur === 'NN')) Donnees.ecrireNote(n.evalId, n.eleveId, 'NE');
@@ -329,7 +404,8 @@ function rendreVue() {
         <h2>Bienvenue dans ton carnet EPS</h2>
         <p>Commence par créer ta première classe.</p>
         <button class="primaire" data-action="ajout-classe">+ Nouvelle classe</button>
-        <p class="aide">Tu as déjà un carnet sur ta clé USB ? <button class="lien" data-action="cle">Ouvre-le ici</button>.</p>
+        <p class="aide">Tu as déjà un carnet sur ta clé USB ? <button class="lien" data-action="cle">Récupère-le ici</button>.
+          · <button class="lien" data-action="guide">Comment ça marche ?</button></p>
       </div>`;
     return;
   }
@@ -348,14 +424,31 @@ function celluleNom(el, i) {
   ].filter(Boolean).join('\n');
   return `<th class="col-nom" title="${esc(infos)}"><span class="num-eleve">${i + 1}</span><span class="nom-eleve">${esc(el.nom)} ${esc(el.prenom)}</span>`
     + (aPai(el) ? ` <button class="badge-pai" data-voir-besoin="pai" data-id="${el.id}" title="Voir le PAI">PAI</button>` : '')
-    + (el.bep ? ` <button class="badge-bep" data-voir-besoin="bep" data-id="${el.id}" title="Voir le BEP">BEP</button>` : '')    + badgeDispenseGrille(el)
+    + (el.bep ? ` <button class="badge-bep" data-voir-besoin="bep" data-id="${el.id}" title="Voir le BEP">BEP</button>` : '')
+    + badgeDispenseGrille(el)
     + (el.adapte ? ' <span class="badge-adapte-grille">ADAPTÉ</span>' : '')
     + '</th>';
 }
 
+// Colonnes de moyenne de la grille : une par période + l'année (vue « Année »), ou celle de la période affichée.
+function colonnesMoyenne() {
+  const vue = periodeAffichee(), periodes = periodesAnnee();
+  if (vue !== 'annee') {
+    const p = periodes.find(x => x.id === vue);
+    return [{ id: p.id, titre: 'Moyenne ' + p.code, info: '/20' }];
+  }
+  return [...periodes.map(p => ({ id: p.id, titre: p.code, info: p.texte })), { id: 'annee', titre: 'Année', info: '/20' }];
+}
+
+const classeAnnee = m => (m.id === 'annee' ? ' moy-annee' : '');
+const evalsDeColonne =(evals, colId) => (colId === 'annee' ? evals : evals.filter(e => periodeDe(e.date) === colId));
+
 function htmlNotes(c) {
   const eleves = elevesDe(c.id);
-  const evals = evalsDe(c.id);
+  const vue = periodeAffichee(), periodes = periodesAnnee();
+  const toutes = evalsDe(c.id);
+  const evals = evalsDeColonne(toutes, vue);
+  const colsMoy = colonnesMoyenne();
   if (!eleves.length) {
     return `<div class="vide"><h2>${esc(c.nom)}</h2><p>Pas encore d’élèves dans cette classe.</p>
       <button class="primaire" data-action="vue-eleves">Ajouter des élèves</button></div>`;
@@ -364,11 +457,19 @@ function htmlNotes(c) {
     <div class="outils">
       <h2>${esc(c.nom)}</h2>
       <button class="primaire" data-action="ajout-eval">+ Évaluation</button>
+      <label class="choix-tri">Période
+        <select data-periode>
+          <option value="annee">Toute l’année</option>
+          ${periodes.map(p => `<option value="${p.id}" ${p.id === vue ? 'selected' : ''}>${p.code} (${esc(p.texte)})</option>`).join('')}
+        </select></label>
+      <button class="icone-petit" data-action="periodes" title="Régler les trimestres / semestres" aria-label="Régler les périodes">⚙</button>
       <button data-modif-classe="${c.id}" title="Régler la correspondance note → degré de maîtrise pour cette classe">⚙ Note → degré
         <span class="aide">(${seuilsClasse(c).map(fmt).join(' / ')})</span></button>
       <span class="aide aide-saisie">Saisie : note, ou <b>A</b> absent · <b>D</b> dispensé · <b>NE</b> non noté — Entrée = élève suivant</span>
     </div>
-    ${evals.length ? '' : '<p class="aide">Crée une évaluation pour commencer à noter.</p>'}
+    ${evals.length ? '' : toutes.length
+    ? `<p class="aide">Aucune évaluation sur le ${periodes.find(p => p.id === vue).code} — ${toutes.length} sur le reste de l’année (choisis « Toute l’année » pour les voir).</p>`
+    : '<p class="aide">Crée une évaluation pour commencer à noter.</p>'}
     ${evals.some(e => competencesEval(e).length) ? `
       <div class="legende-niveaux"><span class="legende-titre">Degrés de maîtrise (toucher une case pour changer, ou taper 1 à 4) :</span>
         ${NIVEAUX_MAITRISE.map(n => `<span class="legende-item" title="${n.nom}"><span class="niveau n${n.v}">${n.v}</span> <span class="legende-nom">${n.nom}</span></span>`).join(' ')}
@@ -389,7 +490,7 @@ function htmlNotes(c) {
               <div class="eval-info">${dateCourte(e.date)} · /${fmt(e.max)}${e.coef !== 1 ? ' · coef ' + fmt(e.coef) : ''}</div>
             </th>`;
           }).join('')}
-          <th class="col-moy" rowspan="2">Moyenne<div class="eval-info">/20</div></th>
+          ${colsMoy.map(m => `<th class="col-moy${classeAnnee(m)}" rowspan="2">${m.titre}<div class="eval-info">${esc(m.info)}</div></th>`).join('')}
         </tr>
         <tr class="entete-comp">
           ${evals.filter(e => competencesEval(e).length).map(e => `
@@ -416,7 +517,7 @@ function htmlNotes(c) {
                     aria-label="${esc(nomEleve + ' — ' + a.code + ' — ' + (n ? nomNiveau(n) : 'non évalué'))}">${n}</button></td>`;
                 }).join('')}`;
             }).join('')}
-            <td class="col-moy" data-moy-eleve="${el.id}"></td>
+            ${colsMoy.map(m => `<td class="col-moy${classeAnnee(m)}" data-moy-eleve="${el.id}" data-moy-col="${m.id}"></td>`).join('')}
           </tr>`;
           }).join('')}
           ${evals.some(e => competencesEval(e).length) ? `
@@ -424,14 +525,14 @@ function htmlNotes(c) {
             <th class="col-nom">Répartition</th>
             ${evals.map(e => `<td></td>
               ${competencesEval(e).map(a => `<td class="bilan-comp" data-bilan="${e.id}|${esc(a.id)}"></td>`).join('')}`).join('')}
-            <td class="col-moy"></td>
+            ${colsMoy.map(m => `<td class="col-moy${classeAnnee(m)}"></td>`).join('')}
           </tr>` : ''}
         </tbody>
         <tfoot><tr>
           <th class="col-nom">Moyenne de la classe</th>
           ${evals.map(e => `<td data-moy-eval="${e.id}"></td>
             ${competencesEval(e).map(a => `<td class="bilan-mini" data-bilan-barre="${e.id}|${esc(a.id)}"></td>`).join('')}`).join('')}
-          <td class="col-moy" data-moy-classe></td>
+          ${colsMoy.map(m => `<td class="col-moy${classeAnnee(m)}" data-moy-classe="${m.id}"></td>`).join('')}
         </tr></tfoot>
       </table>
     </div>`;
@@ -577,19 +678,22 @@ function caleEntete() {
 function majMoyennes() {
   const c = classeActive();
   if (!c) return;
-  const eleves = elevesDe(c.id), evals = evalsDe(c.id), moyennes = [];
-  for (const el of eleves) {
-    const m = moyenneEleve(el.id, evals);
-    if (m !== null) moyennes.push(m);
-    const td = $(`[data-moy-eleve="${el.id}"]`);
-    if (td) td.textContent = fmt(m);
+  const eleves = elevesDe(c.id), evals = evalsDe(c.id);
+  for (const col of colonnesMoyenne()) {
+    const evalsCol = evalsDeColonne(evals, col.id), moyennes = [];
+    for (const el of eleves) {
+      const m = moyenneEleve(el.id, evalsCol);
+      if (m !== null) moyennes.push(m);
+      const td = $(`[data-moy-eleve="${el.id}"][data-moy-col="${col.id}"]`);
+      if (td) td.textContent = fmt(m);
+    }
+    const tdClasse = $(`[data-moy-classe="${col.id}"]`);
+    if (tdClasse) tdClasse.textContent = fmt(moyennes.length ? moyennes.reduce((a, b) => a + b, 0) / moyennes.length : null);
   }
   for (const e of evals) {
     const td = $(`[data-moy-eval="${e.id}"]`);
     if (td) td.textContent = fmt(moyenneEval(e, eleves));
   }
-  const tdClasse = $('[data-moy-classe]');
-  if (tdClasse) tdClasse.textContent = fmt(moyennes.length ? moyennes.reduce((a, b) => a + b, 0) / moyennes.length : null);
 }
 
 function htmlEleves(c) {
@@ -628,7 +732,8 @@ function htmlEleves(c) {
             <td class="c-prenom" data-label="Prénom"><input data-champ="prenom" value="${esc(el.prenom)}" aria-label="Prénom"></td>
             <td class="c-sexe" data-label="Sexe"><select data-champ="sexe" aria-label="Sexe">${optionsSexe(el.sexe || '')}</select></td>
             <td class="case-pai" data-label="PAI">${boutonBesoin(el, 'pai')}</td>
-            <td class="case-bep" data-label="BEP">${boutonBesoin(el, 'bep')}</td>            <td class="case-disp" data-label="Dispense / adapté">
+            <td class="case-bep" data-label="BEP">${boutonBesoin(el, 'bep')}</td>
+            <td class="case-disp" data-label="Dispense / adapté">
               <div class="ligne-disp">
                 <select data-champ="amenagement" class="choix-amenagement ${amenagement(el)}" aria-label="Dispense ou pratique adaptée">${optionsAmenagement(el)}</select>
                 ${el.adapte ? `
@@ -660,11 +765,11 @@ function majPastille() {
   // Un seul bouton : sa couleur et son texte indiquent l'état de la sauvegarde sur la clé.
   const m = Donnees.meta();
   const [etat, texte, info] =
-    etatAuto === 'encours' ? ['encours', 'Sauvegarde…', 'Enregistrement sur la clé en cours']
-    : !m.dernierEnvoi ? ['jamais', 'Sauvegarder', 'Ce carnet n’a encore jamais été sauvegardé sur la clé — cliquer pour sauvegarder']
-    : m.modifieLe <= m.dernierEnvoi ? ['ok', 'À jour · ' + heure(m.dernierEnvoi), 'Dernière sauvegarde sur la clé : ' + dateHeure(m.dernierEnvoi)]
-    : etatAuto === 'erreur' ? ['erreur', 'Clé absente ?', 'Sauvegarde impossible : branche la clé puis clique ici']
-    : ['attente', 'À sauvegarder', 'Des modifications ne sont pas encore sur la clé — cliquer pour sauvegarder'];
+    etatAuto === 'encours' ? ['encours', 'Enregistrement…', 'Enregistrement sur la clé en cours']
+    : !m.dernierEnvoi ? ['jamais', 'Ma clé', 'Ce carnet n’a encore jamais été enregistré sur une clé — cliquer pour récupérer ou enregistrer']
+    : m.modifieLe <= m.dernierEnvoi ? ['ok', 'À jour · ' + heure(m.dernierEnvoi), 'Tout est sur la clé — dernier enregistrement : ' + dateHeure(m.dernierEnvoi)]
+    : etatAuto === 'erreur' ? ['erreur', 'Clé absente ?', 'Enregistrement impossible : branche la clé puis clique ici']
+    : ['attente', 'À enregistrer', 'Des modifications ne sont pas encore sur la clé — cliquer pour enregistrer'];
   const b = $('#btn-sauver');
   b.className = 'sauver etat-' + etat;
   b.title = info;
@@ -759,7 +864,9 @@ async function editerClasse(id) {
   const r = await resultat;
   if (r.action === 'supprimer') {
     if (!(await confirmer(`Supprimer la classe « ${c.nom} », ses élèves et toutes ses notes ?`))) return;
-    for (const el of elevesDe(id)) Donnees.supprimer('eleves', el.id);
+    const eleves = new Set(elevesDe(id).map(el => el.id));
+    supprimerNotes(n => eleves.has(n.eleveId));
+    for (const el of eleves) Donnees.supprimer('eleves', el);
     for (const e of evalsDe(id)) Donnees.supprimer('evals', e.id);
     for (const s of seancesDe(id)) Donnees.supprimer('seances', s.id);
     Donnees.supprimer('classes', id);
@@ -851,7 +958,10 @@ async function editerEval(id) {
 
   const r = await resultat;
   if (r.action === 'supprimer') {
-    if (await confirmer(`Supprimer l’évaluation « ${e.titre} » et toutes ses notes ?`)) Donnees.supprimer('evals', id);
+    if (await confirmer(`Supprimer l’évaluation « ${e.titre} » et toutes ses notes ?`)) {
+      supprimerNotes(n => n.evalId === id);
+      Donnees.supprimer('evals', id);
+    }
   } else if (r.action === 'ok') {
     // On ne garde que les attendus du référentiel et du champ retenus.
     const prefixe = `${r.data.referentiel}.${r.data.ca}.`;
@@ -867,6 +977,12 @@ async function editerEval(id) {
     });
     // Notes déjà saisies (ou seuils modifiés) : on met à jour les degrés vides ou pré-remplis.
     for (const el of elevesDe(c.id)) preremplirDegres(enreg, el.id);
+    // Date hors de la période affichée : l'évaluation disparaîtrait de la grille sans explication.
+    const vue = periodeAffichee(), sa = periodeDe(enreg.date);
+    if (vue !== 'annee' && sa !== vue) {
+      const code = periodesAnnee().find(p => p.id === sa)?.code;
+      toast(`« ${enreg.titre} » est rangée ${code ? 'dans le ' + code : 'hors période (sans date)'} d’après sa date : choisis « Toute l’année » pour la voir.`);
+    }
   }
   rendre();
 }
@@ -960,8 +1076,20 @@ async function collerListe() {
 async function supprimerEleve(id) {
   const el = Donnees.get('eleves', id);
   if (!(await confirmer(`Supprimer ${el.nom} ${el.prenom} et ses notes ?`))) return;
+  supprimerNotes(n => n.eleveId === id);
   Donnees.supprimer('eleves', id);
   rendre();
+}
+
+// Notes, degrés et données d'entraînement : supprimés avec leur élève, évaluation ou séance
+// (sinon ils resteraient dans le carnet et sur la clé).
+function supprimerNotes(filtre) {
+  for (const n of Donnees.liste('notes', filtre)) Donnees.supprimer('notes', n.id);
+}
+
+// Notes restées orphelines (élève, évaluation ou séance supprimés par une version précédente).
+function migrerNotesOrphelines() {
+  supprimerNotes(n => !Donnees.get('eleves', n.eleveId) || !(Donnees.get('evals', n.evalId) || Donnees.get('seances', n.evalId)));
 }
 
 /* ---------- Clé USB ---------- */
@@ -996,6 +1124,7 @@ async function importerTexte(texte) {
       migrerSeuils();
       migrerSeances();
       migrerGroupes();
+      migrerNotesOrphelines();
       return { mdp, n };
     } catch (e) {
       if (!(e instanceof Cle.ErreurMdp)) throw e;
@@ -1036,7 +1165,7 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
   rendre();
   if (silencieux) return;
   const recup = n ? ` · ${n} élément${n > 1 ? 's' : ''} récupéré${n > 1 ? 's' : ''} de la clé` : '';
-  toast(`Sauvegardé dans « ${dossier.name} » ✔${nomCopie ? ' + copie datée' : ''}${recup}`, 'ok');
+  toast(`Clé à jour ✔ (dossier « ${dossier.name} »)${recup}`, 'ok');
 }
 
 // Bouton 💾 : sur ordinateur, enregistre dans le dossier de la clé (choisi la première fois) ;
@@ -1090,9 +1219,9 @@ async function importerFichier(fichier) {
 // Tablette : prépare le fichier chiffré, puis un bouton dédié l'envoie vers la clé
 // (la fenêtre d'enregistrement ou de partage doit partir directement d'un toucher de l'utilisateur).
 const CONSIGNES_TABLETTE = {
-  enregistrer: 'Touche le bouton ci-dessous : dans la fenêtre qui s’ouvre, choisis ta <b>clé USB</b>, dossier <b>Claude</b>, et remplace l’ancien <b>carnet-eps.json</b>.',
-  partager: 'Touche le bouton ci-dessous, choisis <b>« Enregistrer dans Fichiers »</b>, ouvre ta clé USB (dossier <b>Claude</b>) et remplace l’ancien <b>carnet-eps.json</b>.',
-  telecharger: 'Touche le bouton ci-dessous : <b>carnet-eps.json</b> arrive dans <b>Téléchargements</b>. Avec l’appli <b>Fichiers</b>, déplace-le ensuite sur ta clé USB, dans le dossier <b>Claude</b>, en remplaçant l’ancien.',
+  enregistrer: 'Touche le bouton ci-dessous : dans la fenêtre qui s’ouvre, va sur ta <b>clé USB</b>, dans le dossier du carnet, et remplace l’ancien <b>carnet-eps.json</b>.',
+  partager: 'Touche le bouton ci-dessous, choisis <b>« Enregistrer dans Fichiers »</b>, ouvre ta clé USB (dossier du carnet) et remplace l’ancien <b>carnet-eps.json</b>.',
+  telecharger: 'Touche le bouton ci-dessous : <b>carnet-eps.json</b> arrive dans <b>Téléchargements</b>. Avec l’appli <b>Fichiers</b>, déplace-le ensuite sur ta clé USB, dans le dossier du carnet, en remplaçant l’ancien.',
 };
 
 async function exporterTablette() {
@@ -1109,46 +1238,59 @@ async function exporterTablette() {
   });
 }
 
+/* ---------- Panneau « Ma clé » ----------
+   Deux gestes, les mêmes sur tous les appareils : ⬇ Récupérer en arrivant, ⬆ Enregistrer en partant.
+   (Sur ordinateur, les deux font la même chose : lire la clé, réunir, réécrire.) Le reste est rangé dans « Dépannage ». */
+
+// Gros bouton à deux lignes ; `fichier` : bouton qui ouvre directement le sélecteur de fichiers (tablette).
+const grosBouton = ({ icone, titre, sous, attrs = '', classe = '', fichier = false }) => {
+  const contenu = `<span class="gb-icone" aria-hidden="true">${icone}</span>
+    <span class="gb-texte"><span class="gb-titre">${titre}</span><span class="gb-sous">${sous}</span></span>`;
+  return fichier
+    ? `<label class="bouton gros-bouton ${classe}">${contenu}<input type="file" accept=".json,application/json" data-importer hidden></label>`
+    : `<button type="button" class="gros-bouton ${classe}" ${attrs}>${contenu}</button>`;
+};
+
 async function panneauCle() {
   const dossier = await Cle.dossierMemorise();
   const m = Donnees.meta();
-  const etat = m.dernierEnvoi
-    ? `Dernière sauvegarde sur la clé : <b>${dateHeure(m.dernierEnvoi)}</b>${m.modifieLe > m.dernierEnvoi ? '<br><span class="attention">Des modifications ne sont pas encore sur la clé.</span>' : ''}`
-    : '<span class="attention">Ce carnet n’a encore jamais été sauvegardé sur la clé.</span>';
-  const importer = (libelle, classe = '') => `<label class="bouton ${classe}">${libelle}<input type="file" accept=".json,application/json" data-importer hidden></label>`;
+  const auto = Cle.accesDirect && dossier && mdpSession;
+  const etat = !m.dernierEnvoi
+    ? '<p class="etat-cle-panneau attente">Ce carnet n’a encore jamais été enregistré sur une clé.</p>'
+    : aEnregistrer()
+      ? '<p class="etat-cle-panneau attente">🟠 Des modifications de cet appareil ne sont pas encore sur la clé.</p>'
+      : `<p class="etat-cle-panneau ok">✅ Tout est sur la clé — dernier enregistrement : ${dateHeure(m.dernierEnvoi)}</p>`;
+  const premiereFois = Cle.accesDirect && !dossier ? ' La première fois, choisis le dossier du carnet sur ta clé.' : '';
 
   const corps = `
-    <p>${etat}</p>
-    ${Cle.accesDirect ? `
-      ${dossier ? `
-        <p class="aide">Dossier de sauvegarde : <b>${esc(dossier.name)}</b> (carnet-eps.json + sous-dossier Sauvegardes)</p>
-        <button type="button" class="primaire large" data-cle="sauver">💾 Sauvegarder maintenant</button>
-        <p class="aide">Récupère les modifications déjà sur la clé, les fusionne avec celles de cet ordinateur, enregistre le tout et ajoute une copie datée.
-          Ensuite, chaque modification est <b>enregistrée automatiquement sur la clé</b> tant qu’elle est branchée.</p>`
-      : `
-        <button type="button" class="primaire large" data-cle="sauver">Choisir le dossier de la clé et sauvegarder</button>
-        <p class="aide">Choisis le dossier <b>Claude</b> de ta clé USB. Si un carnet s’y trouve déjà, il est récupéré. L’ordinateur s’en souviendra pour les prochaines fois.</p>`}`
-    : `
-      <ol class="etapes">
-        <li>${importer('① Importer depuis la clé', 'primaire large')}<span class="aide">Récupère les modifications faites sur un autre appareil.</span></li>
-        <li><button type="button" class="primaire large" data-cle="exporter">② Enregistrer sur la clé</button><span class="aide">Enregistre ce carnet sur la clé.</span></li>
-      </ol>`}
-    <div class="bloc-version">
-      <span>Carnet EPS S-A —<b>version ${VERSION_APP}</b></span>
-      <button type="button" data-cle="maj-appli" title="Recharge la dernière version de l’appli (tes données ne sont pas touchées)">🔄 Mettre à jour l’appli</button>
+    ${etat}
+    <div class="gestes-cle">
+      ${grosBouton({
+        icone: '⬇', titre: 'Récupérer depuis la clé', fichier: !Cle.accesDirect, attrs: 'data-cle="recuperer"',
+        sous: (Cle.accesDirect ? 'En arrivant : reprend ce qui a été fait sur un autre appareil.' : 'En arrivant : choisis <b>carnet-eps.json</b> sur la clé.') + premiereFois,
+      })}
+      ${grosBouton({
+        icone: '⬆', titre: 'Enregistrer sur la clé', classe: 'primaire', attrs: 'data-cle="enregistrer"',
+        sous: auto ? 'Ici c’est automatique tant que la clé est branchée.' : 'En partant : la clé reçoit tes modifications.' + premiereFois,
+      })}
     </div>
-    <details>
-      <summary>Autres options</summary>
+    <button type="button" class="lien" data-cle="guide">❓ Comment ça marche ? (tablette ⇄ ordinateur)</button>
+    <details class="depannage">
+      <summary>Dépannage</summary>
       <div class="options">
-        ${Cle.accesDirect ? `
-          ${dossier ? '<button type="button" data-cle="changer">Choisir un autre dossier</button>' : ''}
-          ${importer('Restaurer / importer un fichier de sauvegarde')}` : ''}
-        ${mdpSession ? '<button type="button" data-cle="verrouiller">Oublier le mot de passe</button>' : ''}
-        <p class="aide">Données stockées uniquement sur cet appareil et sur ta clé.</p>
+        ${dossier ? `<p class="aide">Dossier du carnet sur cet ordinateur : <b>${esc(dossier.name)}</b></p>
+          <button type="button" data-cle="changer">Changer de dossier</button>` : ''}
+        <label class="bouton">Ouvrir un autre fichier de sauvegarde…<input type="file" accept=".json,application/json" data-importer hidden></label>
+        <p class="aide">Par exemple une copie datée du dossier « Sauvegardes ». Elle est <b>réunie</b> avec ce carnet : rien n’est effacé.</p>
+        ${mdpSession ? '<button type="button" data-cle="verrouiller">Oublier le mot de passe sur cet appareil</button>' : ''}
+        <div class="bloc-version">
+          <span>Carnet EPS S-A — <b>version ${VERSION_APP}</b></span>
+          <button type="button" data-cle="maj-appli" title="Recharge la dernière version de l’appli (tes données ne sont pas touchées)">🔄 Mettre à jour l’appli</button>
+        </div>
       </div>
     </details>`;
 
-  const { d } = ouvrirModale('Sauvegarde sur clé USB', corps, '<span class="espace"></span><button type="button" data-fermer>Fermer</button>');
+  const { d } = ouvrirModale('Ma clé USB', corps, '<span class="espace"></span><button type="button" data-fermer>Fermer</button>');
   const occupe = async action => {
     d.classList.add('occupe');
     try { await action(); d.fermer(); } catch (e) { signalerErreur(e); } finally { d.classList.remove('occupe'); }
@@ -1158,18 +1300,62 @@ async function panneauCle() {
     const b = ev.target.closest('[data-cle]');
     if (!b) return;
     switch (b.dataset.cle) {
-      case 'sauver': return occupe(sauvegarder);
+      case 'recuperer': // ordinateur (sur tablette, c'est le sélecteur de fichiers qui s'ouvre)
+      case 'enregistrer': return occupe(sauvegarder);
+      case 'guide': d.fermer(); return lancer(afficherGuide);
       case 'maj-appli': return lancer(forcerMiseAJour);
       case 'changer': return occupe(async () => synchroniser(await choisirDossierCle(), { copie: true }));
-      case 'exporter': return occupe(exporterTablette);
-      case 'verrouiller': mdpSession = null; toast('Mot de passe oublié pour cette session.'); return d.fermer();
+      case 'verrouiller': mdpSession = null; toast('Mot de passe oublié sur cet appareil.'); return d.fermer();
     }
   });
-  d.querySelector('[data-importer]')?.addEventListener('change', ev => {
-    const f = ev.target.files[0];
+  d.addEventListener('change', ev => {
+    const f = ev.target.matches('[data-importer]') && ev.target.files[0];
     if (f) occupe(() => importerFichier(f));
   });
 }
+
+/* ---------- Guide : le principe de la clé ---------- */
+
+async function afficherGuide() {
+  const { resultat } = ouvrirModale('Comment ça marche : la clé USB', `
+    <div class="guide">
+      <div class="schema-cle" aria-hidden="true">
+        <span class="appareil">💻 Ordinateur</span><span class="fleche">⇄</span>
+        <span class="appareil cle">🔑 Clé USB</span><span class="fleche">⇄</span>
+        <span class="appareil">📱 Tablette</span>
+      </div>
+      <p>Chaque appareil garde <b>sa propre copie</b> du carnet. La clé sert à <b>faire passer</b> le carnet d’un appareil à l’autre
+        (et de sauvegarde, chiffrée par ton mot de passe).</p>
+      <h3>Deux gestes à retenir (bouton 🔑 en haut)</h3>
+      <ol class="gestes">
+        <li><b>⬇ En arrivant</b> sur un appareil : <b>Récupérer depuis la clé</b>.<br>
+          <span class="aide">Tu retrouves ce que tu as fait sur l’autre appareil.</span></li>
+        <li><b>⬆ En partant</b> : <b>Enregistrer sur la clé</b>.<br>
+          <span class="aide">Sur ordinateur, c’est automatique tant que la clé est branchée. Sur tablette, un bandeau orange te le rappelle.</span></li>
+      </ol>
+      <h3>Bon à savoir</h3>
+      <ul class="bon-a-savoir">
+        <li><b>Rien n’est écrasé</b> : les modifications des deux appareils sont réunies. Si un même élément a changé des deux côtés, c’est la version la plus récente qui reste.</li>
+        <li>Oublié de récupérer avant de travailler ? <b>Pas grave</b> : récupère maintenant, tout sera réuni.</li>
+        <li><b>Le même mot de passe sur tous tes appareils.</b> Note-le bien : s’il est perdu, le carnet de la clé est illisible, pour toi aussi.</li>
+        <li>Sur la clé, le carnet est le fichier <b>carnet-eps.json</b> : garde-le <b>toujours au même endroit</b>, ne le renomme pas.
+          Le dossier « Sauvegardes » à côté contient des copies datées faites par l’ordinateur.</li>
+        <li>Sur un ordinateur qui n’est pas le tien : avant de partir, enregistre sur la clé puis efface les données du site dans le navigateur.</li>
+      </ul>
+    </div>`,
+  '<span class="espace"></span><button type="button" data-cle-guide>🔑 Ouvrir Ma clé</button><button value="ok" class="primaire">J’ai compris</button>', 'modale-large');
+  const r = await resultat;
+  if (!ui.guideVu) { ui.guideVu = true; memoriserUi(); }
+  return r;
+}
+
+// Depuis le guide : bouton qui ouvre directement le panneau de la clé.
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-cle-guide]');
+  if (!b) return;
+  b.closest('dialog').fermer();
+  lancer(panneauCle);
+});
 
 /* ---------- Mises à jour de l'appli (service worker) ---------- */
 
@@ -1284,10 +1470,12 @@ document.addEventListener('click', e => {
   switch (ds.action) {
     case 'menu': return basculerMenu();
     case 'cle': return lancer(panneauCle);
+    case 'guide': return lancer(afficherGuide);
     case 'sauvegarder': return lancer(sauvegarder);
     case 'maj-appli': return lancer(boutonVersion);
     case 'ajout-classe': basculerMenu(false); return lancer(() => editerClasse());
     case 'ajout-eval': return lancer(() => editerEval());
+    case 'periodes': return lancer(editerPeriodes);
     case 'ajout-seance': return lancer(() => editerSeance());
     case 'ajout-eleve': return lancer(ajouterEleve);
     case 'coller-liste': return lancer(collerListe);
@@ -1306,6 +1494,7 @@ document.addEventListener('change', e => {
     return rendreVue();
   }
   if (t.dataset.triClasse) return changerTri(t.dataset.triClasse, t.value);
+  if (t.matches('[data-periode]')) { ui.periode = t.value; memoriserUi(); return rendreVue(); }
   const ligne = t.closest('tr[data-eleve]');
   if (ligne && t.dataset.champ) {
     const el = Donnees.get('eleves', ligne.dataset.eleve);
@@ -1436,7 +1625,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) majR
     await Donnees.charger();
   } catch (e) {
     console.error(e);
-    toast('Impossible de lire les données de cet appareil. Restaure ton carnet depuis la clé (bouton ⋯).', 'erreur');
+    toast('Impossible de lire les données de cet appareil. Restaure ton carnet depuis la clé (bouton 🔑).', 'erreur');
     await Donnees.charger().catch(() => {});
   }
   migrerCodes();
@@ -1444,16 +1633,13 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) majR
   migrerSeuils();
   migrerSeances();
   migrerGroupes();
-  $('#fichier-restaurer').addEventListener('change', ev => {
-    const f = ev.target.files[0];
-    ev.target.value = ''; // pour pouvoir réimporter le même fichier
-    if (f) lancer(() => importerFichier(f));
-  });
+  migrerNotesOrphelines();
   Donnees.surChangement(majPastille);
   Donnees.surChangement(planifierSauvegardeAuto);
   Donnees.surChangement(() => majRappelCle()); // disparaît dès que tout est sur la clé
   rendre();
   majRappelCle(true);
+  if (!ui.guideVu) lancer(afficherGuide); // premier lancement sur cet appareil : on explique le principe de la clé
   navigator.storage?.persist?.().catch(() => {});
   enregistrerServiceWorker();
   surveillerMisesAJour();

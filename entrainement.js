@@ -486,7 +486,10 @@ async function editerSeance(id) {
 
   const r = await resultat;
   if (r.action === 'supprimer') {
-    if (await confirmer(`Supprimer la séance « ${s.titre} » du ${dateCourte(s.date)} et toutes ses données ?`)) Donnees.supprimer('seances', id);
+    if (await confirmer(`Supprimer la séance « ${s.titre} » du ${dateCourte(s.date)} et toutes ses données ?`)) {
+      supprimerNotes(n => n.evalId === id);
+      Donnees.supprimer('seances', id);
+    }
   } else if (r.action === 'ok') {
     const ids = r.fd.getAll('ind-id'), noms = r.fd.getAll('ind-nom'), types = r.fd.getAll('ind-type'), params = r.fd.getAll('ind-param');
     const suivis = r.fd.getAll('ind-suivi');

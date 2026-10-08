@@ -4,14 +4,15 @@
 // Une suppression laisse une « pierre tombale » { id, supprime: true } pour se propager aux autres appareils.
 const Donnees = (() => {
   const CLE_STOCKAGE = 'carnet-eps-db';
-  // `seances` (carnet d'entraînement) est arrivée en v0.13 : absente des fichiers plus anciens.
-  const COLLECTIONS = ['classes', 'eleves', 'evals', 'notes', 'seances'];
+  // `seances` (carnet d'entraînement) est arrivée en v0.13, `reglages` (périodes de l'année…) en v0.21 :
+  // absentes des fichiers plus anciens.
+  const COLLECTIONS = ['classes', 'eleves', 'evals', 'notes', 'seances', 'reglages'];
   const COLLECTIONS_OBLIGATOIRES = ['classes', 'eleves', 'evals', 'notes'];
   const auditeurs = [];
   let db;
 
   function vide() {
-    return { schema: 1, classes: {}, eleves: {}, evals: {}, notes: {}, seances: {}, meta: { horloge: 0, modifieLe: 0, dernierEnvoi: 0 } };
+    return { schema: 1, classes: {}, eleves: {}, evals: {}, notes: {}, seances: {}, reglages: {}, meta: { horloge: 0, modifieLe: 0, dernierEnvoi: 0 } };
   }
 
   // Stockage dans IndexedDB (pas de limite de 5 Mo comme localStorage).
