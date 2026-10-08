@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.23.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.24.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1219,12 +1219,21 @@ function migrerNotesOrphelines() {
 
 /* ---------- Clé USB ---------- */
 
-async function obtenirMdp(nouveau) {
+// Mot de passe du carnet (gardé en mémoire le temps de la session).
+//   pourEnregistrer : on va chiffrer avec ce mot de passe. Si cet appareil connaît déjà le mot de passe du carnet
+//     (témoin), on le redemande et on le vérifie : une faute de frappe ne crée pas un 2e mot de passe.
+//     Sinon (tout premier enregistrement sur cet appareil), on le fait taper deux fois.
+//   Pour lire la clé, pas de vérification ici : c'est le fichier lui-même qui dit si le mot de passe est bon.
+async function obtenirMdp(pourEnregistrer) {
   if (mdpSession) return mdpSession;
+  const temoin = Donnees.meta().temoinMdp;
+  const nouveau = pourEnregistrer && !temoin;
   const { resultat } = ouvrirModale(nouveau ? 'Mot de passe du carnet' : 'Déverrouiller le carnet', `
     <p class="aide">${nouveau
-    ? 'Il chiffre le fichier sur la clé : si tu la perds, personne ne peut lire les données des élèves. <b>Note-le bien</b> : sans lui, impossible de récupérer le carnet.'
-    : 'Le mot de passe du fichier enregistré sur la clé.'}</p>
+    ? 'Il chiffre le fichier sur la clé : si tu la perds, personne ne peut lire les données des élèves.<br>'
+      + '<b>Tu as déjà un carnet sur ta clé (fait sur l’ordinateur) ? Mets le même mot de passe.</b><br>'
+      + 'Note-le bien : sans lui, impossible de récupérer le carnet.'
+    : 'Le mot de passe de ton carnet (le même sur tous tes appareils).'}</p>
     <label>Mot de passe<input type="password" name="mdp" required autofocus minlength="${nouveau ? 6 : 1}" autocomplete="${nouveau ? 'new-password' : 'current-password'}"></label>
     ${nouveau ? '<label>Confirmer<input type="password" name="mdp2" required autocomplete="new-password"></label>' : ''}`,
   boutonsModale('Valider'));
@@ -1232,10 +1241,25 @@ async function obtenirMdp(nouveau) {
   if (r.action !== 'ok') throw new Annule();
   if (nouveau && r.data.mdp !== r.data.mdp2) {
     toast('Les deux mots de passe ne correspondent pas.', 'erreur');
-    return obtenirMdp(nouveau);
+    return obtenirMdp(pourEnregistrer);
+  }
+  if (pourEnregistrer && temoin && !(await Cle.verifierTemoin(r.data.mdp, temoin))) {
+    toast('Ce n’est pas le mot de passe de ton carnet. (Changé de mot de passe ? Fais d’abord « Récupérer depuis la clé ».)', 'erreur');
+    return obtenirMdp(pourEnregistrer);
   }
   mdpSession = r.data.mdp;
+  if (nouveau) memoriserTemoin(mdpSession);
   return mdpSession;
+}
+
+// Garde le témoin du mot de passe qui ouvre (ou va chiffrer) le carnet de la clé.
+// Calcul un peu long : fait en arrière-plan, sans bloquer l'appli.
+function memoriserTemoin(mdp) {
+  const temoin = Donnees.meta().temoinMdp;
+  (async () => {
+    if (temoin && (await Cle.verifierTemoin(mdp, temoin))) return; // déjà le bon
+    Donnees.reglerMeta('temoinMdp', await Cle.creerTemoin(mdp));
+  })().catch(e => console.warn('Témoin du mot de passe non enregistré :', e));
 }
 
 // Déchiffre un fichier de la clé et le fusionne avec le carnet de cet appareil.
@@ -1250,6 +1274,7 @@ async function importerTexte(texte) {
       migrerSeances();
       migrerGroupes();
       migrerNotesOrphelines();
+      memoriserTemoin(mdp); // ce mot de passe ouvre le carnet de la clé : c'est désormais le bon
       return { mdp, n };
     } catch (e) {
       if (!(e instanceof Cle.ErreurMdp)) throw e;
@@ -1350,7 +1375,7 @@ const CONSIGNES_TABLETTE = {
 };
 
 async function exporterTablette() {
-  const texte = await Cle.chiffrer(Donnees.exporter(), await obtenirMdp(!mdpSession));
+  const texte = await Cle.chiffrer(Donnees.exporter(), await obtenirMdp(true));
   const { d } = ouvrirModale('Fichier prêt', `<p>${CONSIGNES_TABLETTE[Cle.modeTablette]}</p>`,
     '<span class="espace"></span><button type="button" data-fermer>Annuler</button><button type="button" class="primaire" data-partager>Enregistrer sur la clé</button>');
   $('[data-partager]', d).addEventListener('click', () => {
@@ -1432,7 +1457,8 @@ async function panneauCle() {
           <button type="button" data-cle="changer">Changer de dossier</button>` : ''}
         <label class="bouton">Ouvrir un autre fichier de sauvegarde…<input type="file" accept=".json,application/json" data-importer hidden></label>
         <p class="aide">Par exemple une copie datée du dossier « Sauvegardes ». Elle est <b>réunie</b> avec ce carnet : rien n’est effacé.</p>
-        ${mdpSession ? '<button type="button" data-cle="verrouiller">Oublier le mot de passe sur cet appareil</button>' : ''}
+        ${mdpSession || Donnees.meta().temoinMdp ? `<button type="button" data-cle="verrouiller">Oublier le mot de passe sur cet appareil</button>
+          <p class="aide">Au prochain enregistrement, l’appli redemandera le mot de passe (à taper deux fois), sans le comparer à l’ancien.</p>` : ''}
         <div class="bloc-version">
           <span>Carnet EPS S-A — <b>version ${VERSION_APP}</b></span>
           <button type="button" data-cle="maj-appli" title="Recharge la dernière version de l’appli (tes données ne sont pas touchées)">🔄 Mettre à jour l’appli</button>
@@ -1453,7 +1479,11 @@ async function panneauCle() {
       case 'guide': d.fermer(); return lancer(afficherGuide);
       case 'maj-appli': return lancer(forcerMiseAJour);
       case 'changer': return occupe(async () => synchroniser(await choisirDossierCle(), { copie: true }));
-      case 'verrouiller': mdpSession = null; toast('Mot de passe oublié sur cet appareil.'); return d.fermer();
+      case 'verrouiller':
+        mdpSession = null;
+        Donnees.reglerMeta('temoinMdp', undefined);
+        toast('Mot de passe oublié sur cet appareil.');
+        return d.fermer();
     }
   });
   d.addEventListener('change', ev => {

@@ -185,6 +185,14 @@ const Donnees = (() => {
     return reste;
   }
 
+  // Réglage propre à cet appareil (ex. témoin du mot de passe) : ne part pas sur la clé,
+  // et ne compte pas comme une modification du carnet.
+  function reglerMeta(cle, valeur) {
+    if (valeur === undefined) delete db.meta[cle];
+    else db.meta[cle] = valeur;
+    enregistrer();
+  }
+
   function marquerEnvoi() {
     db.meta.dernierEnvoi = Math.max(Date.now(), db.meta.modifieLe);
     enregistrer();
@@ -193,7 +201,7 @@ const Donnees = (() => {
 
   return {
     CLE_STOCKAGE, charger, nouvelId, ecrire, supprimer, get, liste, note, noteComplete, ecrireNote,
-    fusionner, exporter, marquerEnvoi,
+    fusionner, exporter, marquerEnvoi, reglerMeta,
     meta: () => db?.meta ?? vide().meta,
     surChangement: f => auditeurs.push(f),
     surAutreOnglet: f => canal?.addEventListener('message', f),

@@ -71,6 +71,18 @@ const Cle = (() => {
     return JSON.parse(dec.decode(clair));
   }
 
+  // « Témoin » du mot de passe : une empreinte à sens unique (même procédé lent que le chiffrement),
+  // gardée sur l'appareil seulement. Elle permet de reconnaître le bon mot de passe sans le conserver.
+  async function empreinte(mdp, selB64) {
+    const sel = selB64 ? deB64(selB64) : crypto.getRandomValues(new Uint8Array(16));
+    const base = await crypto.subtle.importKey('raw', enc.encode(mdp), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: sel, iterations: ITERATIONS, hash: 'SHA-256' }, base, 256);
+    return { sel: versB64(sel), empreinte: versB64(bits) };
+  }
+
+  const creerTemoin = mdp => empreinte(mdp);
+  const verifierTemoin = async (mdp, temoin) => (await empreinte(mdp, temoin.sel)).empreinte === temoin.empreinte;
+
   // Mémorise le dossier choisi sur la clé (IndexedDB) pour ne pas avoir à le rechercher à chaque fois.
   function idb(mode, action) {
     return new Promise((ok, ko) => {
@@ -188,7 +200,7 @@ const Cle = (() => {
   }
 
   return {
-    accesDirect, ErreurMdp, chiffrer, dechiffrer, memoriser, dossierMemorise, choisirDossier,
+    accesDirect, ErreurMdp, chiffrer, dechiffrer, creerTemoin, verifierTemoin, memoriser, dossierMemorise, choisirDossier,
     fichierCarnet, copieDatee, nettoyerCopies, autoriser, lire, ecrire, partagerOuTelecharger, enregistrerSurCle, modeTablette,
   };
 })();
