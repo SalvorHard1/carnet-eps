@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.21.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.21.1'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
