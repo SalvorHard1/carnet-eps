@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <!-- Verrou réseau : l'appli ne peut parler qu'à son propre serveur (pour vérifier sa version) et ne peut rien envoyer ailleurs. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; form-action 'none'; base-uri 'none'; object-src 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f6f5c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="EPS S-A">
+  <title>Carnet EPS S-A</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="maj" class="bandeau" hidden>
+    Une nouvelle version de l’appli est prête.
+    <button id="btn-maj" class="primaire">Recharger</button>
+  </div>
+
+  <div id="rappel-cle" class="bandeau rappel" role="status" hidden>
+    <span>⚠ Des modifications ne sont pas encore sur la clé.</span>
+    <button class="primaire" data-action="sauvegarder">Enregistrer sur la clé</button>
+    <button data-action="rappel-plus-tard">Plus tard</button>
+  </div>
+
+  <header class="barre">
+    <button class="icone" data-action="menu" id="btn-menu" aria-label="Classes">☰</button>
+    <h1>Carnet EPS <span class="titre-etab">S-A</span></h1>
+    <button class="version-appli" id="version-appli" data-action="maj-appli"></button>
+    <nav class="onglets" id="onglets">
+      <button data-vue="eleves">Élèves</button>
+      <button data-vue="notes">Notes</button>
+      <button data-vue="entrainement"><span class="libelle-long">Entraînement</span><span class="libelle-court">Entraîn.</span></button>
+    </nav>
+    <div class="groupe-sauvegarde">
+      <button class="sauver" id="btn-sauver" data-action="sauvegarder">
+        <span class="sauver-icone" aria-hidden="true">💾</span><span id="etat-cle">Sauvegarder</span>
+      </button>
+      <label class="bouton restaurer" title="Restaurer / importer un fichier de sauvegarde (carnet-eps.json ou une copie du dossier Sauvegardes)">
+        <span aria-hidden="true">📂</span><span class="libelle-restaurer">Restaurer</span>
+        <input type="file" accept=".json,application/json" id="fichier-restaurer" hidden>
+      </label>
+      <button class="options-cle" data-action="cle" title="Options de sauvegarde : clé USB, restauration, mot de passe…" aria-label="Options de sauvegarde">⋯</button>
+    </div>
+  </header>
+
+  <div class="corps">
+    <aside class="classes" id="classes">
+      <div class="classes-titre">Classes</div>
+      <ul id="liste-classes"></ul>
+      <button class="ajout" data-action="ajout-classe">+ Nouvelle classe</button>
+    </aside>
+    <div class="voile" id="voile" data-action="menu" hidden></div>
+    <main id="vue"></main>
+  </div>
+
+  <div class="saisie" id="saisie" hidden>
+    <button data-code="ABS" class="code-ABS">Absent</button>
+    <button data-code="DISP" class="code-DISP">Dispensé</button>
+    <button data-code="NE" class="code-NE notes-seul">Non noté</button>
+    <button data-code="BLE" class="code-BLE ent-seul">Blessé</button>
+    <button data-code="MAL" class="code-MAL ent-seul">Malade</button>
+    <button data-code="AUT" class="code-AUT ent-seul">Autre</button>
+    <button data-code="">Effacer</button>
+  </div>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <div class="notif-auto" id="notif-auto" role="status" hidden></div>
+
+  <script src="donnees.js"></script>
+  <script src="cle.js"></script>
+  <script src="referentiel.js"></script>
+  <script src="entrainement.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

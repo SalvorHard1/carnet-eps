@@ -1,0 +1,20 @@
+CARNET EPS S-A — copie de l'application
+========================================
+
+Lancer l'appli : double-clic sur « Lancer Carnet EPS S-A.bat »
+  -> l'appli s'ouvre dans une fenêtre Microsoft Edge (Chrome fonctionne aussi).
+  -> Fonctionne sur n'importe quel PC Windows, sans rien installer et sans internet.
+
+Tes données :
+  - le carnet chiffré est dans le dossier parent : Claude\carnet-eps.json
+  - les copies datées sont dans : Claude\Sauvegardes\
+  - sur un nouveau PC : clique sur « 💾 Sauvegarder », choisis le dossier Claude de la clé,
+    tape ton mot de passe : le carnet est récupéré.
+
+Attention sur un PC qui n'est pas le tien (salle des profs…) :
+  l'appli garde aussi une copie des données dans le navigateur de ce PC.
+  Avant de partir : sauvegarde sur la clé, puis efface les données du site
+  (Edge > Paramètres > Cookies et autorisations de site > localhost:8080 > Effacer les données).
+
+Si l'appli ne se lance pas : certains PC (établissement) bloquent PowerShell.
+  Dans ce cas, utilise l'appli sur ton propre PC.
