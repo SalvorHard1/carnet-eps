@@ -75,27 +75,44 @@ const MODELES_APSA = (() => {
    Chaque étape cochée devient une colonne « échelle 1 à 4 » (degré de maîtrise de l'élève sur cette étape).
    Ids fixes : décocher puis recocher une étape retrouve les degrés déjà saisis. */
 
+// Parcours de l'ASNS (arrêté du 28 février 2022) : en continuité, sans reprise d'appuis, sans lunettes.
+// (P13, l'ancrage, est arrivée avec l'ASNS ; les distances sont passées de 15 à 20 m.)
+// 3e colonne : ce qui est attendu au degré 3 (seuil de validation), d'après le barème ASNS (critères officiels).
+// La fiche élève s'en sert pour dire quoi viser.
 const ETAPES_SN = [
-  ['P1', 'Entrer dans l’eau en chute arrière'],
-  ['P2', 'Se déplacer sur 3,5 m en direction d’un obstacle'],
-  ['P3', 'Franchir l’obstacle en immersion complète sur 1,5 m'],
-  ['P4', 'Se déplacer sur le ventre sur 15 m'],
-  ['P5', 'Au signal sonore, surplace vertical pendant 15 s'],
-  ['P6', 'Reprendre le déplacement pour terminer les 15 m'],
-  ['P7', 'Demi-tour sans reprise d’appuis, passer du ventre au dos'],
-  ['P8', 'Se déplacer sur le dos sur 15 m'],
-  ['P9', 'Au signal sonore, surplace dorsal horizontal (étoile) pendant 15 s'],
-  ['P10', 'Reprendre le déplacement pour terminer les 15 m'],
-  ['P11', 'Se retourner sur le ventre et franchir à nouveau l’obstacle en immersion'],
-  ['P12', 'Se déplacer sur le ventre pour revenir au point de départ'],
-  ['C1', 'Identifier la personne responsable de la surveillance'],
-  ['C2', 'Connaître les règles d’hygiène et de sécurité du lieu de baignade'],
-  ['C3', 'Identifier les environnements et circonstances où le savoir-nager est utile'],
-].map(([code, texte]) => ({ id: 'sn-' + code, code, texte }));
+  ['P1', 'Entrer dans l’eau en chute arrière',
+    'Depuis la position accroupie, chuter en arrière seul, entrer par les fesses / le dos et rester dans l’axe ; remonter sans s’agripper au bord.'],
+  ['P2', 'Se déplacer sur 3,5 m en direction d’un obstacle', 'Parcourir les 3,5 m sans appui, en continuité, orienté vers l’obstacle.'],
+  ['P3', 'Franchir l’obstacle en immersion complète sur 1,5 m', 'Franchir les 1,5 m en immersion complète, sans toucher l’obstacle ni le fond.'],
+  ['P4', 'Se déplacer sur le ventre sur 20 m',
+    'Se déplacer sur le ventre sans appui, en continuité, jusqu’au bout des 20 m (coordination bras / jambes, corps allongé).'],
+  ['P5', 'Au signal sonore, surplace vertical pendant 15 s',
+    'S’arrêter dès le signal et tenir 15 s à la verticale, visage et voies respiratoires hors de l’eau, sans appui.'],
+  ['P6', 'Reprendre le déplacement pour terminer les 20 m', 'Repartir sans appui après le surplace et terminer les 20 m en continuité.'],
+  ['P7', 'Demi-tour sans reprise d’appuis, passer du ventre au dos',
+    'Faire demi-tour sans toucher le mur ni le fond, passer du ventre au dos et s’allonger.'],
+  ['P8', 'Se déplacer sur le dos sur 20 m', 'Se déplacer sur le dos sans appui, en continuité, jusqu’au bout des 20 m.'],
+  ['P9', 'Au signal sonore, surplace dorsal horizontal (étoile) pendant 15 s',
+    'S’arrêter dès le signal et tenir 15 s sur le dos à l’horizontale, voies respiratoires hors de l’eau, sans appui.'],
+  ['P10', 'Reprendre le déplacement pour terminer les 20 m', 'Repartir sur le dos sans appui et terminer les 20 m en continuité.'],
+  ['P11', 'Se retourner sur le ventre et franchir à nouveau l’obstacle en immersion',
+    'Se retourner sur le ventre sans appui et franchir l’obstacle en immersion complète, sans le toucher.'],
+  ['P12', 'Se déplacer sur le ventre pour revenir au point de départ', 'Revenir au point de départ sur le ventre, sans appui, en continuité.'],
+  ['P13', 'S’ancrer de manière sécurisée sur un élément fixe et stable',
+    'S’ancrer solidement à un élément fixe et stable, voies respiratoires hors de l’eau, en position d’attendre les secours.'],
+  ['C1', 'Identifier la personne responsable de la surveillance',
+    'Identifier seul la personne chargée de la surveillance et savoir que c’est elle qu’il faut alerter.'],
+  ['C2', 'Connaître les règles d’hygiène et de sécurité du lieu de baignade',
+    'Citer seul les principales règles d’hygiène et de sécurité du lieu de baignade, et les respecter.'],
+  ['C3', 'Identifier les environnements et circonstances où le savoir-nager est utile',
+    'Citer seul les lieux où le savoir-nager est adapté et les circonstances où il est utile.'],
+].map(([code, texte, critere]) => ({ id: 'sn-' + code, code, texte, critere }));
 
 const estSavoirNager = apsa => (apsa || '').trim().toLocaleLowerCase('fr').replace(/[\s-]+/g, ' ') === 'savoir nager';
 const indicEtape = e => ({ id: e.id, nom: e.code, type: 'echelle', etape: true, texte: e.texte });
-const titreIndic = ind => (ind.texte ? `${ind.nom} : ${ind.texte}` : nomCourtIndic(ind) + ' — ' + TYPES_INDIC[ind.type]);
+// (Étapes du savoir-nager : texte toujours à jour, même pour les séances enregistrées avec l'ancien parcours en 15 m.)
+const texteIndic = ind => (ind.etape && ETAPES_SN.find(e => e.id === ind.id)?.texte) || ind.texte;
+const titreIndic = ind => (texteIndic(ind) ? `${ind.nom} : ${texteIndic(ind)}` : nomCourtIndic(ind) + ' — ' + TYPES_INDIC[ind.type]);
 
 // Champ d'apprentissage « habituel » d'une APSA (sans tenir compte du niveau de classe).
 function caBrut(apsa) {
@@ -191,6 +208,7 @@ function htmlEntrainement(c) {
               ${s.ca ? `<span class="chip-ca">${s.ca}</span>` : ''}
               <div class="eval-titre">${esc(s.titre)}</div>
               <div class="eval-info">${dateCourte(s.date)}${s.apsa && s.apsa !== s.titre ? ' · ' + esc(s.apsa) : ''}</div>
+              ${docsDe(s).length ? `<button class="chip-docs" data-docs-seance="${s.id}" title="Documents joints (barème…)">📎 ${docsDe(s).length}</button>` : ''}
             </th>`).join('')}
           ${suivi ? `<th class="col-moy" rowspan="2">Meilleure<div class="eval-info">${esc(nomCourtIndic(principal(seances)))}</div></th>
             <th class="col-moy" rowspan="2">Évolution<div class="eval-info">1re → dernière</div></th>` : ''}
@@ -210,6 +228,12 @@ function htmlEntrainement(c) {
               ${suivi ? `<td class="col-moy" data-meilleure="${el.id}"></td><td class="col-moy" data-evolution="${el.id}"></td>` : ''}
             </tr>`;
           }).join('')}
+          ${seances.some(s => s.indicateurs.some(ind => ind.type !== 'texte')) ? `
+          <tr class="ligne-repartition">
+            <th class="col-nom">Répartition</th>
+            ${seances.map(s => s.indicateurs.map((ind, k) => `<td class="bilan-comp${k === 0 ? ' debut-eval' + classeCa(s) : ''}" data-rep-indic="${s.id}|${ind.id}"></td>`).join('')).join('')}
+            ${suivi ? '<td class="col-moy"></td><td class="col-moy"></td>' : ''}
+          </tr>` : ''}
         </tbody>
         <tfoot><tr>
           <th class="col-nom">Classe</th>
@@ -327,6 +351,75 @@ function valeurSuivie(ind, v) {
   return nombre(v);
 }
 
+// Bilan d'une colonne pour la classe (élèves présents et renseignés) :
+//   court  : l'essentiel, pour la ligne « Classe » collée en bas ;
+//   barre / lignes : le détail, pour la ligne « Répartition » ;  detail : texte de l'infobulle.
+//   Échelle 1 à 4 → % par degré et % au degré 3 ou plus ; liste de choix → % par réponse ;
+//   temps / distance / nombre → moyenne et extrêmes (pour un temps : plus rapide / plus lent).
+function bilanIndic(ind, valeurs) {
+  const n = valeurs.length;
+  if (!n) return { court: '–', detail: [] };
+  const pct = k => Math.round((k / n) * 100);
+  const eleves = k => `${k} élève${k > 1 ? 's' : ''}`;
+  const ligne = (html, zero = false) => {
+    const div = document.createElement('div');
+    div.className = 'ligne-rep' + (zero ? ' rep-zero' : '');
+    div.innerHTML = html;
+    return div;
+  };
+  const bloc = lignes => { const div = document.createElement('div'); div.className = 'lignes-rep'; div.append(...lignes); return div; };
+
+  if (ind.type === 'echelle') {
+    const barre = document.createElement('div');
+    barre.className = 'barre-rep';
+    const lignes = [], detail = [];
+    for (const { v, nom } of NIVEAUX_MAITRISE) {
+      const k = valeurs.filter(x => x === v).length;
+      if (k) {
+        const part = document.createElement('span');
+        part.className = 'n' + v;
+        part.style.width = (k / n) * 100 + '%';
+        barre.append(part);
+      }
+      lignes.push(ligne(`<span class="pastille-rep n${v}"></span>${pct(k)}%`, !k));
+      detail.push(`${v} – ${nom} : ${eleves(k)} (${pct(k)} %)`);
+    }
+    const acquis = valeurs.filter(x => x >= '3').length;
+    lignes.push(ligne(`<b>${pct(acquis)}% ≥ 3</b>`, !acquis));
+    detail.push(`Degré 3 ou 4 : ${eleves(acquis)} (${pct(acquis)} %)`);
+    return { court: `${pct(acquis)} % ≥ 3`, barre, lignes: bloc(lignes), detail };
+  }
+
+  if (ind.type === 'choix') {
+    const prevues = ind.options || [];
+    const options = [...prevues, ...new Set(valeurs.filter(v => !prevues.includes(v)))];
+    const comptes = options.map(o => [o, valeurs.filter(v => v === o).length]);
+    const [top, kTop] = [...comptes].sort((a, b) => b[1] - a[1])[0];
+    return {
+      court: `${top} ${pct(kTop)} %`,
+      lignes: bloc(comptes.map(([o, k]) => ligne(`${esc(o)}&nbsp;: ${pct(k)}%`, !k))),
+      detail: comptes.map(([o, k]) => `${o} : ${eleves(k)} (${pct(k)} %)`),
+    };
+  }
+
+  if (TYPES_NUMERIQUES.includes(ind.type)) {
+    const nombres = valeurs.map(Number).filter(x => !isNaN(x));
+    if (!nombres.length) return { court: '–', detail: [] };
+    const moy = nombres.reduce((a, b) => a + b, 0) / nombres.length;
+    const aff = x => (ind.type === 'temps' ? formatTemps(x) : fmt(Math.round(x * 10) / 10) + (ind.unite ? ' ' + ind.unite : ''));
+    // (Pour un nombre, « meilleur » dépend de la donnée — haies renversées, chutes… : on dit min / max.)
+    const [libMin, libMax] = ind.type === 'temps' ? ['Plus rapide', 'Plus lent'] : ['Min', 'Max'];
+    const min = Math.min(...nombres), max = Math.max(...nombres);
+    return {
+      court: aff(moy),
+      lignes: bloc([ligne(`<b>Moy. ${esc(aff(moy))}</b>`), ligne(`${libMin} ${esc(aff(min))}`), ligne(`${libMax} ${esc(aff(max))}`)]),
+      detail: [`Moyenne : ${aff(moy)}`, `${libMin} : ${aff(min)}`, `${libMax} : ${aff(max)}`],
+    };
+  }
+
+  return { court: `${n} obs.`, detail: [] };
+}
+
 function majStatsEnt() {
   const c = classeActive();
   if (!c || !$('.grille-ent')) return;
@@ -342,20 +435,22 @@ function majStatsEnt() {
       const td = $(`[data-stat-indic="${s.id}|${ind.id}"]`);
       if (!td) continue;
       const valeurs = presents.map(el => Donnees.note(s.id, el.id, ind.id)).filter(Boolean);
-      let texte = '–';
-      if (valeurs.length && (TYPES_NUMERIQUES.includes(ind.type) || ind.type === 'echelle')) {
-        const moy = valeurs.map(Number).reduce((a, b) => a + b, 0) / valeurs.length;
-        texte = ind.type === 'temps' ? formatTemps(moy) : fmt(Math.round(moy * 10) / 10) + (ind.type === 'echelle' ? ' /4' : ind.unite ? ' ' + ind.unite : '');
-      } else if (valeurs.length && ind.type === 'choix') {
-        const compte = {};
-        valeurs.forEach(v => { compte[v] = (compte[v] || 0) + 1; });
-        const [top, n] = Object.entries(compte).sort((a, b) => b[1] - a[1])[0];
-        texte = `${top} ×${n}`;
-      } else if (valeurs.length) {
-        texte = `${valeurs.length} obs.`;
+      const bilan = bilanIndic(ind, valeurs);
+      const titre = `${ind.nom}\n${bilan.detail.join('\n')}${bilan.detail.length ? '\n' : ''}`
+        + `${valeurs.length} élève${valeurs.length > 1 ? 's' : ''} renseigné${valeurs.length > 1 ? 's' : ''} sur ${presents.length} présent${presents.length > 1 ? 's' : ''}\n${resumeStatuts}`;
+      // Ligne « Classe » (collée en bas) : l'essentiel, sur une ligne.
+      td.replaceChildren();
+      if (bilan.barre) td.append(bilan.barre.cloneNode(true));
+      td.append(bilan.court);
+      td.title = titre;
+      // Ligne « Répartition » : le détail (pourcentages par degré ou par réponse, moyenne / extrêmes…).
+      const rep = $(`[data-rep-indic="${s.id}|${ind.id}"]`);
+      if (rep) {
+        rep.replaceChildren();
+        if (bilan.barre) rep.append(bilan.barre);
+        if (bilan.lignes) rep.append(bilan.lignes); else rep.append(bilan.court);
+        rep.title = titre;
       }
-      td.textContent = texte;
-      td.title = `${ind.nom} : ${valeurs.length} élève${valeurs.length > 1 ? 's' : ''} renseigné${valeurs.length > 1 ? 's' : ''}\n${resumeStatuts}`;
     }
   }
   const ref = principal(seances);
@@ -384,6 +479,74 @@ function majStatsEnt() {
   }
 }
 
+/* ---------- Documents joints aux séances (barème, fiche d'observation…) ----------
+   Rangés dans le carnet (collection « documents », chiffrée avec lui sur la clé) : ils suivent sur la tablette.
+   Une séance liste ses documents (`documents: [id…]`). Une nouvelle séance du même exercice reprend les documents
+   de la précédente sans les recopier ; un document n'est supprimé que lorsque plus aucune séance ne l'utilise. */
+
+const TAILLE_MAX_DOC = 5 * 1024 * 1024;
+const ALERTE_TOTAL_DOCS = 20 * 1024 * 1024;
+const TYPES_DOCS = '.pdf,.doc,.docx,.odt,.xls,.xlsx,.ods,.png,.jpg,.jpeg';
+const docsDe = s => (s?.documents || []).map(id => Donnees.get('documents', id)).filter(Boolean);
+const tailleLisible = o => (o < 1024 * 1024 ? Math.max(1, Math.round(o / 1024)) + ' Ko'
+  : (o / 1024 / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' Mo');
+const iconeDoc = nom => (/\.pdf$/i.test(nom) ? '📕' : /\.(docx?|odt)$/i.test(nom) ? '📘'
+  : /\.(xlsx?|ods)$/i.test(nom) ? '📗' : /\.(png|jpe?g)$/i.test(nom) ? '🖼' : '📄');
+
+const lireEnBase64 = f => new Promise((ok, ko) => {
+  const r = new FileReader();
+  r.onload = () => ok(String(r.result).split(',')[1] || '');
+  r.onerror = () => ko(r.error);
+  r.readAsDataURL(f);
+});
+
+// Ouvre le document avec l'appli de l'appareil (lecteur PDF, Word…) : il est remis comme un téléchargement.
+function ouvrirDocument(doc) {
+  const octets = Uint8Array.from(atob(doc.contenu), ch => ch.charCodeAt(0));
+  const url = URL.createObjectURL(new File([octets], doc.nom, { type: doc.type || 'application/octet-stream' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = doc.nom;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+// Après suppression de séances : retire les documents que plus aucune séance n'utilise.
+function supprimerDocumentsInutilises(ids) {
+  const utilises = new Set(Donnees.liste('seances').flatMap(x => x.documents || []));
+  for (const id of ids) if (!utilises.has(id)) Donnees.supprimer('documents', id);
+}
+
+const ligneDoc = doc => `<li class="ligne-doc">
+    <span class="doc-icone" aria-hidden="true">${iconeDoc(doc.nom)}</span>
+    <span class="doc-nom">${esc(doc.nom)} <span class="aide">${tailleLisible(doc.taille || 0)}</span></span>
+    <button type="button" data-ouvrir-doc="${doc.id}">Ouvrir</button>
+    ${doc.retirable === false ? '' : `<button type="button" class="icone-petit" data-retirer-doc="${doc.id}" title="Retirer ce document de la séance" aria-label="Retirer ${esc(doc.nom)}">✕</button>`}
+  </li>`;
+
+// Lecture rapide depuis la grille (bouton 📎 de l'en-tête de séance).
+async function voirDocuments(seanceId) {
+  const s = Donnees.get('seances', seanceId);
+  const docs = docsDe(s);
+  const { d, resultat } = ouvrirModale(`Documents — ${s.titre}`, `
+    <ul class="liste-docs">${docs.map(doc => ligneDoc({ ...doc, retirable: false })).join('')}</ul>
+    <p class="aide">« Ouvrir » remet le fichier à l’appareil, qui l’ouvre avec son lecteur (PDF, Word…).</p>`,
+  '<button value="modifier">Modifier la séance</button><span class="espace"></span><button type="button" data-fermer class="primaire">Fermer</button>');
+  d.addEventListener('click', e => {
+    const b = e.target.closest('[data-ouvrir-doc]');
+    if (b) ouvrirDocument(docs.find(x => x.id === b.dataset.ouvrirDoc));
+  });
+  if ((await resultat).action === 'modifier') await editerSeance(seanceId);
+}
+
+// Le bouton 📎 de l'en-tête ne doit pas ouvrir la fiche de la séance (capture : passe avant le clic sur l'en-tête).
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-docs-seance]');
+  if (!b || b.closest('dialog')) return;
+  e.stopPropagation();
+  lancer(() => voirDocuments(b.dataset.docsSeance));
+}, true);
+
 /* ---------- Fiche de séance ---------- */
 
 function ligneIndic(ind) {
@@ -405,7 +568,7 @@ async function editerSeance(id) {
   // il suffit souvent de changer la date).
   const modele = id || !filtre ? null : seancesDe(c.id).filter(s => s.titre === filtre).at(-1) || null;
   const s = id ? Donnees.get('seances', id)
-    : modele ? { titre: modele.titre, apsa: modele.apsa, date: aujourdhui(), indicateurs: structuredClone(modele.indicateurs) }
+    : modele ? { titre: modele.titre, apsa: modele.apsa, date: aujourdhui(), indicateurs: structuredClone(modele.indicateurs), documents: [...(modele.documents || [])] }
       : { titre: '', apsa: '', date: aujourdhui(), indicateurs: modeleIndicateurs('') };
   const exercices = [...new Set(seancesDe(c.id).map(x => x.titre))];
   const { d, resultat } = ouvrirModale(id ? 'Modifier la séance' : 'Nouvelle séance d’entraînement', `
@@ -419,7 +582,8 @@ async function editerSeance(id) {
     <p class="aide">Garde le même nom d’une séance à l’autre pour suivre les progrès (meilleure performance, évolution).</p>
     <fieldset class="competences" data-zone-etapes ${estSavoirNager(s.apsa) ? '' : 'hidden'}>
       <legend>Étapes travaillées — savoir-nager (ASNS)</legend>
-      <p class="aide">Chaque étape cochée devient une colonne : degré de maîtrise de 1 à 4 pour chaque élève.</p>
+      <p class="aide">Chaque étape cochée devient une colonne : degré de maîtrise de 1 à 4 pour chaque élève.
+        Parcours de l’attestation : en continuité, sans reprise d’appuis, sans lunettes.</p>
       <div class="ligne">
         <button type="button" data-etapes="parcours">Tout le parcours</button>
         <button type="button" data-etapes="aucune">Aucune</button>
@@ -438,6 +602,14 @@ async function editerSeance(id) {
       </div>
       <p class="aide">Temps : 3:45 · Distance / nombre : avec unité (m, kg, bpm…) · Échelle 1 à 4 : couleurs des degrés ·
         Choix : options séparées par « / » · Texte : observation libre.</p>
+    </fieldset>
+    <fieldset class="competences">
+      <legend>Documents (barème, fiche…)</legend>
+      <p class="aide" data-docs-repris hidden></p>
+      <ul class="liste-docs" data-liste-docs></ul>
+      <label class="bouton">📎 Joindre un document<input type="file" accept="${TYPES_DOCS}" multiple data-joindre hidden></label>
+      <p class="aide">PDF, Word, tableur ou photo — 5 Mo maximum par fichier. Ils sont rangés dans le carnet : ils suivent sur la clé
+        et la tablette, et les prochaines séances du même exercice les reprennent.</p>
     </fieldset>`,
   boutonsModale(id ? 'Enregistrer' : 'Créer', id ? BOUTON_SUPPRIMER : ''), 'modale-large');
 
@@ -484,11 +656,43 @@ async function editerSeance(id) {
   majParams();
   majChip();
 
+  // Documents : liste de travail, enregistrée seulement si on valide la fiche.
+  let docs = docsDe(s);
+  const listeDocs = $('[data-liste-docs]', d), noteReprise = $('[data-docs-repris]', d);
+  const majDocs = () => {
+    listeDocs.innerHTML = docs.map(ligneDoc).join('') || '<li class="aide">Aucun document.</li>';
+  };
+  majDocs();
+  // Nouvelle séance d'un exercice existant (même nom) : on propose ses documents.
+  champTitre.addEventListener('change', () => {
+    if (id || docs.length) return;
+    const precedente = seancesDe(c.id).filter(x => x.titre === champTitre.value.trim() && x.documents?.length).at(-1);
+    if (!precedente) return;
+    docs = docsDe(precedente);
+    noteReprise.textContent = `Documents repris de la séance du ${dateCourte(precedente.date)} (retire-les avec ✕ si besoin).`;
+    noteReprise.hidden = false;
+    majDocs();
+  });
+  d.addEventListener('click', e => {
+    const ouvrir = e.target.closest('[data-ouvrir-doc]'), retirer = e.target.closest('[data-retirer-doc]');
+    if (ouvrir) ouvrirDocument(docs.find(x => x.id === ouvrir.dataset.ouvrirDoc));
+    if (retirer) { docs = docs.filter(x => x.id !== retirer.dataset.retirerDoc); majDocs(); }
+  });
+  $('[data-joindre]', d).addEventListener('change', e => lancer(async () => {
+    for (const f of [...e.target.files]) {
+      if (f.size > TAILLE_MAX_DOC) { toast(`« ${f.name} » est trop lourd (${tailleLisible(f.size)}) : 5 Mo maximum.`, 'erreur'); continue; }
+      docs.push({ id: Donnees.nouvelId(), nom: f.name, type: f.type, taille: f.size, contenu: await lireEnBase64(f), nouveau: true });
+    }
+    e.target.value = '';
+    majDocs();
+  }));
+
   const r = await resultat;
   if (r.action === 'supprimer') {
     if (await confirmer(`Supprimer la séance « ${s.titre} » du ${dateCourte(s.date)} et toutes ses données ?`)) {
       supprimerNotes(n => n.evalId === id);
       Donnees.supprimer('seances', id);
+      supprimerDocumentsInutilises(s.documents || []);
     }
   } else if (r.action === 'ok') {
     const ids = r.fd.getAll('ind-id'), noms = r.fd.getAll('ind-nom'), types = r.fd.getAll('ind-type'), params = r.fd.getAll('ind-param');
@@ -512,13 +716,217 @@ async function editerSeance(id) {
       indicateurs = [...ETAPES_SN.filter(e => cochees.has(e.id)).map(indicEtape), ...indicateurs];
     }
     if (!indicateurs.length) indicateurs = [{ id: 'i1', nom: 'Observation', type: 'texte' }];
+    for (const doc of docs.filter(x => x.nouveau)) {
+      const { nouveau, ...fiche } = doc;
+      Donnees.ecrire('documents', { ...fiche, ajouteLe: Date.now() });
+    }
+    const avant = s.documents || [];
     Donnees.ecrire('seances', {
       ...s, id: s.id || Donnees.nouvelId(), classeId: c.id, cree: s.cree || Date.now(),
       titre: r.data.titre.trim(), apsa: r.data.apsa.trim(), ca: caBrut(r.data.apsa), date: r.data.date, indicateurs,
+      documents: docs.map(x => x.id),
     });
+    supprimerDocumentsInutilises(avant.filter(x => !docs.some(y => y.id === x))); // retirés de cette séance
+    const total = Donnees.liste('documents').reduce((t, x) => t + (x.taille || 0), 0);
+    if (docs.some(x => x.nouveau) && total > ALERTE_TOTAL_DOCS) {
+      toast(`Les documents joints pèsent ${tailleLisible(total)} au total : le carnet devient lourd à transférer sur la clé.`, 'erreur');
+    }
   }
   rendre();
 }
+
+/* ---------- Fiche élève (toucher le nom d'un élève dans la grille d'entraînement) ----------
+   Synthèse de son activité, APSA par APSA : acquis (dernière valeur de chaque donnée), évolution d'une séance
+   à l'autre, présence, priorités à travailler (règles simples et visibles) et observations du prof.
+   Les données d'une même APSA sont regroupées d'une séance à l'autre par leur nom (étapes ASNS : par étape). */
+
+const apsaDe = s => (s.apsa || s.titre || 'Sans APSA').trim();
+const cleIndic = ind => (ind.etape ? ind.id : `${ind.nom.trim().toLocaleLowerCase('fr')}|${ind.type}`);
+const idSuivi = (eleveId, apsa) => `${eleveId}|${apsa.toLocaleLowerCase('fr')}`;
+const pastilleDegre = v => `<span class="degre-fiche${v ? ' n' + v : ''}">${v || '·'}</span>`;
+
+// Les valeurs de l'élève pour chaque donnée de l'APSA, dans l'ordre des séances, et sa présence.
+function parcoursEleve(eleveId, seances) {
+  const donnees = new Map(), statuts = {};
+  let presences = 0;
+  for (const s of seances) {
+    const statut = statutEnt(s.id, eleveId);
+    if (statut) { statuts[statut] = (statuts[statut] || 0) + 1; continue; }
+    presences++;
+    for (const ind of s.indicateurs) {
+      const k = cleIndic(ind);
+      if (!donnees.has(k)) donnees.set(k, { ind, valeurs: [] });
+      const d = donnees.get(k);
+      d.ind = ind; // la définition la plus récente
+      const v = Donnees.note(s.id, eleveId, ind.id);
+      if (v) d.valeurs.push({ v, s });
+    }
+  }
+  return { donnees, statuts, presences };
+}
+
+// Sens du progrès : +1 si « plus » est mieux, -1 si « moins » est mieux, 0 si ça dépend (ex. un nombre).
+const sensProgres = ind => (ind.type === 'echelle' || ind.type === 'distance' ? 1 : ind.type === 'temps' ? -1
+  : ind.type === 'choix' && ind.suivi ? 1 : 0);
+const valeurComparable = (ind, v) => (ind.type === 'choix' ? (ind.options || []).indexOf(v) : nombre(v));
+
+function fleche(ind, a, b) {
+  const x = valeurComparable(ind, a), y = valeurComparable(ind, b), sens = sensProgres(ind);
+  if (x === null || y === null || x < 0 || y < 0 || x === y) return '<span class="tendance">=</span>';
+  const mieux = sens ? (y - x) * sens > 0 : null;
+  return mieux === null ? `<span class="tendance">${y > x ? '↗' : '↘'}</span>`
+    : `<span class="tendance ${mieux ? 'progres' : 'regres'}">${mieux ? '↗' : '↘'}</span>`;
+}
+
+const afficherV = (ind, v) => (ind.type === 'echelle' ? pastilleDegre(v) : esc(afficherValeur(ind, v)));
+
+function htmlFiche(el, apsa, seances) {
+  const { donnees, statuts, presences } = parcoursEleve(el.id, seances);
+  const etapes = ETAPES_SN.map(e => ({ e, d: donnees.get(e.id) })).filter(x => x.d);
+  const autres = [...donnees.values()].filter(d => !d.ind.etape);
+  const derniere = d => d.valeurs.at(-1)?.v || '';
+  const dateCourteS = x => dateCourte(x.s.date);
+
+  // Présence
+  const absences = Object.entries(statuts).map(([code, n]) => `${n} ${STATUTS_ENT[code]}`).join(' · ');
+  let html = `<p class="fiche-presence">Présence : ${presences} séance${presences > 1 ? 's' : ''} sur ${seances.length}${absences ? ' · ' + esc(absences) : ''}</p>`;
+
+  // Savoir-nager : le parcours en un coup d'œil
+  if (etapes.length) {
+    const parcours = ETAPES_SN.filter(e => e.code.startsWith('P'));
+    const acquises = parcours.filter(e => (derniere(donnees.get(e.id) || { valeurs: [] }) || '0') >= '3').length;
+    const attestation = autres.find(d => d.ind.type === 'choix' && /attestation/i.test(d.ind.nom));
+    html += `<h3>Parcours ASNS</h3>
+      <div class="parcours-fiche">${parcours.map(e => {
+        const d = donnees.get(e.id);
+        return `<div class="etape-fiche" title="${esc(e.code + ' : ' + e.texte)}"><span>${e.code}</span>${pastilleDegre(d ? derniere(d) : '')}</div>`;
+      }).join('')}</div>
+      <p class="aide"><b>${acquises} étape${acquises > 1 ? 's' : ''} sur ${parcours.length}</b> au degré 3 ou plus (dernière évaluation)${
+        attestation && derniere(attestation) ? ` · Attestation : <b>${esc(derniere(attestation))}</b>` : ''}.</p>`;
+  }
+
+  // Acquis et évolution, donnée par donnée
+  const lignes = [...etapes.map(x => x.d), ...autres].filter(d => d.ind.type !== 'texte' && d.valeurs.length);
+  if (lignes.length) {
+    html += `<h3>Acquis et évolution</h3><table class="tableau-fiche"><tbody>${lignes.map(d => {
+      const { ind, valeurs } = d;
+      const nomInd = ind.etape ? `<b>${esc(ind.nom)}</b> ${esc(texteIndic(ind))}` : esc(nomCourtIndic(ind));
+      const suite = valeurs.map(x => `<span class="valeur-suite" title="${esc(dateCourteS(x))}">${afficherV(ind, x.v)}</span>`).join('<span class="sep-suite">→</span>');
+      let extra = '';
+      if (TYPES_NUMERIQUES.includes(ind.type) && sensProgres(ind)) {
+        const nums = valeurs.map(x => nombre(x.v)).filter(n => n !== null);
+        const meilleure = sensProgres(ind) < 0 ? Math.min(...nums) : Math.max(...nums);
+        extra = `<span class="aide"> · meilleure : ${esc(afficherValeur(ind, String(meilleure)))}</span>`;
+      }
+      return `<tr><th>${nomInd}</th><td>${suite}${valeurs.length > 1 ? ' ' + fleche(ind, valeurs[0].v, valeurs.at(-1).v) : ''}${extra}</td></tr>`;
+    }).join('')}</tbody></table>`;
+  }
+
+  // Observations notées pendant les séances (données de type texte)
+  const observations = autres.filter(d => d.ind.type === 'texte').flatMap(d => d.valeurs.map(x => ({ ...x, nom: d.ind.nom })));
+  if (observations.length) {
+    html += `<h3>Observations en séance</h3><ul class="liste-fiche">${observations
+      .map(x => `<li><span class="aide">${esc(dateCourteS(x))} · ${esc(x.nom)} :</span> ${esc(x.v)}</li>`).join('')}</ul>`;
+  }
+
+  // Priorités : règles simples, dans cet ordre (une seule ligne par donnée).
+  const priorites = new Map(); // clé de la donnée → { texte, baisse }
+  // 1. Étapes ASNS sous le degré 3, dans l'ordre du parcours (c'est un enchaînement : la première manquante d'abord).
+  for (const { e, d } of etapes) {
+    const v = derniere(d);
+    if (v && v < '3') priorites.set(e.id, { texte: `<b>${e.code}</b> ${esc(e.texte)} — degré ${v} → viser 3 :`, critere: e.critere });
+  }
+  // 2. Autres échelles sous le degré 3.
+  for (const d of autres.filter(x => x.ind.type === 'echelle')) {
+    const v = derniere(d);
+    if (v && v < '3') priorites.set(cleIndic(d.ind), { texte: `<b>${esc(d.ind.nom)}</b> — degré ${v} → viser le degré 3` });
+  }
+  // 3. En baisse par rapport à la séance précédente (échelles, temps, distances) : ajouté à la ligne existante, sinon nouvelle ligne.
+  for (const d of [...etapes.map(x => x.d), ...autres]) {
+    const sens = sensProgres(d.ind);
+    if (!sens || d.valeurs.length < 2 || d.ind.type === 'choix') continue;
+    const a = valeurComparable(d.ind, d.valeurs.at(-2).v), b = valeurComparable(d.ind, d.valeurs.at(-1).v);
+    if (a === null || b === null || (b - a) * sens >= 0) continue;
+    const baisse = `en baisse depuis la séance précédente (${afficherV(d.ind, d.valeurs.at(-2).v)} → ${afficherV(d.ind, d.valeurs.at(-1).v)})`;
+    const cle = cleIndic(d.ind);
+    if (priorites.has(cle)) priorites.get(cle).baisse = baisse;
+    else priorites.set(cle, { texte: `<b>${esc(d.ind.nom)}</b> — ${baisse}` });
+  }
+  const jamais = etapes.length ? ETAPES_SN.filter(e => e.code.startsWith('P') && !donnees.get(e.id)?.valeurs.length).map(e => e.code) : [];
+  html += `<h3>À travailler en priorité</h3>${priorites.size
+    ? `<ol class="liste-fiche priorites">${[...priorites.values()].map(p => `<li>${p.texte}${p.baisse ? ` <span class="tendance regres">↘ ${p.baisse}</span>` : ''}${
+      p.critere ? `<br><span class="critere">${esc(p.critere)}</span>` : ''}</li>`).join('')}</ol>`
+    : `<p class="aide">${!lignes.length ? 'Pas encore de données pour cet élève dans cette APSA.'
+      : lignes.some(d => d.ind.type === 'echelle') ? 'Rien sous le degré 3 ni en baisse : consolider, et viser l’aisance (degré 4).'
+        : 'Pas de baisse depuis la séance précédente. (Sans degré de maîtrise relevé dans cette APSA, la fiche ne propose pas d’autre priorité : appuie-toi sur l’évolution des performances.)'}</p>`}
+    ${jamais.length ? `<p class="aide">Pas encore évaluées : ${jamais.join(', ')}.</p>` : ''}`;
+
+  // Observations du prof (enregistrées dans le carnet)
+  const suivi = Donnees.get('suivis', idSuivi(el.id, apsa));
+  html += `<h3>Mes observations</h3>
+    <textarea class="obs-fiche" data-obs rows="4" placeholder="Objectifs fixés avec l’élève, points d’appui, ce qui l’aide…">${esc(suivi?.texte || '')}</textarea>
+    ${suivi?.texte ? `<p class="aide">Modifié le ${dateHeure(suivi.maj)}</p>` : ''}`;
+  return html;
+}
+
+async function ficheEleve(eleveId) {
+  const c = classeActive();
+  const eleves = elevesDe(c.id);
+  const toutes = seancesDe(c.id);
+  const apsas = [...new Set(toutes.map(apsaDe))];
+  if (!apsas.length) return;
+  let idx = eleves.findIndex(x => x.id === eleveId);
+  // APSA affichée : celle de l'exercice filtré, sinon celle de la séance la plus récente.
+  const filtre = toutes.find(s => s.titre === ui.exercices?.[c.id]);
+  let apsa = filtre ? apsaDe(filtre) : apsaDe(toutes.at(-1));
+
+  const { d, resultat } = ouvrirModale('Fiche élève', '<div class="fiche-onglets" data-fiche-onglets></div><div class="fiche" data-fiche></div>',
+    '<button type="button" data-fiche-nav="-1">◀ Précédent</button><button type="button" data-fiche-nav="1">Suivant ▶</button>'
+    + '<span class="espace"></span><button type="button" data-fermer class="primaire">Fermer</button>', 'modale-large modale-fiche');
+
+  // Observations : enregistrées pendant la frappe (avec un petit délai) et avant de changer d'élève ou d'APSA.
+  let minuteur = null, enAttente = null;
+  const enregistrerObs = () => {
+    clearTimeout(minuteur);
+    if (!enAttente) return;
+    const { eleve, apsa: a, texte } = enAttente;
+    enAttente = null;
+    const id = idSuivi(eleve, a), avant = Donnees.get('suivis', id);
+    if ((avant?.texte || '') === texte) return;
+    Donnees.ecrire('suivis', { ...(avant || {}), id, eleveId: eleve, apsa: a, texte });
+  };
+  const dessiner = () => {
+    const el = eleves[idx];
+    $('h2', d).textContent = `${el.nom} ${el.prenom} — ${c.nom}`;
+    $('[data-fiche-onglets]', d).innerHTML = apsas.map(a =>
+      `<button type="button" class="${a === apsa ? 'actif' : ''}" data-fiche-apsa="${esc(a)}">${esc(a)}</button>`).join('');
+    $('[data-fiche]', d).innerHTML = htmlFiche(el, apsa, toutes.filter(s => apsaDe(s) === apsa));
+    d.querySelector('[data-fiche-nav="-1"]').disabled = idx === 0;
+    d.querySelector('[data-fiche-nav="1"]').disabled = idx === eleves.length - 1;
+  };
+  d.addEventListener('click', e => {
+    const onglet = e.target.closest('[data-fiche-apsa]'), nav = e.target.closest('[data-fiche-nav]');
+    if (onglet) { enregistrerObs(); apsa = onglet.dataset.ficheApsa; dessiner(); }
+    if (nav) { enregistrerObs(); idx = Math.max(0, Math.min(eleves.length - 1, idx + +nav.dataset.ficheNav)); dessiner(); }
+  });
+  d.addEventListener('input', e => {
+    if (!e.target.matches('[data-obs]')) return;
+    enAttente = { eleve: eleves[idx].id, apsa, texte: e.target.value.trim() };
+    clearTimeout(minuteur);
+    minuteur = setTimeout(enregistrerObs, 800);
+  });
+  dessiner();
+  await resultat;
+  enregistrerObs();
+}
+
+// Toucher le nom d'un élève dans la grille d'entraînement ouvre sa fiche.
+document.addEventListener('click', e => {
+  const th = e.target.closest('.grille-ent tbody tr:not(.ligne-repartition) .col-nom');
+  if (!th || e.target.closest('[data-voir-besoin]')) return;
+  const id = th.closest('tr').querySelector('[data-eleve]')?.dataset.eleve;
+  if (id) lancer(() => ficheEleve(id));
+});
 
 /* ---------- Conversion des séances de la v0.13.0 (une seule mesure par séance) ---------- */
 

@@ -6,13 +6,14 @@ const Donnees = (() => {
   const CLE_STOCKAGE = 'carnet-eps-db';
   // `seances` (carnet d'entraînement) est arrivée en v0.13, `reglages` (périodes de l'année…) en v0.21 :
   // absentes des fichiers plus anciens.
-  const COLLECTIONS = ['classes', 'eleves', 'evals', 'notes', 'seances', 'reglages'];
+  // `documents` (fichiers joints aux séances) en v0.30, `suivis` (observations du prof par élève et par APSA) en v0.33.
+  const COLLECTIONS = ['classes', 'eleves', 'evals', 'notes', 'seances', 'reglages', 'documents', 'suivis'];
   const COLLECTIONS_OBLIGATOIRES = ['classes', 'eleves', 'evals', 'notes'];
   const auditeurs = [];
   let db;
 
   function vide() {
-    return { schema: 1, classes: {}, eleves: {}, evals: {}, notes: {}, seances: {}, reglages: {}, meta: { horloge: 0, modifieLe: 0, dernierEnvoi: 0 } };
+    return { schema: 1, classes: {}, eleves: {}, evals: {}, notes: {}, seances: {}, reglages: {}, documents: {}, suivis: {}, meta: { horloge: 0, modifieLe: 0, dernierEnvoi: 0 } };
   }
 
   // Stockage dans IndexedDB (pas de limite de 5 Mo comme localStorage).
@@ -123,8 +124,82 @@ const Donnees = (() => {
 
   function notifier() { auditeurs.forEach(f => f()); }
 
+  /* ---------- Réunion champ par champ ----------
+     Les fiches (classes, élèves, évaluations, séances, réglages) gardent, en plus de `maj`, l'heure de modification
+     de chacun de leurs champs (`majChamps`). Quand deux appareils ont modifié la même fiche, chaque champ garde sa
+     version la plus récente : une remarque saisie sur la tablette et une dispense saisie sur le PC sont gardées toutes
+     les deux. Seul un même champ modifié des deux côtés garde sa dernière version.
+     Les notes (une case = une valeur) se comparent en entier.
+     Fiches des anciennes versions (sans `majChamps`) : tous leurs champs datent de `maj`, comme avant.
+     Un champ absent et jamais daté (jamais rempli de ce côté) ne fait jamais disparaître le champ de l'autre côté. */
+
+  const PAR_CHAMP = new Set(['classes', 'eleves', 'evals', 'seances', 'reglages', 'suivis']);
+  const TECHNIQUES = new Set(['id', 'maj', 'majChamps', 'majChampsPour', 'supprime']);
+  const memeValeur = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
+  const present = (o, f) => Object.prototype.hasOwnProperty.call(o, f) && o[f] !== undefined;
+
+  // Heures par champ utilisables ? `majChampsPour` dit pour quelle version de la fiche elles ont été calculées :
+  // si une ancienne version de l'appli a modifié la fiche depuis (sans les mettre à jour), on ne s'y fie plus
+  // et la fiche entière date de `maj`, comme avant.
+  const heuresFiables = o => !!o.majChamps && o.majChampsPour === o.maj;
+
+  // Heure de la dernière modification d'un champ (0 : jamais rempli de ce côté).
+  function heureChamp(o, f) {
+    if (heuresFiables(o) && f in o.majChamps) return o.majChamps[f];
+    return present(o, f) ? (o.maj || 0) : 0;
+  }
+
+  // Champs à examiner : ceux présents, plus ceux retirés dont la suppression est datée.
+  const champsDe = o => [...Object.keys(o), ...(heuresFiables(o) ? Object.keys(o.majChamps) : [])];
+
+  // Date les champs qui changent par rapport à la version enregistrée ; les autres gardent leur heure.
+  function daterChamps(obj, ancien, t) {
+    for (const f of Object.keys(obj)) if (obj[f] === undefined) delete obj[f];
+    const champs = {};
+    const avant = ancien && !ancien.supprime ? ancien : null;
+    for (const f of new Set([...Object.keys(obj), ...(avant ? champsDe(avant) : [])])) {
+      if (TECHNIQUES.has(f)) continue;
+      const ici = present(obj, f), la = avant ? present(avant, f) : false;
+      const change = !avant || ici !== la || (ici && !memeValeur(obj[f], avant[f]));
+      const h = change ? t : heureChamp(avant, f);
+      if (h) champs[f] = h; // (un champ retiré garde son heure : sa suppression se propage)
+    }
+    obj.majChamps = champs;
+    obj.majChampsPour = t;
+  }
+
+  // Réunit deux versions d'une même fiche. Renvoie `mien` tel quel si rien ne change de mon côté.
+  function fusionnerFiche(mien, autre) {
+    if (!mien) return autre;
+    if (mien.supprime || autre.supprime) return (autre.maj || 0) > (mien.maj || 0) ? autre : mien;
+    const res = { ...mien, majChamps: {} };
+    let change = false;
+    for (const f of new Set([...champsDe(mien), ...champsDe(autre)])) {
+      if (TECHNIQUES.has(f)) continue;
+      const ha = heureChamp(mien, f), hb = heureChamp(autre, f);
+      const ici = present(mien, f), la = present(autre, f);
+      // (Chaque heure est notée explicitement : un champ ne doit pas « rajeunir » avec le `maj` de la fiche réunie.)
+      if (ici === la && (!ici || memeValeur(mien[f], autre[f]))) { // même valeur des deux côtés
+        if (Math.max(ha, hb)) res.majChamps[f] = Math.max(ha, hb);
+        continue;
+      }
+      // Égalité parfaite des heures (rarissime) : choix fixe, pour que les deux appareils arrivent au même résultat.
+      const prendreAutre = hb > ha || (hb === ha && String(JSON.stringify(autre[f])) > String(JSON.stringify(mien[f])));
+      if (!prendreAutre) { if (ha) res.majChamps[f] = ha; continue; }
+      if (la) res[f] = autre[f]; else delete res[f];
+      if (hb) res.majChamps[f] = hb;
+      change = true;
+    }
+    if (!change) return mien;
+    res.maj = Math.max(mien.maj || 0, autre.maj || 0);
+    res.majChampsPour = res.maj;
+    return res;
+  }
+
   function ecrire(col, obj) {
-    obj.maj = horodatage();
+    const t = horodatage();
+    if (PAR_CHAMP.has(col) && !obj.supprime) daterChamps(obj, db[col][obj.id], t);
+    obj.maj = t;
     db[col][obj.id] = obj;
     db.meta.modifieLe = obj.maj;
     enregistrer();
@@ -170,8 +245,9 @@ const Donnees = (() => {
     for (const c of COLLECTIONS) {
       for (const [id, o] of Object.entries(autre[c] || {})) {
         const mien = db[c][id];
-        if (!mien || (o.maj || 0) > (mien.maj || 0)) { db[c][id] = o; n++; }
-        db.meta.horloge = Math.max(db.meta.horloge, o.maj || 0);
+        const res = PAR_CHAMP.has(c) ? fusionnerFiche(mien, o) : !mien || (o.maj || 0) > (mien.maj || 0) ? o : mien;
+        if (res !== mien) { db[c][id] = res; n++; }
+        db.meta.horloge = Math.max(db.meta.horloge, o.maj || 0, ...Object.values(o.majChamps || {}));
       }
     }
     enregistrer();
@@ -201,7 +277,7 @@ const Donnees = (() => {
 
   return {
     CLE_STOCKAGE, charger, nouvelId, ecrire, supprimer, get, liste, note, noteComplete, ecrireNote,
-    fusionner, exporter, marquerEnvoi, reglerMeta,
+    fusionner, exporter, marquerEnvoi, reglerMeta, fusionnerFiche, // (fusionnerFiche : exposée pour les tests)
     meta: () => db?.meta ?? vide().meta,
     surChangement: f => auditeurs.push(f),
     surAutreOnglet: f => canal?.addEventListener('message', f),

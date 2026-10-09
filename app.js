@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.28.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.33.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -991,9 +991,12 @@ async function editerClasse(id) {
     if (!(await confirmer(`Supprimer la classe « ${c.nom} », ses élèves et toutes ses notes ?`))) return;
     const eleves = new Set(elevesDe(id).map(el => el.id));
     supprimerNotes(n => eleves.has(n.eleveId));
+    for (const s of Donnees.liste('suivis', x => eleves.has(x.eleveId))) Donnees.supprimer('suivis', s.id);
     for (const el of eleves) Donnees.supprimer('eleves', el);
     for (const e of evalsDe(id)) Donnees.supprimer('evals', e.id);
+    const docs = seancesDe(id).flatMap(s => s.documents || []);
     for (const s of seancesDe(id)) Donnees.supprimer('seances', s.id);
+    supprimerDocumentsInutilises(docs);
     Donnees.supprimer('classes', id);
   } else if (r.action === 'ok') {
     const seuils = [+r.data.s2, +r.data.s3, +r.data.s4].sort((x, y) => x - y);
@@ -1202,6 +1205,7 @@ async function supprimerEleve(id) {
   const el = Donnees.get('eleves', id);
   if (!(await confirmer(`Supprimer ${el.nom} ${el.prenom} et ses notes ?`))) return;
   supprimerNotes(n => n.eleveId === id);
+  for (const s of Donnees.liste('suivis', x => x.eleveId === id)) Donnees.supprimer('suivis', s.id);
   Donnees.supprimer('eleves', id);
   rendre();
 }
@@ -1582,7 +1586,9 @@ async function afficherGuide() {
       </ol>
       <h3>Bon à savoir</h3>
       <ul class="bon-a-savoir">
-        <li><b>Rien n’est écrasé</b> : les modifications des deux appareils sont réunies. Si un même élément a changé des deux côtés, c’est la version la plus récente qui reste.</li>
+        <li><b>Rien n’est écrasé</b> : les modifications des deux appareils sont réunies, information par information
+          (ex. une remarque saisie sur la tablette et une dispense saisie sur l’ordinateur pour le même élève sont gardées toutes les deux).
+          Seule une même information modifiée des deux côtés (la même note, le même champ) garde sa version la plus récente.</li>
         <li>Oublié de récupérer avant de travailler ? <b>Pas grave</b> : récupère maintenant, tout sera réuni.</li>
         <li><b>Le même mot de passe sur tous tes appareils.</b> Note-le bien : s’il est perdu, le carnet de la clé est illisible, pour toi aussi.</li>
         <li>Sur la tablette, le fichier enregistré porte un nom du type <b>carnet-eps-tablette_date_heure.json</b> :
@@ -1772,7 +1778,8 @@ document.addEventListener('click', e => {
   if (b) return changerNiveau(b);
   // Sur tablette / téléphone il n'y a pas de survol : un toucher affiche l'info (texte de la compétence, remarques…).
   if (e.target.closest('[data-voir-besoin]')) return; // le badge PAI / BEP ouvre sa fiche
-  const info = e.target.closest('.grille .sous-comp, .grille tbody .col-nom[title], .legende-item, .grille .bilan-comp[title], .grille .bilan-mini[title]');
+  // (Entraînement : toucher le nom ouvre la fiche de l'élève, pas d'infobulle.)
+  const info = e.target.closest('.grille .sous-comp, .grille:not(.grille-ent) tbody .col-nom[title], .legende-item, .grille .bilan-comp[title], .grille .bilan-mini[title]');
   if (info?.title) toast(info.title);
 });
 

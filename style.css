@@ -386,6 +386,10 @@ button.badge-pai:hover, button.badge-bep:hover { filter: brightness(1.15); }
 .cellule-choix:focus { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-doux); }
 .grille .cellule-texte { text-align: left; padding: 0 8px; min-width: 150px; font-size: 14px; }
 .grille-ent .stat-indic { font-size: 12px; white-space: nowrap; cursor: help; }
+.grille-ent .stat-indic .barre-rep { height: 5px; margin: 0 0 2px; }
+/* Répartition de l'entraînement : réponses de liste sur plusieurs lignes, texte normal sauf la valeur clé */
+.grille-ent .ligne-repartition .ligne-rep { flex-wrap: wrap; font-weight: 400; text-align: center; }
+.grille-ent .ligne-repartition .ligne-rep b { font-weight: 700; }
 /* Fiche de séance : une ligne par donnée relevée */
 .liste-indic { display: flex; flex-direction: column; gap: 6px; }
 .ligne-indic { display: grid; grid-template-columns: 1.4fr 1.1fr 1fr 36px; gap: 6px; align-items: center; }
@@ -508,6 +512,43 @@ button.badge-disp:hover { filter: brightness(1.1); }
 .choix-cle b { font-size: 15px; }
 .choix-cle small { font-size: 12px; font-weight: 400; opacity: .85; }
 .menu-cle-aide { align-self: center; padding: 6px; font-size: 13px; }
+
+/* Fiche élève (entraînement) */
+.grille-ent tbody tr:not(.ligne-repartition) .col-nom { cursor: pointer; }
+.grille-ent tbody tr:not(.ligne-repartition) .col-nom:hover .nom-eleve { text-decoration: underline; }
+.modale-fiche .modale-corps h3 { margin: 14px 0 6px; font-size: 15px; color: var(--accent); }
+.fiche-onglets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.fiche-onglets button { min-height: 34px; padding: 4px 12px; border-radius: 18px; font-size: 14px; }
+.fiche-onglets button.actif { background: var(--accent); border-color: var(--accent); color: var(--accent-texte); font-weight: 600; }
+.fiche-presence { margin: 0 0 4px; color: var(--texte2); font-size: 13px; }
+.degre-fiche {
+  display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px;
+  font-size: 13px; font-weight: 700; color: #fff; background: var(--bord); vertical-align: middle;
+}
+.degre-fiche:not(.n1):not(.n2):not(.n3):not(.n4) { color: var(--texte2); background: transparent; border: 1px dashed var(--bord); }
+.degre-fiche.n1 { background: #d62828; } .degre-fiche.n2 { background: #f28c18; }
+.degre-fiche.n3 { background: #6dbb3f; } .degre-fiche.n4 { background: #1b7a3d; }
+.parcours-fiche { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 4px; margin-bottom: 4px; }
+.etape-fiche { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--texte2); cursor: help; }
+.tableau-fiche { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tableau-fiche th, .tableau-fiche td { padding: 6px 4px; border-bottom: 1px solid var(--bord); text-align: left; vertical-align: middle; }
+.tableau-fiche th { font-weight: 400; width: 45%; }
+.valeur-suite { white-space: nowrap; }
+.sep-suite { margin: 0 4px; color: var(--texte2); }
+.tendance { margin-left: 6px; font-weight: 700; color: var(--texte2); }
+.tendance.progres { color: #2e9e5b; } .tendance.regres { color: #d64545; }
+.liste-fiche { margin: 0; padding-left: 20px; font-size: 14px; }
+.liste-fiche li { margin-bottom: 6px; }
+.priorites .critere { color: var(--texte2); font-size: 13px; }
+.obs-fiche { width: 100%; }
+
+/* Documents joints aux séances */
+.liste-docs { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ligne-doc { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--bord); border-radius: 10px; background: var(--fond); }
+.ligne-doc .doc-icone { font-size: 20px; flex: none; }
+.ligne-doc .doc-nom { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ligne-doc button { min-height: 36px; padding: 4px 12px; }
+.chip-docs { min-height: 0; margin-top: 4px; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
 /* Tablette : modifications pas encore sur la clé → le bouton orange clignote doucement. */
 .barre .sauver.rappel { animation: appel-cle 1.6s ease-out infinite; }
 @keyframes appel-cle { 0% { box-shadow: 0 0 0 0 rgba(242, 140, 24, .8); } 70%, 100% { box-shadow: 0 0 0 9px rgba(242, 140, 24, 0); } }

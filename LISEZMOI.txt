@@ -1,20 +1,28 @@
 CARNET EPS S-A — copie de l'application
 ========================================
 
-Lancer l'appli : double-clic sur « Lancer Carnet EPS S-A.bat »
-  -> l'appli s'ouvre dans une fenêtre Microsoft Edge (Chrome fonctionne aussi).
-  -> Fonctionne sur n'importe quel PC Windows, sans rien installer et sans internet.
+Lancer l'appli :
+  - Sur ordinateur, depuis la clé : double-clic sur « Lancer Carnet EPS S-A.bat »
+    (s'ouvre dans Microsoft Edge ; sans rien installer et sans internet).
+  - Sur tablette / téléphone (ou ordinateur) : https://salvorhard1.github.io/carnet-eps/
+    puis « Ajouter à l'écran d'accueil » / « Installer » : l'appli marche ensuite sans internet.
+
+Le principe : chaque appareil garde sa propre copie du carnet ; la clé fait passer le carnet
+de l'un à l'autre. Tout se fait avec le bouton 🔑 en haut de l'appli :
+  ⬇ En arrivant sur un appareil : « Récupérer depuis la clé »
+  ⬆ En partant                  : « Enregistrer sur la clé » (automatique sur ordinateur)
+Rien n'est écrasé : les modifications des appareils sont réunies.
+Le guide complet : bouton 🔑 > « Comment ça marche ? »
 
 Tes données :
-  - le carnet chiffré est dans le dossier parent : Claude\carnet-eps.json
+  - le carnet chiffré est dans : Claude\carnet-eps.json (ne pas le renommer ni le déplacer)
   - les copies datées sont dans : Claude\Sauvegardes\
-  - sur un nouveau PC : clique sur « 💾 Sauvegarder », choisis le dossier Claude de la clé,
-    tape ton mot de passe : le carnet est récupéré.
+  - même mot de passe sur tous les appareils ; s'il est perdu, le carnet est illisible.
 
 Attention sur un PC qui n'est pas le tien (salle des profs…) :
   l'appli garde aussi une copie des données dans le navigateur de ce PC.
-  Avant de partir : sauvegarde sur la clé, puis efface les données du site
+  Avant de partir : enregistre sur la clé, puis efface les données du site
   (Edge > Paramètres > Cookies et autorisations de site > localhost:8080 > Effacer les données).
 
 Si l'appli ne se lance pas : certains PC (établissement) bloquent PowerShell.
-  Dans ce cas, utilise l'appli sur ton propre PC.
+  Dans ce cas, utilise l'adresse internet ci-dessus.
