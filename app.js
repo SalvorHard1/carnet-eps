@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.33.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.36.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -101,6 +101,14 @@ const aujourdhui = () => new Date().toLocaleDateString('sv'); // AAAA-MM-JJ
 const dateCourte = d => (d ? new Date(d + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '');
 const heure = ts => new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 const dateHeure = ts => new Date(ts).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
+// Date courte pour le bouton 🔑 : « auj. 8:44 », « hier 17:02 », sinon « 06/10 17:02 ».
+function quandCourt(ts) {
+  const d = new Date(ts), jour = x => new Date(x).toDateString();
+  const veille = new Date(); veille.setDate(veille.getDate() - 1);
+  const j = jour(ts) === jour(Date.now()) ? 'auj.' : jour(ts) === jour(veille) ? 'hier'
+    : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+  return j + ' ' + heure(ts);
+}
 const fmt = n => (n === null ? '–' : n.toLocaleString('fr-FR', { maximumFractionDigits: 2 }));
 const nombre = v => (v !== '' && !isNaN(v) ? +v : null);
 const affichage = v => (nombre(v) === null ? v : v.replace('.', ','));
@@ -486,14 +494,71 @@ function rendreVue() {
 }
 
 // Cellule « élève » des grilles (notes et entraînement) : numéro, nom, badges PAI / BEP / dispense / adapté.
+/* ---------- Alerte absences (Notes et Entraînement) ----------
+   Jours du trimestre où l'élève est noté absent, blessé ou malade (évaluations et séances réunies ; un même jour
+   ne compte qu'une fois ; les dispenses ne comptent pas). Orange dès 2 jours, rouge dès 3.
+   Trimestre suivi : celui choisi dans l'onglet Notes, sinon celui d'aujourd'hui (année scolaire en cours). */
+
+const MOTIFS_ALERTE = { ABS: 'Absent', BLE: 'Blessé', MAL: 'Malade' };
+const SEUILS_ALERTE = { orange: 2, rouge: 3 };
+const anneeScolaire = date => +date.slice(0, 4) - (+date.slice(5, 7) < 8 ? 1 : 0);
+const periodeAlerte = () => { const v = periodeAffichee(); return v !== 'annee' ? v : periodeDe(aujourdhui()); };
+
+function absencesEleve(el) {
+  const p = periodeAlerte(), annee = anneeScolaire(aujourdhui());
+  const jours = new Map();
+  const noter = (date, code, quoi) => {
+    if (!MOTIFS_ALERTE[code] || !date || anneeScolaire(date) !== annee || periodeDe(date) !== p) return;
+    if (!jours.has(date)) jours.set(date, []);
+    jours.get(date).push({ code, quoi });
+  };
+  for (const e of evalsDe(el.classeId)) noter(e.date, Donnees.note(e.id, el.id), e.titre);
+  for (const s of seancesDe(el.classeId)) noter(s.date, Donnees.note(s.id, el.id), s.titre);
+  const n = jours.size;
+  return {
+    n, periode: periodesAnnee().find(x => x.id === p),
+    niveau: n >= SEUILS_ALERTE.rouge ? 'rouge' : n >= SEUILS_ALERTE.orange ? 'orange' : '',
+    jours: [...jours].sort(([a], [b]) => a.localeCompare(b)),
+  };
+}
+
+function badgeAlerte(el, a) {
+  if (!a.niveau) return '';
+  return ` <button class="alerte-abs ${a.niveau}" data-alerte-abs="${el.id}"
+    title="${a.n} jours absent, blessé ou malade au ${a.periode?.code || 'trimestre'} — toucher pour le détail">⚠ ${a.n}</button>`;
+}
+
+async function voirAbsences(id) {
+  const el = Donnees.get('eleves', id), a = absencesEleve(el);
+  ouvrirModale(`Absences — ${el.nom} ${el.prenom}`, `
+    <p><b>${a.n} jour${a.n > 1 ? 's' : ''}</b> absent, blessé ou malade au <b>${esc(a.periode?.code || '')}</b>
+      <span class="aide">(${esc(a.periode?.texte || '')})</span></p>
+    <ul class="liste-absences">${a.jours.map(([date, l]) => `<li><b>${dateCourte(date)}</b> — ${[...new Set(l.map(x => MOTIFS_ALERTE[x.code]))].join(' / ')}
+      <span class="aide">· ${esc([...new Set(l.map(x => x.quoi))].join(', '))}</span></li>`).join('')}</ul>
+    <p class="aide">Alerte orange dès ${SEUILS_ALERTE.orange} jours, rouge dès ${SEUILS_ALERTE.rouge}, sur le trimestre
+      (évaluations et séances d’entraînement réunies, un jour ne compte qu’une fois ; les dispenses ne comptent pas).</p>`,
+  '<span class="espace"></span><button type="button" data-fermer class="primaire">Fermer</button>');
+}
+
+// Le badge ⚠ ouvre son détail, sans ouvrir la fiche d'entraînement ni l'infobulle du nom (capture : passe avant).
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-alerte-abs]');
+  if (!b || b.closest('dialog')) return;
+  e.stopPropagation();
+  lancer(() => voirAbsences(b.dataset.alerteAbs));
+}, true);
+
 function celluleNom(el, i) {
+  const alerte = absencesEleve(el);
   const infos = [
+    alerte.niveau ? `⚠ ${alerte.n} jours absent, blessé ou malade au ${alerte.periode?.code}` : '',
     aPai(el) ? 'PAI' + (el.paiInfo ? ' : ' + el.paiInfo : '') : '',
     el.bep ? 'BEP' + (el.bepInfo ? ' : ' + el.bepInfo : '') : '',
     el.remarque, statutDispense(el)?.texte,
     el.adapte ? 'Pratique adaptée : ' + (el.adaptation || '(particularités non précisées)') : '',
   ].filter(Boolean).join('\n');
-  return `<th class="col-nom" title="${esc(infos)}"><span class="num-eleve">${i + 1}</span><span class="nom-eleve">${esc(el.nom)} ${esc(el.prenom)}</span>`
+  return `<th class="col-nom${alerte.niveau ? ' alerte-' + alerte.niveau : ''}" title="${esc(infos)}"><span class="num-eleve">${i + 1}</span><span class="nom-eleve">${esc(el.nom)} ${esc(el.prenom)}</span>`
+    + badgeAlerte(el, alerte)
     + (aPai(el) ? ` <button class="badge-pai" data-voir-besoin="pai" data-id="${el.id}" title="Voir le PAI">PAI</button>` : '')
     + (el.bep ? ` <button class="badge-bep" data-voir-besoin="bep" data-id="${el.id}" title="Voir le BEP">BEP</button>` : '')
     + badgeDispenseGrille(el)
@@ -780,6 +845,7 @@ function htmlEleves(c) {
       <h2>${esc(c.nom)}</h2>
       <button class="primaire" data-action="ajout-eleve">+ Élève</button>
       <button data-action="coller-liste">Coller une liste</button>
+      <button data-action="import-ed" title="Créer ou compléter les fiches à partir de la liste de classe exportée d’École Directe (.xlsx)">📥 École Directe</button>
       <label class="choix-tri">Ordre
         <select data-tri-classe="${c.id}">
           <option value="alpha" ${c.tri !== 'perso' ? 'selected' : ''}>Alphabétique</option>
@@ -823,13 +889,13 @@ function htmlEleves(c) {
                 <span class="badge-disp ${s.code}">${esc(s.texte)}</span>` : ''}
             </td>
             <td class="c-rem" data-label="Remarques"><input data-champ="remarque" value="${esc(el.remarque || '')}" aria-label="Remarques" placeholder="santé, inaptitude…"></td>
-            <td class="c-suppr"><button class="icone-petit" data-supprimer-eleve="${el.id}" title="Supprimer l’élève" aria-label="Supprimer l’élève">🗑</button></td>
+            <td class="c-suppr">${ListeClasse.aDesInfos(el) ? `<button class="icone-petit" data-contacts="${el.id}" title="Naissance, dispositifs, responsables" aria-label="Fiche de ${esc(el.nom)}">📇</button>` : ''}<button class="icone-petit" data-supprimer-eleve="${el.id}" title="Supprimer l’élève" aria-label="Supprimer l’élève">🗑</button></td>
           </tr>`;
         }).join('')}
         </tbody>
       </table></div>`
     : `<div class="vide"><p>Aucun élève pour l’instant.</p>
-        <p class="aide">Astuce : copie la liste depuis Pronote ou un tableur, puis « Coller une liste ».</p></div>`}`;
+        <p class="aide">Astuce : « 📥 École Directe » avec la liste de classe exportée (.xlsx), ou copie la liste depuis Pronote ou un tableur, puis « Coller une liste ».</p></div>`}`;
 }
 
 function majPastille() {
@@ -838,7 +904,7 @@ function majPastille() {
   const [etat, texte, info] =
     etatAuto === 'encours' ? ['encours', 'Enregistrement…', 'Enregistrement sur la clé en cours']
     : !m.dernierEnvoi ? ['jamais', 'Ma clé', 'Ce carnet n’a encore jamais été enregistré sur une clé — cliquer pour récupérer ou enregistrer']
-    : m.modifieLe <= m.dernierEnvoi ? ['ok', 'À jour · ' + heure(m.dernierEnvoi), 'Tout est sur la clé — dernier enregistrement : ' + dateHeure(m.dernierEnvoi)]
+    : m.modifieLe <= m.dernierEnvoi ? ['ok', 'À jour · ' + quandCourt(m.dernierEnvoi), 'Tout est sur la clé — dernier enregistrement : ' + dateHeure(m.dernierEnvoi)]
     : etatAuto === 'erreur' ? ['erreur', 'Clé absente ?', 'Enregistrement impossible : branche la clé puis clique ici']
     : ['attente', 'À enregistrer', 'Des modifications ne sont pas encore sur la clé — cliquer pour enregistrer'];
   const b = $('#btn-sauver');
@@ -985,9 +1051,17 @@ async function editerClasse(id) {
       <p class="aide">Ex. avec cette classe, « 3 dès 12 » : un 12/20 pré-remplit le degré 3. S’applique aux évaluations de la classe
         (sauf celles où tu as réglé d’autres seuils). Les degrés choisis à la main ne bougent pas.</p>
     </fieldset>`,
-  boutonsModale(id ? 'Enregistrer' : 'Créer', id ? BOUTON_SUPPRIMER : ''), 'modale-large');
+  boutonsModale(id ? 'Enregistrer' : 'Créer', id
+    ? BOUTON_SUPPRIMER + (elevesDe(id).some(el => el.responsables)
+      ? '<button value="effacer-coord" formnovalidate title="Retire téléphones, emails et adresses des responsables de toute la classe">Effacer les coordonnées</button>' : '')
+    : '<button value="ecole-directe" formnovalidate title="Créer la classe et ses élèves à partir de la liste exportée d’École Directe (.xlsx)">📥 Depuis École Directe…</button>'), 'modale-large');
   const r = await resultat;
-  if (r.action === 'supprimer') {
+  if (r.action === 'ecole-directe') return ListeClasse.choisirFichier(null);
+  if (r.action === 'effacer-coord') {
+    if (!(await confirmer(`Effacer les coordonnées des responsables (téléphones, emails, adresses) de toute la classe « ${c.nom} » ?`, 'Effacer'))) return;
+    const n = ListeClasse.effacerCoordonnees(id);
+    toast(`Coordonnées effacées pour ${n} élève${n > 1 ? 's' : ''}.`, 'ok');
+  } else if (r.action === 'supprimer') {
     if (!(await confirmer(`Supprimer la classe « ${c.nom} », ses élèves et toutes ses notes ?`))) return;
     const eleves = new Set(elevesDe(id).map(el => el.id));
     supprimerNotes(n => eleves.has(n.eleveId));
@@ -1703,9 +1777,10 @@ function basculerMenu(ouvrir) {
 }
 
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-action],[data-classe],[data-modif-classe],[data-eval-entete],[data-supprimer-eleve],button[data-vue],[data-editer-dispense],[data-replier-dispense],[data-editer-adaptation],[data-editer-besoin],[data-voir-besoin],[data-monter],[data-descendre],[data-seance-entete]');
+  const t = e.target.closest('[data-action],[data-classe],[data-modif-classe],[data-eval-entete],[data-supprimer-eleve],button[data-vue],[data-editer-dispense],[data-replier-dispense],[data-editer-adaptation],[data-editer-besoin],[data-voir-besoin],[data-monter],[data-descendre],[data-seance-entete],[data-contacts]');
   if (!t || t.closest('dialog')) return;
   const ds = t.dataset;
+  if (ds.contacts) return lancer(() => ListeClasse.voir(ds.contacts));
   if (ds.seanceEntete) return lancer(() => editerSeance(ds.seanceEntete));
   if (ds.monter) return deplacerEleve(ds.monter, -1);
   if (ds.descendre) return deplacerEleve(ds.descendre, 1);
@@ -1733,8 +1808,10 @@ document.addEventListener('click', e => {
     case 'ajout-eval': return lancer(() => editerEval());
     case 'periodes': return lancer(editerPeriodes);
     case 'ajout-seance': return lancer(() => editerSeance());
+    case 'excel-ent': return lancer(echangeExcel);
     case 'ajout-eleve': return lancer(ajouterEleve);
     case 'coller-liste': return lancer(collerListe);
+    case 'import-ed': return ListeClasse.choisirFichier(classeActive());
     case 'vue-eleves': ui.vue = 'eleves'; memoriserUi(); return rendre();  }
 });
 

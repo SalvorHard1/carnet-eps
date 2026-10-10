@@ -190,6 +190,7 @@ function htmlEntrainement(c) {
     <div class="outils">
       <h2>${esc(c.nom)}</h2>
       <button class="primaire" data-action="ajout-seance">+ Séance</button>
+      <button data-action="excel-ent" title="Exporter ou importer le carnet d’entraînement de la classe (classeur Excel)">⇅ Excel</button>
       ${exercices.length ? `<label class="choix-tri">Exercice
         <select data-filtre-exercice="${c.id}">
           <option value="">Toutes (${toutes.length} séance${toutes.length > 1 ? 's' : ''})</option>
@@ -927,6 +928,320 @@ document.addEventListener('click', e => {
   const id = th.closest('tr').querySelector('[data-eleve]')?.dataset.eleve;
   if (id) lancer(() => ficheEleve(id));
 });
+
+/* ---------- Échange avec Excel : le carnet d'entraînement d'une classe en classeur .xlsx ----------
+   Un onglet « Lisez-moi », puis un onglet par séance : élèves en lignes, une colonne par donnée relevée.
+   Une ligne « Type » (visible) décrit chaque donnée ; la colonne A et une ligne masquées gardent les identifiants,
+   pour qu'un fichier réimporté mette à jour ses séances au lieu de les doubler.
+   À l'import, rien n'est effacé : une case vide dans le fichier laisse la valeur du carnet telle quelle.
+   Les élèves sont reconnus par leur identifiant, sinon par nom + prénom (sans tenir compte des accents). */
+
+const sansAccent = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toLowerCase().replace(/[’`]/g, '\'').replace(/\s+/g, ' ').trim();
+const LIB_TYPES = { temps: 'Temps', distance: 'Distance', nombre: 'Nombre', echelle: 'Échelle 1 à 4', choix: 'Choix', texte: 'Texte' };
+const STATUTS_PAR_NOM = Object.fromEntries(Object.entries(STATUTS_ENT).map(([code, nom]) => [sansAccent(nom), code]));
+const dateFr = d => (d ? d.split('-').reverse().join('/') : '');
+
+function typeEnTexte(ind) {
+  if (ind.type === 'choix') return `${ind.suivi ? 'Choix ordonné' : 'Choix'} : ${(ind.options || []).join(' / ')}`;
+  return LIB_TYPES[ind.type] + (ind.unite ? ` (${ind.unite})` : '') + (ind.etape ? ' — ' + texteIndic(ind) : '');
+}
+
+function texteEnType(texte) {
+  const t = String(texte || '');
+  const i = t.indexOf(':');
+  const genre = i < 0 ? t : t.slice(0, i), suite = i < 0 ? '' : t.slice(i + 1);
+  const mot = sansAccent(genre), unite = genre.match(/\(([^)]*)\)/)?.[1]?.trim();
+  if (mot.startsWith('choix')) {
+    return { type: 'choix', options: suite.split('/').map(o => o.trim()).filter(Boolean), ...(mot.includes('ordonn') ? { suivi: true } : {}) };
+  }
+  if (mot.startsWith('echelle')) return { type: 'echelle' };
+  if (mot.startsWith('temps') || mot.startsWith('duree')) return { type: 'temps' };
+  for (const type of ['distance', 'nombre']) if (mot.startsWith(type)) return { type, ...(unite ? { unite } : {}) };
+  return { type: 'texte' };
+}
+
+// Valeur du carnet → case Excel (les nombres restent des nombres, les temps s'écrivent 3:45).
+function valeurExcel(ind, v) {
+  if (!v) return { v: '', style: 'texte' };
+  if (ind.type === 'temps') return { v: formatTemps(v), style: 'texte' };
+  if (ind.type === 'distance' || ind.type === 'nombre' || ind.type === 'echelle') return { v: +v, style: 'texte' };
+  return { v, style: 'texte' };
+}
+
+// Case Excel → valeur du carnet : { v } ou { erreur }. Case vide → null (on ne touche à rien).
+function valeurDepuisExcel(ind, brut) {
+  if (!brut) return null;
+  if (ind.type === 'temps' && /^\d*\.\d+(e-\d+)?$/i.test(brut) && +brut > 0 && +brut < 1) {
+    // Excel a pris « 3:45 » pour une heure (3 h 45) : en EPS, c'est 3 min 45 s.
+    return { v: String(Math.round(+brut * 1440 * 100) / 100) };
+  }
+  if (ind.type === 'echelle') {
+    const n = +brut.replace(',', '.');
+    return Number.isInteger(n) && n >= 1 && n <= 4 ? { v: String(n) } : { erreur: true };
+  }
+  if (ind.type === 'choix' || ind.type === 'texte') return { v: brut };
+  const v = convertir(ind, brut);
+  return v === null ? { erreur: true } : { v };
+}
+
+function lireDateExcel(brut) {
+  const t = String(brut || '').trim();
+  let m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
+  if (m) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[0];
+  if (/^\d{5}(\.\d+)?$/.test(t)) return new Date(Date.UTC(1899, 11, 30) + Math.floor(+t) * 86400000).toISOString().slice(0, 10);
+  return '';
+}
+
+function exporterExcel(c) {
+  const eleves = elevesDe(c.id), seances = seancesDe(c.id);
+  if (!seances.length) return toast('Aucune séance à exporter pour cette classe.', 'erreur');
+  const T = v => ({ v, style: 'texte' }), E = v => ({ v, style: 'entete' }), A = v => ({ v, style: 'aide' });
+  const lisezMoi = {
+    nom: 'Lisez-moi', largeurs: [100],
+    lignes: [
+      [{ v: `Carnet EPS — entraînement de la classe ${c.nom}`, style: 'titre' }],
+      [A(`Exporté le ${dateHeure(Date.now())} · ${seances.length} séance${seances.length > 1 ? 's' : ''} · ${eleves.length} élèves`)],
+      [],
+      [E('Comment s’en servir')],
+      ['Un onglet par séance : une ligne par élève, une colonne par donnée relevée. La ligne « Type » dit ce qu’on attend dans la colonne.'],
+      ['Temps : 3:45 ou 12,5 · Échelle : 1, 2, 3 ou 4 · Choix : une des réponses listées · Statut : ABS, DISP, Blessé, Malade ou Autre.'],
+      ['Tu peux compléter ou corriger les cases, ajouter des élèves (nom et prénom) ou un onglet de séance construit sur le même modèle.'],
+      ['Ne supprime pas la colonne A ni les lignes masquées : elles permettent à l’appli de reconnaître les séances et les élèves.'],
+      ['Pour le reprendre : Carnet EPS › onglet Entraînement › bouton « Excel » › Importer. Une case vide ne supprime rien dans le carnet.'],
+      [],
+      [{ v: '⚠ Ce fichier n’est pas chiffré (contrairement au carnet sur la clé) : ne le laisse pas traîner, supprime-le après usage.', style: 'entete' }],
+      [],
+      [E('Séances')],
+      ...seances.map(s => [`${dateFr(s.date)} — ${s.titre}${s.apsa && s.apsa !== s.titre ? ' (' + s.apsa + ')' : ''}`]),
+    ],
+  };
+  const feuilles = seances.map(s => {
+    const inds = s.indicateurs;
+    return {
+      nom: `${dateFr(s.date).slice(0, 5).replace('/', '-')} ${s.titre}`,
+      largeurs: [10, 18, 16, 11, ...inds.map(ind => (ind.type === 'texte' ? 30 : 14))],
+      colonnesMasquees: [0], lignesMasquees: [7], figer: [4, 7],
+      lignes: [
+        ['#seance', E('Séance'), { v: s.titre, style: 'titre' }],
+        [s.id, E('Date'), T(dateFr(s.date))],
+        ['', E('APSA'), T(s.apsa || '')],
+        ['', E('Documents'), A(docsDe(s).map(d => d.nom).join(', ') || '—')],
+        [],
+        ['#eleve', E('Nom'), E('Prénom'), E('Statut'), ...inds.map(ind => E(ind.nom))],
+        ['#type', A('Type'), A(''), A('ABS / DISP / Blessé / Malade / Autre'), ...inds.map(ind => A(typeEnTexte(ind)))],
+        ['#donnee', '', '', '', ...inds.map(ind => ind.id)],
+        ...eleves.map(el => {
+          const st = statutEnt(s.id, el.id);
+          return [el.id, T(el.nom), T(el.prenom || ''), T(st ? STATUTS_ENT[st] : ''), ...inds.map(ind => valeurExcel(ind, Donnees.note(s.id, el.id, ind.id)))];
+        }),
+      ],
+    };
+  });
+  const blob = Tableur.ecrire([lisezMoi, ...feuilles]);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new File([blob], `Entraînement ${c.nom} ${aujourdhui()}.xlsx`, { type: blob.type }));
+  a.download = `Entraînement ${c.nom} ${aujourdhui()}.xlsx`.replace(/[\\/:*?"<>|]/g, '-');
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  toast(`Classeur exporté (${seances.length} séance${seances.length > 1 ? 's' : ''}). Il n’est pas chiffré : ne le laisse pas traîner.`, 'ok');
+}
+
+// Onglets du classeur → séances lues (les onglets sans ligne « Nom / Prénom » sont ignorés).
+function lireSeancesExcel(feuilles) {
+  const res = [];
+  for (const f of feuilles) {
+    const L = f.lignes;
+    const h = L.findIndex(l => sansAccent(l[1]) === 'nom' && sansAccent(l[2]).startsWith('prenom'));
+    if (h < 0) continue;
+    const meta = {};
+    let fichierId = '';
+    for (const l of L.slice(0, h)) {
+      const cle = sansAccent(l[1]);
+      if (cle) meta[cle] = l[2] || '';
+      if (l[0] && !l[0].startsWith('#')) fichierId ||= l[0];
+    }
+    const typeL = L.slice(h + 1).find(l => l[0] === '#type' || sansAccent(l[1]) === 'type');
+    const idsL = L.slice(h + 1).find(l => l[0] === '#donnee');
+    const colonnes = [];
+    for (let k = 4; k < L[h].length; k++) {
+      if (!L[h][k]) continue;
+      colonnes.push({ k, nom: L[h][k], id: idsL?.[k] || '', ...texteEnType(typeL?.[k]) });
+    }
+    const lignes = L.slice(h + 1).filter(l => l && l !== typeL && l !== idsL && (l[1] || l[2]))
+      .map(l => ({ id: l[0] && !l[0].startsWith('#') ? l[0] : '', nom: l[1] || '', prenom: l[2] || '', statut: l[3] || '',
+        valeurs: colonnes.map(col => l[col.k] || '') }));
+    res.push({
+      onglet: f.nom, fichierId, titre: (meta['seance'] || f.nom).trim(),
+      date: lireDateExcel(meta['date']) || aujourdhui(), apsa: (meta['apsa'] || '').trim(), colonnes, lignes,
+    });
+  }
+  return res;
+}
+
+// Prépare l'import dans la classe c : séances à créer / mettre à jour, élèves reconnus ou inconnus.
+function preparerImport(lues, c) {
+  const eleves = elevesDe(c.id);
+  const parId = new Map(eleves.map(el => [el.id, el]));
+  const parNom = new Map(eleves.map(el => [sansAccent(el.nom) + '|' + sansAccent(el.prenom), el]));
+  const inconnus = new Map(), reconnus = new Set();
+  const existantes = seancesDe(c.id);
+  const seances = lues.map(x => {
+    const parFichier = x.fichierId && Donnees.get('seances', x.fichierId);
+    const cible = parFichier?.classeId === c.id ? parFichier
+      : existantes.find(s => sansAccent(s.titre) === sansAccent(x.titre) && s.date === x.date) || null;
+    // Séance d'un autre carnet : on garde son identifiant (un 2e import la met à jour au lieu de la doubler).
+    const id = cible?.id || (x.fichierId && !Donnees.get('seances', x.fichierId) ? x.fichierId : Donnees.nouvelId());
+    for (const l of x.lignes) {
+      const cle = sansAccent(l.nom) + '|' + sansAccent(l.prenom);
+      l.eleve = (l.id && parId.get(l.id)) || parNom.get(cle) || null;
+      if (l.eleve) reconnus.add(l.eleve.id); else inconnus.set(cle, { nom: l.nom, prenom: l.prenom });
+      l.cle = cle;
+    }
+    return { ...x, id, cible };
+  });
+  return { seances, reconnus, inconnus };
+}
+
+// Données de la séance après import : celles du fichier (dans son ordre), puis celles du carnet absentes du fichier.
+function fusionnerIndicateurs(x, cible) {
+  const avant = cible?.indicateurs || [];
+  const sn = estSavoirNager(x.apsa || cible?.apsa);
+  const pris = new Set();
+  const inds = x.colonnes.map(col => {
+    const etape = sn && col.type === 'echelle' ? ETAPES_SN.find(e => e.id === col.id || e.code === col.nom.trim().toUpperCase()) : null;
+    const neuf = etape ? indicEtape(etape)
+      : { id: col.id, nom: col.nom.trim(), type: col.type, ...(col.unite ? { unite: col.unite } : {}),
+        ...(col.type === 'choix' ? { options: col.options } : {}), ...(col.suivi ? { suivi: true } : {}) };
+    const deja = avant.find(a => !pris.has(a.id) && (a.id === neuf.id || cleIndic(a) === cleIndic(neuf)));
+    let ind = deja ? { ...deja } : neuf;
+    if (deja && ind.type === 'choix') ind.options = [...new Set([...(deja.options || []), ...(neuf.options || [])])];
+    if (!ind.id || pris.has(ind.id)) ind = { ...ind, id: 'i' + Donnees.nouvelId().slice(0, 8) };
+    pris.add(ind.id);
+    col.ind = ind;
+    return ind;
+  });
+  return [...inds, ...avant.filter(a => !pris.has(a.id))];
+}
+
+function appliquerImport(plan, c, { structure, ajouterInconnus }) {
+  const bilan = { creees: 0, majs: 0, valeurs: 0, erreurs: [], ajoutes: 0 };
+  if (!structure && ajouterInconnus) {
+    let ordre = prochainOrdre(c.id);
+    for (const [cle, el] of plan.inconnus) {
+      const nouveau = Donnees.ecrire('eleves', { id: Donnees.nouvelId(), classeId: c.id, remarque: '', nom: majuscules(el.nom), prenom: el.prenom.trim(), sexe: '', ordre: ordre++ });
+      for (const x of plan.seances) for (const l of x.lignes) if (!l.eleve && l.cle === cle) l.eleve = nouveau;
+      bilan.ajoutes++;
+    }
+  }
+  for (const x of plan.seances) {
+    const indicateurs = fusionnerIndicateurs(x, x.cible);
+    const s = x.cible || {};
+    Donnees.ecrire('seances', {
+      ...s, id: x.id, classeId: c.id, cree: s.cree || Date.now(), titre: x.titre, apsa: x.apsa, ca: caBrut(x.apsa) || s.ca || '',
+      date: x.date, indicateurs: indicateurs.length ? structuredClone(indicateurs) : [{ id: 'i1', nom: 'Observation', type: 'texte' }],
+      documents: s.documents || [],
+    });
+    if (x.cible) bilan.majs++; else bilan.creees++;
+    if (structure) continue;
+    for (const l of x.lignes) {
+      if (!l.eleve) continue;
+      const brutStatut = l.statut.trim();
+      if (brutStatut) {
+        const code = CODES_ENT[brutStatut.toLocaleUpperCase('fr')] || STATUTS_PAR_NOM[sansAccent(brutStatut)];
+        if (!code) bilan.erreurs.push(`${l.nom} ${l.prenom} (${x.titre}) : statut « ${brutStatut} »`);
+        else if (code !== statutEnt(x.id, l.eleve.id)) { Donnees.ecrireNote(x.id, l.eleve.id, code); bilan.valeurs++; }
+      }
+      x.colonnes.forEach((col, k) => {
+        const r = valeurDepuisExcel(col.ind, l.valeurs[k]);
+        if (!r) return;
+        if (r.erreur) return bilan.erreurs.push(`${l.nom} ${l.prenom} (${x.titre}, ${col.nom}) : « ${l.valeurs[k]} »`);
+        if (col.ind.type === 'choix' && !(col.ind.options || []).includes(r.v)) col.ind.options = [...(col.ind.options || []), r.v];
+        if (r.v !== Donnees.note(x.id, l.eleve.id, col.ind.id)) { Donnees.ecrireNote(x.id, l.eleve.id, r.v, col.ind.id); bilan.valeurs++; }
+      });
+    }
+    // (Réponses nouvelles ajoutées aux listes de choix pendant la lecture des valeurs.)
+    const s2 = Donnees.get('seances', x.id);
+    if (indicateurs.length && JSON.stringify(s2.indicateurs) !== JSON.stringify(indicateurs)) Donnees.ecrire('seances', { ...s2, indicateurs: structuredClone(indicateurs) });
+  }
+  return bilan;
+}
+
+async function importerExcel(c, fichier) {
+  let feuilles;
+  try { feuilles = await Tableur.lire(fichier); } catch (e) {
+    throw new Error(`« ${fichier.name} » n’a pas pu être lu : ${e.message || e}`);
+  }
+  const lues = lireSeancesExcel(feuilles);
+  if (!lues.length) throw new Error(`Aucune séance trouvée dans « ${fichier.name} » (il faut un onglet avec des colonnes « Nom » et « Prénom »).`);
+  const plan = preparerImport(lues, c);
+  const nbMaj = plan.seances.filter(x => x.cible).length, nbNeuves = plan.seances.length - nbMaj;
+  const totalEleves = plan.reconnus.size + plan.inconnus.size;
+  const inconnus = [...plan.inconnus.values()];
+  const { resultat } = ouvrirModale(`Importer dans ${c.nom}`, `
+    <p><b>${esc(fichier.name)}</b></p>
+    <ul class="bilan-import">
+      <li>${plan.seances.length} séance${plan.seances.length > 1 ? 's' : ''} :
+        ${nbNeuves ? `${nbNeuves} nouvelle${nbNeuves > 1 ? 's' : ''}` : ''}${nbNeuves && nbMaj ? ', ' : ''}${nbMaj ? `${nbMaj} déjà dans le carnet (mise${nbMaj > 1 ? 's' : ''} à jour)` : ''}</li>
+      <li>${plan.reconnus.size} élève${plan.reconnus.size > 1 ? 's' : ''} reconnu${plan.reconnus.size > 1 ? 's' : ''} sur ${totalEleves}</li>
+    </ul>
+    <fieldset class="choix-import"><legend>Que reprendre ?</legend>
+      <label class="case"><input type="radio" name="quoi" value="tout" checked><span>Les séances <b>et les résultats</b> des élèves</span></label>
+      <label class="case"><input type="radio" name="quoi" value="structure"><span>Seulement <b>les séances</b> (titres, dates, données à relever) — pour reprendre la séquence d’un collègue avec tes élèves</span></label>
+    </fieldset>
+    ${inconnus.length ? `<div class="inconnus-import">
+      <p>${inconnus.length} élève${inconnus.length > 1 ? 's' : ''} du fichier ne ${inconnus.length > 1 ? 'sont' : 'est'} pas dans ${esc(c.nom)} :
+        <span class="aide">${inconnus.slice(0, 12).map(el => esc(`${el.nom} ${el.prenom}`.trim())).join(', ')}${inconnus.length > 12 ? '…' : ''}</span></p>
+      <label class="case"><input type="checkbox" name="ajouter"> Les ajouter à la classe (sinon leurs lignes sont ignorées)</label>
+    </div>` : ''}
+    <p class="aide">Rien n’est effacé : une case vide dans le fichier laisse la valeur du carnet telle quelle.</p>`,
+  boutonsModale('Importer'));
+  const r = await resultat;
+  if (r.action !== 'ok') return;
+  const bilan = appliquerImport(plan, c, { structure: r.data.quoi === 'structure', ajouterInconnus: r.data.ajouter === 'on' });
+  rendre();
+  const morceaux = [
+    bilan.creees && `${bilan.creees} séance${bilan.creees > 1 ? 's' : ''} ajoutée${bilan.creees > 1 ? 's' : ''}`,
+    bilan.majs && `${bilan.majs} mise${bilan.majs > 1 ? 's' : ''} à jour`,
+    r.data.quoi !== 'structure' && `${bilan.valeurs} case${bilan.valeurs > 1 ? 's' : ''} remplie${bilan.valeurs > 1 ? 's' : ''} ou corrigée${bilan.valeurs > 1 ? 's' : ''}`,
+    bilan.ajoutes && `${bilan.ajoutes} élève${bilan.ajoutes > 1 ? 's' : ''} ajouté${bilan.ajoutes > 1 ? 's' : ''}`,
+  ].filter(Boolean);
+  if (!bilan.erreurs.length) return toast('Import terminé : ' + morceaux.join(', ') + '.', 'ok');
+  ouvrirModale('Import terminé', `<p>${esc(morceaux.join(', '))}.</p>
+    <p>${bilan.erreurs.length} case${bilan.erreurs.length > 1 ? 's' : ''} illisible${bilan.erreurs.length > 1 ? 's' : ''}, laissée${bilan.erreurs.length > 1 ? 's' : ''} de côté :</p>
+    <ul class="erreurs-import">${bilan.erreurs.slice(0, 30).map(e => `<li>${esc(e)}</li>`).join('')}${bilan.erreurs.length > 30 ? '<li>…</li>' : ''}</ul>`,
+  '<span class="espace"></span><button type="button" data-fermer class="primaire">OK</button>');
+}
+
+// Bouton « Excel » de l'onglet Entraînement.
+async function echangeExcel() {
+  const c = classeActive();
+  let fichier = null;
+  const { d, resultat } = ouvrirModale(`Excel — entraînement ${c.nom}`, `
+    <div class="bloc-excel">
+      <h3>⬇ Exporter</h3>
+      <p class="aide">Toutes les séances de la classe dans un classeur .xlsx (un onglet par séance) : à garder, à ouvrir dans Excel
+        ou LibreOffice, à donner à un collègue. Les documents joints (📎) n’y sont pas.</p>
+      <p class="aide">⚠ Le classeur n’est pas chiffré, contrairement au carnet sur la clé : ne le laisse pas traîner.</p>
+      <button value="exporter" class="primaire">Exporter ${esc(c.nom)}</button>
+    </div>
+    <div class="bloc-excel">
+      <h3>⬆ Importer</h3>
+      <p class="aide">Un classeur exporté par Carnet EPS (le tien, éventuellement complété dans Excel, ou celui d’un collègue).
+        Tu verras ce qui sera repris avant de valider.</p>
+      <label class="bouton primaire">Choisir un fichier .xlsx…<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-fichier-excel hidden></label>
+    </div>`,
+  '<span class="espace"></span><button type="button" data-fermer>Fermer</button>');
+  d.querySelector('[data-fichier-excel]').addEventListener('change', e => {
+    fichier = e.target.files[0] || null;
+    if (fichier) d.fermer();
+  });
+  const r = await resultat;
+  if (r.action === 'exporter') return exporterExcel(c);
+  if (fichier) return importerExcel(c, fichier);
+}
 
 /* ---------- Conversion des séances de la v0.13.0 (une seule mesure par séance) ---------- */
 
