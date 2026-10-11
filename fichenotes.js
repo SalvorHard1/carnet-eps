@@ -33,9 +33,77 @@ function tendanceNotes(valeurs) {
   return pente * (n - 1);
 }
 
+/* ---------- Lien avec les leçons : présence, blessures, maladies ----------
+   Une leçon compte « blessé / malade » si le statut est posé sur toute la leçon, ou sur une case seulement
+   (ex. blessée après sa première course). Les évaluations notées B / M s'y ajoutent. */
+
+const SANTE = ['BLE', 'MAL'];
+function bilanLecons(el, periode) {
+  const seances = seancesDe(el.classeId).filter(s => periode === 'annee' || periodeDe(s.date) === periode);
+  const statuts = {}, enCours = {}, jours = [], parApsa = new Map();
+  let presences = 0;
+  for (const s of seances) {
+    const a = apsaDe(s);
+    if (!parApsa.has(a)) parApsa.set(a, { total: 0, presences: 0, statuts: {} });
+    const pa = parApsa.get(a);
+    pa.total++;
+    const st = statutEnt(s.id, el.id);
+    if (st) {
+      statuts[st] = (statuts[st] || 0) + 1;
+      pa.statuts[st] = (pa.statuts[st] || 0) + 1;
+      if (SANTE.includes(st)) jours.push({ date: s.date, code: st, quoi: s.titre });
+      continue;
+    }
+    presences++; pa.presences++;
+    // Statut posé sur une case seulement : présent, mais arrêté en cours de leçon.
+    const cases = new Set((s.indicateurs || []).map(ind => statutCase(Donnees.note(s.id, el.id, ind.id) || '')).filter(Boolean));
+    for (const c of cases) {
+      enCours[c] = (enCours[c] || 0) + 1;
+      if (SANTE.includes(c)) jours.push({ date: s.date, code: c, quoi: s.titre + ' (en cours de leçon)' });
+    }
+  }
+  const sante = SANTE.reduce((n, c) => n + (statuts[c] || 0) + (enCours[c] || 0), 0);
+  return { total: seances.length, presences, statuts, enCours, sante, jours: jours.sort((x, y) => (x.date || '').localeCompare(y.date || '')), parApsa };
+}
+
+function htmlLeconsFiche(el, periode, moy) {
+  const b = bilanLecons(el, periode);
+  const santeNotes = evalsDe(el.classeId).filter(e => (periode === 'annee' || periodeDe(e.date) === periode) && SANTE.includes(Donnees.note(e.id, el.id)))
+    .map(e => ({ date: e.date, code: Donnees.note(e.id, el.id), quoi: e.titre + ' (évaluation)' }));
+  if (!b.total && !santeNotes.length) return '';
+  const nomStatut = c => (CODES[c] || STATUTS_ENT[c] || c).toLowerCase();
+  const liste = o => Object.entries(o).map(([c, n]) => `${n} ${nomStatut(c)}`).join(' · ');
+  let html = '<h3>Leçons <span class="aide">présence et santé</span></h3>';
+  if (b.total) {
+    html += `<p class="fiche-presence">Présent à <b>${b.presences} leçon${b.presences > 1 ? 's' : ''} sur ${b.total}</b>${
+      Object.keys(b.statuts).length ? ' · ' + esc(liste(b.statuts)) : ''}${
+      Object.keys(b.enCours).length ? ` · arrêté en cours de leçon : ${esc(liste(b.enCours))}` : ''}</p>`;
+  }
+  // Alerte : souvent blessé ou malade (leçons et évaluations), surtout quand les notes, elles, sont bonnes.
+  const nSante = b.sante + santeNotes.length, base = b.total + santeNotes.length;
+  if (nSante >= 2 && nSante / Math.max(1, base) >= 0.2) {
+    const bonnes = moy !== null && moy >= seuilsClasse(Donnees.get('classes', el.classeId))[1];
+    html += `<div class="alerte-sante">⚠ <b>${esc(el.prenom)} est souvent blessé${el.sexe === 'F' ? 'e' : el.sexe === 'G' ? '' : '·e'} ou malade</b> :
+      ${nSante} fois sur la période (${b.sante ? `${b.sante} leçon${b.sante > 1 ? 's' : ''}` : ''}${b.sante && santeNotes.length ? ', ' : ''}${
+      santeNotes.length ? `${santeNotes.length} évaluation${santeNotes.length > 1 ? 's' : ''}` : ''}).
+      ${bonnes ? `Les notes sont bonnes (${fmt1(moy)}/20), mais elles ne montrent pas ce temps de pratique manqué.` : ''}
+      Si cela se répète, cela peut valoir la peine d’en parler (famille, infirmerie, professeur principal).</div>`;
+  }
+  const jours = [...b.jours, ...santeNotes].sort((x, y) => (x.date || '').localeCompare(y.date || ''));
+  if (jours.length) {
+    html += `<ul class="liste-fiche">${jours.map(j => `<li><span class="code-fiche code-${j.code}">${esc(CODES[j.code])}</span>
+      <span class="aide">${dateCourte(j.date)}</span> · ${esc(j.quoi)}</li>`).join('')}</ul>`;
+  }
+  if (b.parApsa.size > 1) {
+    html += `<table class="tableau-fiche"><tbody>${[...b.parApsa].map(([a, x]) => `<tr><th>${esc(a)}</th>
+      <td>présent ${x.presences}/${x.total}${Object.keys(x.statuts).length ? ` <span class="aide">· ${esc(liste(x.statuts))}</span>` : ''}</td></tr>`).join('')}</tbody></table>`;
+  }
+  return html;
+}
+
 function htmlFicheNotes(el, periode, eleves) {
   const toutes = evalsDe(el.classeId), evals = periode === 'annee' ? toutes : toutes.filter(e => periodeDe(e.date) === periode);
-  if (!evals.length) return `<p class="aide">Aucune évaluation ${periode === 'annee' ? 'pour cette classe' : 'sur cette période'}.</p>`;
+  if (!evals.length) return `<p class="aide">Aucune évaluation ${periode === 'annee' ? 'pour cette classe' : 'sur cette période'}.</p>` + htmlLeconsFiche(el, periode, null);
   const moy = moyenneEleve(el.id, evals);
   const moyennesClasse = eleves.map(x => moyenneEleve(x.id, evals)).filter(m => m !== null);
   const moyClasse = moyennesClasse.length ? moyennesClasse.reduce((a, b) => a + b, 0) / moyennesClasse.length : null;
@@ -68,9 +136,16 @@ function htmlFicheNotes(el, periode, eleves) {
     : tendance <= -1 ? `<span class="tendance regres">↘ en baisse (${fmt1(tendance)})</span>` : '<span class="tendance">= stable</span>';
   let html = `<div class="chiffres-fiche">
     <div><span class="aide">Moyenne</span><b>${fmt1(moy)}<small>/20</small></b><span class="aide">classe ${fmt1(moyClasse)}${ecart !== null ? ` · ${ecart >= 0 ? '+' : ''}${fmt1(ecart)}` : ''}</span></div>
-    <div><span class="aide">Compétences validées</span><b>${validees.length}<small>/${evaluees.length}</small></b><span class="aide">degré 3 ou 4 au dernier relevé</span></div>
+    ${evaluees.length ? `<div><span class="aide">Compétences validées</span><b>${validees.length}<small>/${evaluees.length}</small></b><span class="aide">degré 3 ou 4 au dernier relevé</span></div>` : ''}
     <div><span class="aide">Évaluations</span><b>${notees.length}<small>/${evals.length}</small></b><span class="aide">${Object.entries(statuts).map(([c, k]) => `${k} ${CODES[c].toLowerCase()}`).join(' · ') || 'toutes notées'}</span></div>
+    ${(() => {
+      const b = bilanLecons(el, periode);
+      return b.total ? `<div><span class="aide">Leçons</span><b>${b.presences}<small>/${b.total}</small></b><span class="aide">${
+        b.sante ? `${b.sante} blessé / malade` : 'présent'}${b.statuts.ABS ? ` · ${b.statuts.ABS} absent` : ''}</span></div>` : '';
+    })()}
   </div>`;
+  // Lien avec les leçons (présence, blessures, maladies), juste sous les chiffres pour être vu.
+  html += htmlLeconsFiche(el, periode, moy);
 
   // Évolution
   if (notees.length >= 2) {

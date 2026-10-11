@@ -7,7 +7,10 @@
 //   au lieu de les doubler. À l'import, rien n'est effacé : une case vide laisse la valeur du carnet telle quelle.
 // (Fichier chargé avant app.js ; il se sert aussi des outils Excel d'entrainement.js : sansAccent, dateFr, lireDateExcel.)
 
-const CODES_NOTE_EXCEL = { A: 'ABS', ABS: 'ABS', ABSENT: 'ABS', D: 'DISP', DISP: 'DISP', 'DISPENSÉ': 'DISP', DISPENSE: 'DISP', N: 'NE', NE: 'NE', NN: 'NE', 'NON NOTÉ': 'NE', 'NON NOTE': 'NE' };
+const CODES_NOTE_EXCEL = { A: 'ABS', ABS: 'ABS', ABSENT: 'ABS', D: 'DISP', DISP: 'DISP', 'DISPENSÉ': 'DISP', DISPENSE: 'DISP', N: 'NE', NE: 'NE', NN: 'NE', 'NON NOTÉ': 'NE', 'NON NOTE': 'NE',
+  B: 'BLE', BLE: 'BLE', 'BLESSÉ': 'BLE', BLESSE: 'BLE', M: 'MAL', MAL: 'MAL', MALADE: 'MAL', O: 'AUT', AUT: 'AUT', AUTRE: 'AUT' };
+// Raisons de santé (dispensé, blessé, malade) : « NE » dans un classeur anonyme.
+const CODES_SANTE = ['DISP', 'BLE', 'MAL'];
 
 function exporterNotesExcel(c, { anonyme = false } = {}) {
   const evals = evalsDe(c.id);
@@ -17,7 +20,7 @@ function exporterNotesExcel(c, { anonyme = false } = {}) {
   const eleves = anon ? anon.eleves : elevesDe(c.id);
   const nomEl = el => T(anon ? anon.nom(el) : el.nom), prenomEl = el => T(anon ? '' : el.prenom || ''), idEl = el => (anon ? '' : el.id);
   // Anonyme : « DISP » (dispense, donc santé) devient « NE » (non noté).
-  const noteExportee = n => (anonyme && n === 'DISP' ? 'NE' : n);
+  const noteExportee = n => (anonyme && CODES_SANTE.includes(n) ? 'NE' : n);
   const prof = anonyme ? '' : reglage('apparence').prof;
   const lisezMoi = {
     nom: 'Lisez-moi', largeurs: [100],
@@ -29,7 +32,7 @@ function exporterNotesExcel(c, { anonyme = false } = {}) {
       [E('Comment s’en servir')],
       ['Onglet « Synthèse » : les notes de toutes les évaluations et les moyennes (à lire seulement : il n’est pas repris à l’import).'],
       ['Puis un onglet par évaluation : une ligne par élève, la note, puis un degré de maîtrise par compétence.'],
-      [`Note : un nombre (jusqu’au barème « Noté sur »), ou ${anonyme ? 'ABS, NE' : 'ABS, DISP, NE'} · Degré : 1, 2, 3 ou 4.`],
+      [`Note : un nombre (jusqu’au barème « Noté sur »), ou ${anonyme ? 'ABS, NE' : 'ABS, DISP, NE, BLE (blessé), MAL (malade), AUT (autre)'} · Degré : 1, 2, 3 ou 4.`],
       ...(anonyme ? [] : [
         ['Tu peux compléter ou corriger les cases, ajouter des élèves (nom et prénom) ou un onglet d’évaluation construit sur le même modèle.'],
         ['Ne supprime pas la colonne A ni les lignes masquées : elles permettent à l’appli de reconnaître les évaluations, les compétences et les élèves.'],
@@ -50,7 +53,7 @@ function exporterNotesExcel(c, { anonyme = false } = {}) {
     nom: 'Synthèse', largeurs: [10, 18, 16, ...evals.map(() => 12), ...moyennes.map(() => 11)], colonnesMasquees: [0], figer: [3, 3],
     lignes: [
       ['#synthese', { v: `Notes — ${c.nom}`, style: 'titre' }],
-      ['', A(`Moyennes sur 20, pondérées par les coefficients ; ${anonyme ? 'ABS et NE' : 'ABS, DISP et NE'} ne comptent pas.`)],
+      ['', A(`Moyennes sur 20, pondérées par les coefficients ; ${anonyme ? 'ABS et NE' : 'ABS, DISP, NE, BLE, MAL et AUT'} ne comptent pas.`)],
       ['#eleve', E('Nom'), E('Prénom'), ...evals.map(e => E(`${e.titre} (${dateFr(e.date).slice(0, 5)}) /${fmt(e.max)}`)), ...moyennes.map(m => E(m.titre))],
       ...eleves.map(el => [idEl(el), nomEl(el), prenomEl(el), ...evals.map(e => valeurSynthese(Donnees.note(e.id, el.id))),
         ...moyennes.map(m => { const v = moyenneEleve(el.id, m.evals); return v === null ? '' : Math.round(v * 100) / 100; })]),
@@ -72,7 +75,7 @@ function exporterNotesExcel(c, { anonyme = false } = {}) {
         [e.referentiel || '', E('Champ d’apprentissage'), T(e.ca ? `${e.ca}${ref?.champs[e.ca] ? ' — ' + ref.champs[e.ca].titre : ''}` : '')],
         [],
         ['#eleve', E('Nom'), E('Prénom'), E('Note'), ...comps.map(a => E(a.code))],
-        ['#type', A('Type'), A(''), A(`sur ${fmt(e.max)}, ou ${anonyme ? 'ABS / NE' : 'ABS / DISP / NE'}`), ...comps.map(a => A(`Degré 1 à 4 — ${a.texte}`))],
+        ['#type', A('Type'), A(''), A(`sur ${fmt(e.max)}, ou ${anonyme ? 'ABS / NE' : 'ABS / DISP / NE / BLE / MAL / AUT'}`), ...comps.map(a => A(`Degré 1 à 4 — ${a.texte}`))],
         [],
         ['#comp', '', '', '', ...comps.map(a => a.id)],
         ...eleves.map(el => {

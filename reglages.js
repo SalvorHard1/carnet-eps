@@ -218,7 +218,7 @@ function htmlReglageNotes(n) {
     <p class="aide">Coche les boutons à afficher ; tu peux les renommer (ex. « Autre » → « Natation »). Les lettres A, D, N… marchent toujours au clavier.</p>
     <div class="table-reglages">
       ${Object.entries(CODES_SAISIE).map(([code, nom]) => `
-        <label class="case"><input type="checkbox" name="code-${code}" ${n.codesMasques.includes(code) ? '' : 'checked'}> ${nom}${['BLE', 'MAL', 'AUT'].includes(code) ? ' <span class="aide">(leçons)</span>' : code === 'NE' ? ' <span class="aide">(notes)</span>' : ''}</label>
+        <label class="case"><input type="checkbox" name="code-${code}" ${n.codesMasques.includes(code) ? '' : 'checked'}> ${nom}${code === 'NE' ? ' <span class="aide">(notes)</span>' : ''}</label>
         <input name="lib-${code}" value="${esc(n.libelles[code] || '')}" placeholder="${nom}" aria-label="Nom affiché pour ${nom}" maxlength="20">`).join('')}
     </div>
     <h4>Alerte absences</h4>

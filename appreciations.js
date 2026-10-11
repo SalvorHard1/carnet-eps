@@ -255,9 +255,14 @@ function analyserAppr(el, periode, eleves) {
       const taux = presences / total;
       morceaux.push(`${Math.round(taux * 100)} % de présence aux leçons`);
       if (n === null) n = 3;
-      if (abs >= 3 || taux < 0.8) n = Math.min(n, 2);
+      // (Seules les absences comptent, pas les blessures ni les maladies ; une absence isolée ne suffit pas.)
+      if (abs >= 3 || (abs >= 2 && taux < 0.8)) n = Math.min(n, 2);
     }
     if (absNotes) morceaux.push(`${absNotes} absence${absNotes > 1 ? 's' : ''} à une évaluation`);
+    // Blessé / malade : signalé pour mémoire, sans baisser le niveau (ce n'est pas un manque d'engagement).
+    const sante = typeof bilanLecons === 'function' ? bilanLecons(el, periode).sante : 0;
+    const santeNotes = evals.filter(e => ['BLE', 'MAL'].includes(Donnees.note(e.id, el.id))).length;
+    if (sante + santeNotes) morceaux.push(`blessé / malade : ${sante + santeNotes} fois (leçons et évaluations), sans effet sur ce niveau`);
     if (mots.plus || mots.moins) {
       morceaux.push('observations : ' + mots.trouves.join(', '));
       n = Math.max(1, Math.min(4, (n ?? 3) + Math.sign(mots.plus - mots.moins) * (Math.abs(mots.plus - mots.moins) >= 2 ? 2 : 1)));

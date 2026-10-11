@@ -2,7 +2,7 @@
 // Stratégie « réseau d'abord » : tant que le serveur répond, on sert toujours les fichiers les plus récents
 // (les mises à jour s'appliquent donc d'elles-mêmes) ; sinon on se rabat sur la copie en cache (hors ligne).
 // Pour publier une mise à jour : augmenter VERSION (et VERSION_APP dans app.js).
-const VERSION = '0.58.1';
+const VERSION = '0.59.0';
 const CACHE = 'carnet-eps-' + VERSION;
 const FICHIERS = [
   './', 'index.html', 'style.css', 'donnees.js', 'cle.js', 'referentiel.js', 'tableur.js', 'entrainement.js', 'notesexcel.js', 'listeclasse.js', 'reglages.js', 'outils.js', 'edtpdf.js', 'agenda.js', 'fichenotes.js', 'appreciations.js', 'app.js',

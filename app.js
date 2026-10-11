@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.58.1'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.59.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -16,7 +16,7 @@ const APSA = [
   'Musculation', 'Step', 'Course en durée', 'Cross-training', 'Yoga', 'Relaxation',
 ];
 const CODES = { ABS: 'Absent', DISP: 'Dispensé', NE: 'Non noté', BLE: 'Blessé', MAL: 'Malade', AUT: 'Autre' };
-const RACCOURCIS = { A: 'ABS', ABS: 'ABS', D: 'DISP', DISP: 'DISP', N: 'NE', NE: 'NE', NN: 'NE' };
+const RACCOURCIS = { A: 'ABS', ABS: 'ABS', D: 'DISP', DISP: 'DISP', N: 'NE', NE: 'NE', NN: 'NE', B: 'BLE', BLE: 'BLE', M: 'MAL', MAL: 'MAL', O: 'AUT', AUT: 'AUT' };
 
 class Annule extends Error {}
 let mdpSession = null; // gardé en mémoire seulement le temps de la session
@@ -610,7 +610,7 @@ function htmlNotes(c) {
       <button class="icone-petit" data-action="periodes" title="Régler les trimestres / semestres" aria-label="Régler les périodes">⚙</button>
       <button data-modif-classe="${c.id}" title="Régler la correspondance note → degré de maîtrise pour cette classe">⚙ Note → degré
         <span class="aide">(${seuilsClasse(c).map(fmt).join(' / ')})</span></button>
-      <span class="aide aide-saisie">Saisie : note, ou <b>A</b> absent · <b>D</b> dispensé · <b>NE</b> non noté — Entrée = élève suivant</span>
+      <span class="aide aide-saisie">Saisie : note, ou <b>A</b> absent · <b>D</b> dispensé · <b>NE</b> non noté · <b>B</b> blessé · <b>M</b> malade — Entrée = élève suivant</span>
     </div>
     ${evals.length ? '' : toutes.length
     ? `<p class="aide">Aucune évaluation sur le ${periodes.find(p => p.id === vue).code} — ${toutes.length} sur le reste de l’année (choisis « Toute l’année » pour les voir).</p>`
@@ -1015,7 +1015,7 @@ function validerCellule(input) {
   else if (RACCOURCIS[brut]) valeur = RACCOURCIS[brut];
   else if (/^\d+(\.\d+)?$/.test(brut) && +brut <= ev.max) valeur = String(+brut);
   else {
-    toast(`« ${input.value} » : entre une note de 0 à ${fmt(ev.max)}, ou A, D, N.`, 'erreur');
+    toast(`« ${input.value} » : entre une note de 0 à ${fmt(ev.max)}, ou A, D, N, B (blessé), M (malade), O (autre).`, 'erreur');
     input.value = affichage(avant);
     return;
   }

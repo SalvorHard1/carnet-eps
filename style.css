@@ -433,7 +433,7 @@ button.badge-pai:hover, button.badge-bep:hover { filter: brightness(1.15); }
 .grille .col-moy.regres { color: #d64545; }
 .libelle-court { display: none; }
 @media (max-width: 560px) { .libelle-long { display: none; } .libelle-court { display: inline; } }
-/* Barre de codes rapides : Non noté pour les notes, Blessé / Malade pour l'entraînement */
+/* Barre de codes rapides : Non noté pour les notes seulement (Blessé / Malade / Autre : notes et leçons) */
 body:not([data-onglet="entrainement"]) .saisie .ent-seul { display: none; }
 body[data-onglet="entrainement"] .saisie .notes-seul { display: none; }
 
@@ -565,6 +565,7 @@ button.badge-disp:hover { filter: brightness(1.1); }
 .chiffres-fiche b { font-size: 24px; font-variant-numeric: tabular-nums; }
 .chiffres-fiche b small { font-size: 13px; font-weight: 600; color: var(--texte2); margin-left: 2px; }
 .chiffres-fiche .aide { font-size: 12px; }
+.alerte-sante { margin: 6px 0; padding: 8px 12px; border-radius: 8px; border-left: 4px solid var(--attention); background: var(--surface2); font-size: 14px; }
 .graphique-notes { width: 100%; height: auto; max-height: 220px; display: block; }
 .graphique-notes .grille-graph { stroke: var(--bord); stroke-width: 1; }
 .graphique-notes .grille-graph.moitie { stroke: var(--texte2); stroke-dasharray: 2 3; }
