@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.62.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.67.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -7,16 +7,10 @@ const collator = new Intl.Collator('fr', { sensitivity: 'base', numeric: true })
 const triEleves = (a, b) => collator.compare(a.nom, b.nom) || collator.compare(a.prenom, b.prenom);
 
 const NIVEAUX = ['6e', '5e', '4e', '3e', '2nde', '1re', 'Tle', 'CAP', 'Bac pro', 'Autre'];
-const APSA = [
-  'Demi-fond', 'Course de vitesse', 'Course de haies', 'Relais', 'Saut en longueur', 'Saut en hauteur', 'Triple saut',
-  'Lancer de poids', 'Lancer de javelot', 'Lancer de disque', 'Multibonds', 'Natation', 'Natation en durée', 'Savoir-nager', 'Sauvetage',
-  'Course d’orientation', 'Escalade', 'VTT',
-  'Badminton', 'Tennis de table', 'Tennis', 'Volley-ball', 'Basket-ball', 'Handball', 'Football', 'Rugby', 'Ultimate',
-  'Futsal', 'Lutte', 'Judo', 'Boxe française', 'Gymnastique', 'Acrosport', 'Arts du cirque', 'Danse',
-  'Musculation', 'Step', 'Course en durée', 'Cross-training', 'Yoga', 'Relaxation',
-];
-const CODES = { ABS: 'Absent', DISP: 'Dispensé', NE: 'Non noté', BLE: 'Blessé', MAL: 'Malade', AUT: 'Autre' };
-const RACCOURCIS = { A: 'ABS', ABS: 'ABS', D: 'DISP', DISP: 'DISP', N: 'NE', NE: 'NE', NN: 'NE', B: 'BLE', BLE: 'BLE', M: 'MAL', MAL: 'MAL', O: 'AUT', AUT: 'AUT' };
+// (Liste des activités / APSA : dans le profil de la discipline, voir discipline.js.)
+// (NR « Non rendu » : travail non rendu, surtout en SVT ; la barre de saisie montre les codes de la discipline, voir discipline.js.)
+const CODES = { ABS: 'Absent', DISP: 'Dispensé', NE: 'Non noté', BLE: 'Blessé', MAL: 'Malade', AUT: 'Autre', NR: 'Non rendu' };
+const RACCOURCIS = { A: 'ABS', ABS: 'ABS', D: 'DISP', DISP: 'DISP', N: 'NE', NE: 'NE', NN: 'NE', B: 'BLE', BLE: 'BLE', M: 'MAL', MAL: 'MAL', O: 'AUT', AUT: 'AUT', R: 'NR', NR: 'NR' };
 
 class Annule extends Error {}
 let mdpSession = null; // gardé en mémoire seulement le temps de la session
@@ -204,7 +198,7 @@ const BESOINS = {
   },
   bep: {
     sigle: 'BEP', nom: 'Besoin éducatif particulier', actif: el => !!el.bep, champInfo: 'bepInfo',
-    aide: 'Type de besoin (dys, TDAH, PAP, PPS…), aménagements utiles en EPS, consignes, placement, tutorat…',
+    aide: 'Type de besoin (dys, TDAH, PAP, PPS…), aménagements utiles en cours, consignes, placement, tutorat…',
   },
 };
 
@@ -486,7 +480,7 @@ function rendreVue() {
   if (!c) {
     v.innerHTML = `
       <div class="vide">
-        <h2>Bienvenue dans ton carnet EPS</h2>
+        <h2>Bienvenue dans ton carnet ${esc(profil().nom)}</h2>
         <p>Commence par créer ta première classe.</p>
         <button class="primaire" data-action="ajout-classe">+ Nouvelle classe</button>
         <p class="aide">Tu as déjà un carnet sur ta clé USB ? <button class="lien" data-action="cle">Récupère-le ici</button>.
@@ -543,7 +537,7 @@ async function voirAbsences(id) {
     <ul class="liste-absences">${a.jours.map(([date, l]) => `<li><b>${dateCourte(date)}</b> — ${[...new Set(l.map(x => MOTIFS_ALERTE[x.code]))].join(' / ')}
       <span class="aide">· ${esc([...new Set(l.map(x => x.quoi))].join(', '))}</span></li>`).join('')}</ul>
     <p class="aide">Alerte orange dès ${SEUILS_ALERTE.orange} jours, rouge dès ${SEUILS_ALERTE.rouge}, sur le trimestre
-      (évaluations et leçons réunies, un jour ne compte qu’une fois ; les dispenses ne comptent pas).</p>`,
+      (évaluations et ${motMin('lecons')} réunies, un jour ne compte qu’une fois ; les dispenses ne comptent pas).</p>`,
   '<span class="espace"></span><button type="button" data-fermer class="primaire">Fermer</button>');
 }
 
@@ -601,7 +595,7 @@ function htmlNotes(c) {
       <h2>${esc(c.nom)}</h2>
       <button class="primaire" data-action="ajout-eval">+ Évaluation</button>
       <button data-action="excel-notes" title="Exporter ou importer les notes et degrés de maîtrise de la classe (classeur Excel)">⇅ Excel</button>
-      <button data-action="appreciations" title="Appréciations du trimestre proposées par l’appli, d’après les notes et les leçons">✍ Appréciations</button>
+      <button data-action="appreciations" title="Appréciations du trimestre proposées par l’appli, d’après les notes et les ${motMin('lecons')}">✍ Appréciations</button>
       <label class="choix-tri">Période
         <select data-periode>
           <option value="annee">Toute l’année</option>
@@ -610,7 +604,7 @@ function htmlNotes(c) {
       <button class="icone-petit" data-action="periodes" title="Régler les trimestres / semestres" aria-label="Régler les périodes">⚙</button>
       <button data-modif-classe="${c.id}" title="Régler la correspondance note → degré de maîtrise pour cette classe">⚙ Note → degré
         <span class="aide">(${seuilsClasse(c).map(fmt).join(' / ')})</span></button>
-      <span class="aide aide-saisie">Saisie : note, ou <b>A</b> absent · <b>D</b> dispensé · <b>NE</b> non noté · <b>B</b> blessé · <b>M</b> malade — Entrée = élève suivant</span>
+      <span class="aide aide-saisie">Saisie : note, ou ${aideCodes()} — Entrée = élève suivant</span>
     </div>
     ${evals.length ? '' : toutes.length
     ? `<p class="aide">Aucune évaluation sur le ${periodes.find(p => p.id === vue).code} — ${toutes.length} sur le reste de l’année (choisis « Toute l’année » pour les voir).</p>`
@@ -1015,7 +1009,7 @@ function validerCellule(input) {
   else if (RACCOURCIS[brut]) valeur = RACCOURCIS[brut];
   else if (/^\d+(\.\d+)?$/.test(brut) && +brut <= ev.max) valeur = String(+brut);
   else {
-    toast(`« ${input.value} » : entre une note de 0 à ${fmt(ev.max)}, ou A, D, N, B (blessé), M (malade), O (autre).`, 'erreur');
+    toast(`« ${input.value} » : entre une note de 0 à ${fmt(ev.max)}, ou un code : ${lettresCodes()}.`, 'erreur');
     input.value = affichage(avant);
     return;
   }
@@ -1097,15 +1091,19 @@ async function editerEval(id) {
   const defaut = reglage('notes');
   const e = id ? Donnees.get('evals', id) : { titre: '', apsa: '', date: aujourdhui(), max: defaut.max, coef: defaut.coef };
   // Référentiels proposés : ceux qui ne sont pas masqués dans les réglages (+ celui de l'évaluation, quoi qu'il arrive).
-  const refsProposes = Object.values(REFERENTIEL.refs).filter(r => !r.masque || r.id === e.referentiel);
-  const refNiveau = REFERENTIEL_PAR_NIVEAU[c.niveau] || 'cycle4';
+  // (Et seulement ceux de la discipline du carnet, plus les référentiels personnels.)
+  const refsProposes = Object.values(REFERENTIEL.refs).filter(r => (!r.masque && referentielDeLaDiscipline(r)) || r.id === e.referentiel);
+  // Référentiel proposé : celui de la dernière évaluation de la classe (ex. une classe d'enseignement scientifique),
+  // sinon celui du niveau de la classe.
+  const dernierRef = evalsDe(c.id).filter(x => x.referentiel && x.id !== e.id).at(-1)?.referentiel;
+  const refNiveau = refsProposes.some(r => r.id === dernierRef) ? dernierRef : referentielDuNiveau(c.niveau);
   const refInitial = e.referentiel || (refsProposes.some(r => r.id === refNiveau) ? refNiveau : refsProposes[0]?.id || refNiveau);
   const seuils = e.seuils || seuilsClasse(c);
   const caInitial = e.ca ?? caDeApsa(e.apsa, refInitial);
   const { d, resultat } = ouvrirModale(id ? 'Modifier l’évaluation' : 'Nouvelle évaluation', `
-    <label>Titre<input name="titre" required autofocus value="${esc(e.titre)}" placeholder="ex. Demi-fond — 3 × 500 m"></label>
-    <label>APSA<input name="apsa" list="liste-apsa" value="${esc(e.apsa)}" placeholder="Choisis ou tape une activité"></label>
-    <datalist id="liste-apsa">${APSA.map(a => `<option value="${esc(a)}">`).join('')}</datalist>
+    <label>Titre<input name="titre" required autofocus value="${esc(e.titre)}" placeholder="${esc(mot('titreEvalExemple'))}"></label>
+    <label>${esc(mot('activite'))}<input name="apsa" list="liste-apsa" value="${esc(e.apsa)}" placeholder="${esc(mot('activitePlaceholder'))}"></label>
+    <datalist id="liste-apsa">${activitesDiscipline().map(a => `<option value="${esc(a)}">`).join('')}</datalist>
     <div class="ligne">
       <label>Date<input type="date" name="date" value="${esc(e.date)}"></label>
       <label>Noté sur<input type="number" name="max" min="1" step="any" required value="${e.max}"></label>
@@ -1116,11 +1114,11 @@ async function editerEval(id) {
       <div class="ligne">
         <label>Référentiel<select name="referentiel">${refsProposes
     .map(r => `<option value="${esc(r.id)}" ${r.id === refInitial ? 'selected' : ''}>${esc(r.nom)}</option>`).join('')}</select></label>
-        <label>Champ d’apprentissage<select name="ca"></select></label>
+        <label>${esc(mot('champ'))}<select name="ca"></select></label>
       </div>
       <div class="zone-competences"></div>
       <label>Autres compétences travaillées<textarea name="competencesLibres" rows="2"
-        placeholder="Une par ligne (ex. compétence du projet d’EPS)">${esc(e.competencesLibres || '')}</textarea></label>
+        placeholder="Une par ligne (ex. ${esc(mot('competenceLibreExemple'))})">${esc(e.competencesLibres || '')}</textarea></label>
       <div class="bloc-seuils">
         <label class="case"><input type="checkbox" name="preremplir" ${e.preremplir !== false ? 'checked' : ''}>
           Pré-remplir les degrés de maîtrise à partir de la note (modifiables ensuite)</label>
@@ -1141,13 +1139,27 @@ async function editerEval(id) {
   let caChoisiALaMain = !!e.ca;
   const majChamps = ca => {
     const ref = REFERENTIEL.refs[selRef.value];
+    // Référentiel « toutes compétences » (SVT…) : pas de champ à choisir, tout est proposé, rangé par compétence.
+    selCa.closest('label').hidden = !!ref.toutes;
+    if (ref.toutes) ca = '';
     // (Référentiel personnel : un champ sans titre n'est pas utilisé.)
     selCa.innerHTML = '<option value="">—</option>' + Object.entries(ref.champs).filter(([k, ch]) => ch.titre.trim() || k === ca)
       .map(([k, ch]) => `<option value="${esc(k)}" ${k === ca ? 'selected' : ''}>${esc(k)} — ${esc(ch.titre)}</option>`).join('');
     majAttendus();
   };
   const majAttendus = () => {
-    const champ = REFERENTIEL.refs[selRef.value].champs[selCa.value];
+    const ref = REFERENTIEL.refs[selRef.value];
+    if (ref.toutes) {
+      const groupe = ([k, ch]) => {
+        const attendus = ch.attendus.filter(a => !a.masque || coches.has(a.id));
+        return attendus.length ? `<div class="groupe-competences"><b>${esc(k)} — ${esc(ch.titre)}</b>${attendus.map(a => `
+          <label class="case competence"><input type="checkbox" name="competence" value="${esc(a.id)}" ${coches.has(a.id) ? 'checked' : ''}>
+            <span><b>${esc(a.code)}</b> ${esc(a.texte)}</span></label>`).join('')}</div>` : '';
+      };
+      zone.innerHTML = Object.entries(ref.champs).map(groupe).join('') || '<p class="aide">Aucune compétence proposée (⚙ Réglages → Compétences).</p>';
+      return;
+    }
+    const champ = ref.champs[selCa.value];
     // Compétences masquées dans les réglages : plus proposées, sauf si l'évaluation les a déjà.
     const attendus = champ ? champ.attendus.filter(a => !a.masque || coches.has(a.id)) : [];
     zone.innerHTML = !champ ? '<p class="aide">Choisis le champ d’apprentissage pour cocher les compétences travaillées.</p>'
@@ -1182,12 +1194,13 @@ async function editerEval(id) {
     }
   } else if (r.action === 'ok') {
     // On ne garde que les attendus du référentiel et du champ retenus (compétences ajoutées dans les réglages comprises).
-    const duChamp = x => { const a = REFERENTIEL.attendu(x); return a?.refId === r.data.referentiel && a.ca === r.data.ca; };
+    const toutes = !!REFERENTIEL.refs[r.data.referentiel]?.toutes;
+    const duChamp = x => { const a = REFERENTIEL.attendu(x); return a?.refId === r.data.referentiel && (toutes || a.ca === r.data.ca); };
     const enreg = Donnees.ecrire('evals', {
       ...e, id: e.id || Donnees.nouvelId(), classeId: c.id, cree: e.cree || Date.now(),
       titre: r.data.titre.trim(), apsa: r.data.apsa.trim(), date: r.data.date, max: +r.data.max, coef: +r.data.coef,
-      referentiel: r.data.referentiel, ca: r.data.ca,
-      competences: r.data.ca ? r.fd.getAll('competence').filter(duChamp) : [],
+      referentiel: r.data.referentiel, ca: toutes ? '' : r.data.ca,
+      competences: r.data.ca || toutes ? r.fd.getAll('competence').filter(duChamp) : [],
       competencesLibres: r.data.competencesLibres.trim(),
       preremplir: r.data.preremplir === 'on',
       // Mêmes seuils que la classe : l'évaluation suit la classe (et ses futurs changements)
@@ -1777,7 +1790,7 @@ async function panneauCle() {
         ${mdpSession || m.temoinMdp ? `<button type="button" data-cle="verrouiller">Oublier le mot de passe sur cet appareil</button>
           <p class="aide">Au prochain enregistrement, l’appli redemandera le mot de passe (à taper deux fois), sans le comparer à l’ancien.</p>` : ''}
         <div class="bloc-version">
-          <span>Carnet EPS S-A — <b>version ${VERSION_APP}</b></span>
+          <span>${esc(profil().carnet)} S-A — <b>version ${VERSION_APP}</b></span>
           <button type="button" data-cle="maj-appli" title="Recharge la dernière version de l’appli (tes données ne sont pas touchées)">🔄 Mettre à jour l’appli</button>
         </div>
       </div>

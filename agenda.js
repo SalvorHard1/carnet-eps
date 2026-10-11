@@ -397,19 +397,19 @@ async function editerSequence(id, preset = {}) {
         ${classes.map(c => `<label class="case"><input type="checkbox" name="classes" value="${c.id}" ${c.id === s.classeId || classes.length === 1 ? 'checked' : ''}> ${esc(c.nom)}</label>`).join('')}
       </fieldset>`}
     <div class="ligne">
-      <label class="large">APSA<input name="apsa" list="liste-apsa-ag" value="${esc(s.apsa)}" required autocomplete="off" placeholder="Handball, demi-fond…"></label>
-      <label>Champ d’apprentissage<select name="ca">${optionsCa(s.ca)}</select></label>
+      <label class="large">${esc(mot('activite'))}<input name="apsa" list="liste-apsa-ag" value="${esc(s.apsa)}" required autocomplete="off" placeholder="${esc(mot('sequenceExemple'))}"></label>
+      <label ${profil().champsSequence ? '' : 'hidden'}>${esc(mot('champ'))}<select name="ca">${optionsCa(s.ca)}</select></label>
     </div>
-    <datalist id="liste-apsa-ag">${APSA.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+    <datalist id="liste-apsa-ag">${activitesDiscipline().map(x => `<option value="${esc(x)}">`).join('')}</datalist>
     <div class="ligne">
       <label>Du<input type="date" name="debut" value="${s.debut}" required></label>
       <label>Au<input type="date" name="fin" value="${s.fin}" required></label>
-      <label class="etroit" title="Tape un nombre de leçons : la date de fin se calcule d’après l’emploi du temps">Leçons<input type="number" name="nb" min="1" max="80" step="1" inputmode="numeric"></label>
+      <label class="etroit" title="Tape un nombre de ${esc(mot('lecons').toLocaleLowerCase('fr'))} : la date de fin se calcule d’après l’emploi du temps">${esc(mot('lecons'))}<input type="number" name="nb" min="1" max="80" step="1" inputmode="numeric"></label>
     </div>
     <p class="aide" data-ag-suite></p>
     ${classes.filter(c => creneauxDe(c).length > 1).map(c => `<fieldset class="cours-seq-ag" data-cours-classe="${c.id}" hidden>
       <legend>Cours de la séquence — ${esc(c.nom)}</legend>
-      <p class="aide">Deux APSA en parallèle ? Ne coche que les cours de celle-ci.</p>
+      <p class="aide">${esc(mot('deuxActivites'))}</p>
       ${creneauxDe(c).map(x => `<label class="case"><input type="checkbox" name="cours-${c.id}" value="${esc(cleCreneau(x))}"
         ${!(c.id === s.classeId && s.cours?.length) || s.cours.includes(cleCreneau(x)) ? 'checked' : ''}> ${esc(libelleCreneau(x, r))}</label>`).join('')}
     </fieldset>`).join('')}
@@ -434,7 +434,7 @@ async function editerSequence(id, preset = {}) {
       : n === null ? 'Indique l’emploi du temps de la classe (🕒) pour voir le nombre de leçons prévues.'
         : `${n} leçon${n > 1 ? 's' : ''} prévue${n > 1 ? 's' : ''} d’après l’emploi du temps (vacances déduites)`
           + (essai.debut <= aujourdhui() ? `, dont ${leconsPrevues({ ...essai, fin: essai.fin < aujourdhui() ? essai.fin : aujourdhui() }, r)} déjà passée(s) à ce jour.` : '.')
-          + (memes.length ? ` ⚠ En même temps que « ${memes.map(q => q.apsa).join(' », « ')} » sur les mêmes cours : coche seulement les cours de cette APSA.` : '');
+          + (memes.length ? ` ⚠ En même temps que « ${memes.map(q => q.apsa).join(' », « ')} » sur les mêmes cours : coche seulement les cours de ${mot('cetteActivite')}.` : '');
   };
   // Dates proposées d'après les séquences déjà saisies, et fin calculée d'après le nombre de leçons.
   const champ = n => $(`[name="${n}"]`, d);

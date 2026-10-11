@@ -346,7 +346,9 @@ main { flex: 1; min-width: 0; overflow: auto; padding: 16px; padding-bottom: cal
 .code-BLE { background: #ffe2c6 !important; color: #9a4a00 !important; font-weight: 600; font-size: 13px !important; }
 .code-MAL { background: #efe0f7 !important; color: #6b2d8f !important; font-weight: 600; font-size: 13px !important; }
 .code-AUT { background: #dde6f2 !important; color: #2c4a70 !important; font-weight: 600; font-size: 13px !important; }
+.code-NR { background: #f3e9c9 !important; color: #6e5300 !important; font-weight: 600; font-size: 13px !important; }
 @media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .code-NR { background: #3d3415 !important; color: #f0d27a !important; }
   :root:not([data-theme="light"]) .code-BLE { background: #4a2e14 !important; color: #ffc48a !important; }
   :root:not([data-theme="light"]) .code-MAL { background: #3a2348 !important; color: #e0b8f5 !important; }
   :root:not([data-theme="light"]) .code-AUT { background: #23324a !important; color: #b9cdea !important; }
@@ -354,6 +356,7 @@ main { flex: 1; min-width: 0; overflow: auto; padding: 16px; padding-bottom: cal
 :root[data-theme="dark"] .code-BLE { background: #4a2e14 !important; color: #ffc48a !important; }
 :root[data-theme="dark"] .code-MAL { background: #3a2348 !important; color: #e0b8f5 !important; }
 :root[data-theme="dark"] .code-AUT { background: #23324a !important; color: #b9cdea !important; }
+:root[data-theme="dark"] .code-NR { background: #3d3415 !important; color: #f0d27a !important; }
 /* Statut posé sur une seule case de la leçon (pas sur toute la leçon) : liseré pointillé. */
 .statut-case:not(:focus) { outline: 1px dashed currentColor; outline-offset: -4px; }
 .code-NE { background: var(--nn) !important; color: var(--nn-t) !important; font-weight: 600; font-size: 13px !important; }
@@ -926,6 +929,25 @@ body[data-densite="aeree"] .tableau-eleves input, body[data-densite="aeree"] .ta
 .famille-matchs { --fam: #e8891a; }
 .famille-mesures { --fam: #2e9e5b; }
 .famille-apsa { --fam: #d64545; }
+.famille-svt { --fam: #2e9e5b; }
+/* ECE de SVT (ece.js) */
+.cartes-ece { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; margin: 8px 0; }
+@media (max-width: 420px) { .cartes-ece { grid-template-columns: 1fr; } }
+.carte-ece { border: 1px solid var(--bord); border-radius: 12px; padding: 10px; background: var(--surface); display: flex; flex-direction: column; gap: 6px; }
+.note-ece { font-size: 15px; }
+.note-ece b { font-size: 20px; }
+.etape-ece { border-top: 1px solid var(--bord); padding-top: 6px; }
+.tete-etape { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.tete-etape > b { flex: 1; min-width: 140px; }
+.pts-ece { font-weight: 700; min-width: 48px; text-align: right; font-variant-numeric: tabular-nums; }
+.curseur-ece { display: inline-flex; gap: 2px; }
+.niv-ece { min-width: 34px; min-height: 32px; padding: 0 6px; border-radius: 8px; font-weight: 700; }
+.niv-ece.choisi { background: var(--accent); color: var(--accent-texte); border-color: var(--accent); }
+.niv-ece.propose { border-style: dashed; border-color: var(--accent); }
+.aides-ece { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: 14px; margin: 4px 0; }
+.aides-ece button { min-width: 34px; min-height: 32px; padding: 0 6px; }
+.aides-ece .case { margin-left: 6px; }
+.carte-ece .case { font-size: 14px; }
 /* Combiné athlétique (combine.js) */
 .reglages-combine > summary, .vagues-combine > summary { cursor: pointer; font-weight: 600; }
 .liste-epreuves { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
@@ -966,6 +988,12 @@ body[data-densite="aeree"] .tableau-eleves input, body[data-densite="aeree"] .ta
 .in-bas { color: #d64545; }
 .historique-nat { margin: 4px 0 0; padding-left: 18px; font-size: 13px; font-weight: 400; }
 .tableau-nat td { vertical-align: top; }
+/* Choix de la discipline du carnet (premier lancement, ⚙ Réglages) */
+.choix-discipline { flex-wrap: wrap; }
+.choix-discipline small { font-weight: 400; color: var(--texte2); margin-left: 4px; }
+/* Compétences rangées par compétence travaillée (référentiels SVT : on coche dans plusieurs à la fois) */
+.groupe-competences { margin-bottom: 8px; }
+.groupe-competences > b { display: block; margin: 6px 0 2px; color: var(--accent); }
 /* Boxe française (boxe.js) */
 .coins-boxe { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
 @media (max-width: 560px) { .coins-boxe { grid-template-columns: 1fr; } }

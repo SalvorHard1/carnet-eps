@@ -73,7 +73,7 @@ function htmlLeconsFiche(el, periode, moy) {
   if (!b.total && !santeNotes.length) return '';
   const nomStatut = c => (CODES[c] || STATUTS_ENT[c] || c).toLowerCase();
   const liste = o => Object.entries(o).map(([c, n]) => `${n} ${nomStatut(c)}`).join(' · ');
-  let html = '<h3>Leçons <span class="aide">présence et santé</span></h3>';
+  let html = `<h3>${esc(mot('lecons'))} <span class="aide">présence et santé</span></h3>`;
   if (b.total) {
     html += `<p class="fiche-presence">Présent à <b>${b.presences} leçon${b.presences > 1 ? 's' : ''} sur ${b.total}</b>${
       Object.keys(b.statuts).length ? ' · ' + esc(liste(b.statuts)) : ''}${
@@ -140,7 +140,7 @@ function htmlFicheNotes(el, periode, eleves) {
     <div><span class="aide">Évaluations</span><b>${notees.length}<small>/${evals.length}</small></b><span class="aide">${Object.entries(statuts).map(([c, k]) => `${k} ${CODES[c].toLowerCase()}`).join(' · ') || 'toutes notées'}</span></div>
     ${(() => {
       const b = bilanLecons(el, periode);
-      return b.total ? `<div><span class="aide">Leçons</span><b>${b.presences}<small>/${b.total}</small></b><span class="aide">${
+      return b.total ? `<div><span class="aide">${esc(mot('lecons'))}</span><b>${b.presences}<small>/${b.total}</small></b><span class="aide">${
         b.sante ? `${b.sante} blessé / malade` : 'présent'}${b.statuts.ABS ? ` · ${b.statuts.ABS} absent` : ''}</span></div>` : '';
     })()}
   </div>`;
@@ -189,7 +189,7 @@ function htmlFicheNotes(el, periode, eleves) {
   html += `<h3>Mes observations</h3>
     <textarea class="obs-fiche" data-obs-notes rows="4" placeholder="Bilan, attitude, progrès, objectifs fixés avec l’élève…">${esc(suivi?.texte || '')}</textarea>
     ${suivi?.texte ? `<p class="aide">Modifié le ${dateHeure(suivi.maj)}</p>` : ''}
-    ${parApsa.length ? `<p class="aide">Notées dans les fiches Leçons :</p><ul class="liste-fiche">${parApsa.map(s => `<li><b>${esc(s.apsa)}</b> : ${esc(s.texte)}</li>`).join('')}</ul>` : ''}`;
+    ${parApsa.length ? `<p class="aide">Notées dans les fiches ${esc(mot('lecons'))} :</p><ul class="liste-fiche">${parApsa.map(s => `<li><b>${esc(s.apsa)}</b> : ${esc(s.texte)}</li>`).join('')}</ul>` : ''}`;
   return html;
 }
 
@@ -201,7 +201,7 @@ async function ficheNotes(eleveId) {
   const aLecons = seancesDe(c.id).length > 0;
   const { d, resultat } = ouvrirModale('Fiche élève', '<div class="fiche-onglets" data-fiche-onglets></div><div class="fiche" data-fiche></div>',
     '<button type="button" data-fiche-nav="-1">◀ Précédent</button><button type="button" data-fiche-nav="1">Suivant ▶</button>'
-    + (aLecons ? '<button type="button" data-fiche-lecons title="Ouvrir sa fiche de l’onglet Leçons">Fiche Leçons</button>' : '')
+    + (aLecons ? `<button type="button" data-fiche-lecons title="Ouvrir sa fiche de l’onglet ${esc(mot('lecons'))}">Fiche ${esc(mot('lecons'))}</button>` : '')
     + '<span class="espace"></span><button type="button" data-fermer class="primaire">Fermer</button>', 'modale-large modale-fiche');
 
   // Observations : enregistrées pendant la frappe (petit délai) et avant de changer d'élève.

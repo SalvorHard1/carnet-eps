@@ -4,6 +4,8 @@
 // programme d'EPS du lycée GT (BO spécial n°1 du 22/01/2019) et référentiels du bac GT.
 // Un attendu est soit un texte (code AFC/AFL numéroté dans l'ordre), soit [code, texte].
 const REFERENTIEL = (() => {
+  // SVT : chaque élément d'une compétence reçoit un code « C1.2 » (compétence 1, élément 2).
+  const num = (k, liste) => liste.map((t, i) => [`${k}.${i + 1}`, t]);
   const brut = {
     cycle3: {
       nom: 'Collège — cycle 3 (6e)', code: 'AFC',
@@ -95,6 +97,156 @@ const REFERENTIEL = (() => {
         ]],
       },
     },
+
+    // ---------- SVT ----------
+    // « Compétences travaillées » des programmes officiels. Une évaluation peut en cocher dans plusieurs compétences
+    // à la fois (toutes : true) : les éléments sont proposés tous ensemble, rangés par compétence.
+    // Sources : programme de SVT de seconde GT et de première générale (BO spécial n°1 du 22/01/2019) ;
+    // programme du cycle 4 (BO spécial n°11 du 26/11/2015).
+    svtSeconde: {
+      nom: 'SVT — seconde', code: '', toutes: true,
+      champs: {
+        C1: ['Pratiquer des démarches scientifiques', num('C1', [
+          'Formuler et résoudre une question ou un problème scientifique.',
+          'Concevoir et mettre en œuvre des stratégies de résolution.',
+          'Observer, questionner, formuler une hypothèse, en déduire ses conséquences testables ou vérifiables, expérimenter, raisonner avec rigueur, modéliser. Justifier et expliquer une théorie, un raisonnement, une démonstration.',
+          'Interpréter des résultats et en tirer des conclusions.',
+          'Comprendre le lien entre les phénomènes naturels et le langage mathématique.',
+          'Comprendre qu’un effet peut avoir plusieurs causes.',
+          'Savoir distinguer, dans la complexité apparente des phénomènes observables, des éléments et des principes fondamentaux.',
+          'Savoir distinguer ce qui relève d’une croyance ou d’une opinion et ce qui constitue un savoir scientifique.',
+        ])],
+        C2: ['Concevoir, créer, réaliser', num('C2', [
+          'Identifier et choisir des notions, des outils et des techniques, ou des modèles simples pour mettre en œuvre une démarche scientifique.',
+          'Concevoir et mettre en œuvre un protocole.',
+        ])],
+        C3: ['Utiliser des outils et mobiliser des méthodes pour apprendre', num('C3', [
+          'Apprendre à organiser son travail.',
+          'Identifier et choisir les outils et les techniques pour garder trace de ses recherches (à l’oral et à l’écrit).',
+          'Recenser, extraire, organiser et exploiter des informations à partir de documents en citant ses sources, à des fins de connaissance et pas seulement d’information.',
+          'Coopérer et collaborer dans une démarche de projet.',
+        ])],
+        C4: ['Communiquer et utiliser le numérique', num('C4', [
+          'Communiquer sur ses démarches, ses résultats et ses choix, en argumentant.',
+          'Communiquer dans un langage scientifiquement approprié : oral, écrit, graphique, numérique.',
+          'Utiliser des outils numériques.',
+          'Conduire une recherche d’informations sur internet en lien avec une question ou un problème scientifique, en choisissant des mots-clés pertinents, et en évaluant la fiabilité des sources et la validité des résultats.',
+          'Utiliser des logiciels d’acquisition, de simulation et de traitement de données.',
+        ])],
+        C5: ['Adopter un comportement éthique et responsable', num('C5', [
+          'Identifier l’incidence (bénéfices et nuisances) des activités humaines sur l’environnement à différentes échelles.',
+          'Fonder ses choix de comportement responsable vis-à-vis de sa santé ou de l’environnement en prenant en compte des arguments scientifiques.',
+          'Comprendre les responsabilités individuelle et collective en matière de préservation des ressources de la planète (biodiversité, ressources minérales et ressources énergétiques) et de santé.',
+          'Participer à l’élaboration de règles de sécurité et les appliquer au laboratoire et sur le terrain.',
+        ])],
+      },
+    },
+    svtLycee: {
+      nom: 'SVT — spécialité (1re, Tle)', code: '', toutes: true,
+      champs: {
+        C1: ['Pratiquer des démarches scientifiques', num('C1', [
+          'Formuler et résoudre une question ou un problème scientifique.',
+          'Concevoir et mettre en œuvre des stratégies de résolution.',
+          'Observer, questionner, formuler une hypothèse, en déduire ses conséquences testables ou vérifiables, expérimenter, raisonner avec rigueur, modéliser, argumenter.',
+          'Interpréter des résultats et en tirer des conclusions.',
+          'Comprendre le lien entre les phénomènes naturels et le langage mathématique.',
+          'Comprendre qu’un effet peut avoir plusieurs causes.',
+          'Disséquer la complexité apparente des phénomènes observables en éléments et principes fondamentaux.',
+          'Distinguer ce qui relève d’une croyance ou d’une opinion et ce qui constitue un savoir scientifique.',
+        ])],
+        C2: ['Concevoir, créer, réaliser', num('C2', [
+          'Identifier et choisir des notions, des outils et des techniques, ou des modèles simples pour mettre en œuvre une démarche scientifique.',
+          'Concevoir et mettre en œuvre un protocole.',
+        ])],
+        C3: ['Utiliser des outils et mobiliser des méthodes pour apprendre', num('C3', [
+          'Apprendre à organiser son travail.',
+          'Identifier et choisir les outils et les techniques pour garder trace de ses recherches (à l’oral et à l’écrit).',
+          'Recenser, extraire, organiser et exploiter des informations à partir de documents en citant ses sources, à des fins de connaissance et pas seulement d’information.',
+          'Coopérer et collaborer dans le cadre de démarches de projet.',
+        ])],
+        C4: ['Pratiquer des langages', num('C4', [
+          'Communiquer sur ses démarches, ses résultats et ses choix, en argumentant.',
+          'Communiquer dans un langage scientifiquement approprié : oral, écrit, graphique, numérique.',
+          'Utiliser des outils numériques.',
+          'Conduire une recherche d’informations sur internet en lien avec une question ou un problème scientifique, en choisissant des mots-clés pertinents, et en évaluant la fiabilité des sources et la validité des résultats.',
+          'Utiliser des logiciels d’acquisition, de simulation et de traitement de données.',
+        ])],
+        C5: ['Adopter un comportement éthique et responsable', num('C5', [
+          'Identifier les impacts (bénéfices et nuisances) des activités humaines sur l’environnement à différentes échelles.',
+          'Fonder ses choix de comportement responsable vis-à-vis de sa santé ou de l’environnement en prenant en compte des arguments scientifiques.',
+          'Comprendre les responsabilités individuelle et collective en matière de préservation des ressources de la planète (biodiversité, ressources minérales et ressources énergétiques) et de santé.',
+          'Participer à l’élaboration de règles de sécurité et les appliquer au laboratoire et sur le terrain.',
+        ])],
+      },
+    },
+    // Enseignement scientifique (tronc commun de 1re et Tle) : le programme fixe trois « objectifs généraux de formation »
+    // rédigés en texte suivi (BO n°25 du 22 juin 2023 pour la 1re). Intitulés A, B, C repris mot pour mot ; chacun est
+    // découpé en éléments évaluables, formulés au plus près du texte officiel (B : les pratiques scientifiques qu'il cite).
+    ensSci: {
+      nom: 'Enseignement scientifique (1re, Tle)', code: '', toutes: true,
+      champs: {
+        A: ['Comprendre la nature du savoir scientifique et ses méthodes d’élaboration', num('A', [
+          'Distinguer le savoir scientifique, issu d’une construction rationnelle, d’une croyance ou d’une opinion.',
+          'S’appuyer sur la description et l’analyse de faits, extraits de la réalité ou produits au cours d’expériences, pour expliquer la réalité par des causes matérielles.',
+          'Énoncer des hypothèses et en tirer des conséquences selon un processus logique.',
+          'Comprendre que le savoir scientifique résulte d’une construction collective, faite d’échanges d’arguments et de controverses, qui se précise avec des faits nouveaux.',
+        ])],
+        B: ['Identifier et mettre en œuvre des pratiques scientifiques', num('B', [
+          'Observer, décrire, mesurer, quantifier.',
+          'Calculer, analyser.',
+          'Imaginer, proposer, tester.',
+          'Modéliser, simuler.',
+          'Raisonner, expliquer.',
+          'Créer des scénarios pour envisager des futurs possibles ou remonter dans le passé.',
+          'Argumenter à l’oral : préciser sa pensée et expliciter son raisonnement de manière à convaincre.',
+          'Expliciter la pratique scientifique mise en œuvre et prendre conscience de sa nature.',
+        ])],
+        C: ['Identifier et comprendre les effets de la science sur les sociétés et sur l’environnement', num('C', [
+          'Identifier les effets de la science et de ses applications technologiques sur les sociétés (alimentation, santé, communications, intelligence artificielle, maîtrise des risques…).',
+          'Distinguer l’approche scientifique d’autres approches (économiques, éthiques…) dans une prise de décision.',
+          'Comprendre les effets des activités humaines sur l’environnement et les moyens mis en œuvre pour en limiter les conséquences.',
+        ])],
+      },
+    },
+    svtCycle4: {
+      nom: 'SVT — collège, cycle 4 (5e, 4e, 3e)', code: '', toutes: true,
+      champs: {
+        C1: ['Pratiquer des démarches scientifiques', num('C1', [
+          'Formuler une question ou un problème scientifique.',
+          'Proposer une ou des hypothèses pour résoudre un problème ou une question. Concevoir des expériences pour la ou les tester.',
+          'Utiliser des instruments d’observation, de mesures et des techniques de préparation et de collecte.',
+          'Interpréter des résultats et en tirer des conclusions.',
+          'Communiquer sur ses démarches, ses résultats et ses choix, en argumentant.',
+          'Identifier et choisir des notions, des outils et des techniques, ou des modèles simples pour mettre en œuvre une démarche scientifique.',
+        ])],
+        C2: ['Concevoir, créer, réaliser', num('C2', ['Concevoir et mettre en œuvre un protocole expérimental.'])],
+        C3: ['Utiliser des outils et mobiliser des méthodes pour apprendre', num('C3', [
+          'Apprendre à organiser son travail (par ex. pour mettre en œuvre un protocole expérimental).',
+          'Identifier et choisir les outils et les techniques pour garder trace de ses recherches (à l’oral et à l’écrit).',
+        ])],
+        C4: ['Pratiquer des langages', num('C4', [
+          'Lire et exploiter des données présentées sous différentes formes : tableaux, graphiques, diagrammes, dessins, conclusions de recherches, cartes heuristiques, etc.',
+          'Représenter des données sous différentes formes, passer d’une représentation à une autre et choisir celle qui est adaptée à la situation de travail.',
+        ])],
+        C5: ['Utiliser des outils numériques', num('C5', [
+          'Conduire une recherche d’informations sur internet pour répondre à une question ou un problème scientifique, en choisissant des mots-clés pertinents, et en évaluant la fiabilité des sources et la validité des résultats.',
+          'Utiliser des logiciels d’acquisition de données, de simulation et des bases de données.',
+        ])],
+        C6: ['Adopter un comportement éthique et responsable', num('C6', [
+          'Identifier les impacts (bénéfices et nuisances) des activités humaines sur l’environnement à différentes échelles.',
+          'Fonder ses choix de comportement responsable vis-à-vis de sa santé ou de l’environnement sur des arguments scientifiques.',
+          'Comprendre les responsabilités individuelle et collective en matière de préservation des ressources de la planète (biodiversité, ressources minérales et ressources énergétiques) et de santé.',
+          'Participer à l’élaboration de règles de sécurité et les appliquer au laboratoire et sur le terrain.',
+          'Distinguer ce qui relève d’une croyance ou d’une idée et ce qui constitue un savoir scientifique.',
+        ])],
+        C7: ['Se situer dans l’espace et dans le temps', num('C7', [
+          'Situer l’espèce humaine dans l’évolution des espèces.',
+          'Appréhender différentes échelles de temps géologique et biologique (ex : histoire de la Terre ; apparition de la vie, évolution et extinction des espèces vivantes…).',
+          'Appréhender différentes échelles spatiales d’un même phénomène / d’une même fonction (ex : nutrition : niveau de l’organisme, niveau des organes et niveau cellulaire).',
+          'Identifier par l’histoire des sciences et des techniques comment se construit un savoir scientifique.',
+        ])],
+      },
+    },
   };
 
   // Mise en forme : chaque attendu reçoit un identifiant stable (ex. « cycle4.CA1.2 ») et un code (AFC2, AFL1…).
@@ -111,7 +263,7 @@ const REFERENTIEL = (() => {
     }
     const refsMasques = new Set(perso.refsMasques || []);
     for (const [refId, r] of Object.entries(sources)) {
-      refs[refId] = { id: refId, nom: r.nom, perso: !!r.perso, masque: refsMasques.has(refId), champs: {} };
+      refs[refId] = { id: refId, nom: r.nom, perso: !!r.perso, toutes: !!r.toutes, masque: refsMasques.has(refId), champs: {} };
       for (const [ca, [titre, liste]] of Object.entries(r.champs)) {
         const attendus = liste.map((a, i) => {
           const [code, texte] = Array.isArray(a) ? a : [r.code + (i + 1), a];

@@ -54,8 +54,8 @@ const Cle = (() => {
 
   async function dechiffrer(texte, mdp) {
     let f;
-    try { f = JSON.parse(texte); } catch { throw new Error('Ce fichier n’est pas un carnet EPS lisible.'); }
-    if (f.app !== APP) throw new Error('Ce fichier n’est pas un carnet EPS.');
+    try { f = JSON.parse(texte); } catch { throw new Error('Ce fichier n’est pas un carnet lisible.'); }
+    if (f.app !== APP) throw new Error('Ce fichier n’est pas un carnet de l’appli.');
     if (f.format > FORMAT_MAX) throw new Error('Ce fichier a été enregistré par une version plus récente de l’appli : mets à jour l’appli sur cet appareil.');
     const cle = await deriver(mdp, deB64(f.sel), f.iterations);
     let clair;
@@ -240,7 +240,7 @@ const Cle = (() => {
       try {
         h = await window.showSaveFilePicker({
           suggestedName: nom, id: 'carnet-eps',
-          types: [{ description: 'Carnet EPS', accept: { 'application/json': ['.json'] } }],
+          types: [{ description: profil().carnet, accept: { 'application/json': ['.json'] } }],
         });
       } catch (e) {
         if (e.name === 'AbortError') return false;

@@ -13,13 +13,15 @@ const TYPES_INDIC = {
 };
 const TYPES_NUMERIQUES = ['temps', 'distance', 'nombre'];
 // « Autre » : par ex. élève pris en charge par un autre prof (natation des 6e).
-const STATUTS_ENT = { ABS: 'ABS', DISP: 'DISP', BLE: 'Blessé', MAL: 'Malade', AUT: 'Autre' };
+// « Non rendu » : surtout en SVT (compte rendu de TP non rendu), sur toute la séance ou sur une case.
+const STATUTS_ENT = { ABS: 'ABS', DISP: 'DISP', BLE: 'Blessé', MAL: 'Malade', AUT: 'Autre', NR: 'Non rendu' };
 // Noms d'origine : ceux des classeurs Excel (STATUTS_ENT peut être renommé dans les réglages, voir reglages.js).
 const STATUTS_ENT_BASE = { ...STATUTS_ENT };
 const CODES_ENT = {
   A: 'ABS', ABS: 'ABS', ABSENT: 'ABS', D: 'DISP', DISP: 'DISP', 'DISPENSÉ': 'DISP',
   B: 'BLE', BLE: 'BLE', 'BLESSÉ': 'BLE', M: 'MAL', MAL: 'MAL', MALADE: 'MAL',
   O: 'AUT', AU: 'AUT', AUT: 'AUT', AUTRE: 'AUT',
+  R: 'NR', NR: 'NR', 'NON RENDU': 'NR',
 };
 
 /* ---------- Modèles de données par APSA / champ d'apprentissage ---------- */
@@ -123,7 +125,8 @@ function caBrut(apsa) {
 }
 
 function modeleIndicateurs(apsa) {
-  const modele = MODELES_APSA[(apsa || '').trim().toLocaleLowerCase('fr')] || MODELES_CA[caBrut(apsa)]
+  // Discipline avec son propre modèle de séance (SVT…) ; sinon les modèles de l'EPS (par APSA, puis par champ).
+  const modele = profil().modeleSeance?.() || MODELES_APSA[(apsa || '').trim().toLocaleLowerCase('fr')] || MODELES_CA[caBrut(apsa)]
     || [I('Performance', 'temps'), OBS];
   return modele.map((ind, k) => ({ ...structuredClone(ind), id: 'i' + (k + 1) }));
 }
@@ -196,7 +199,7 @@ let statutCaseExplique = false;
 function avertirStatutCase(portee, code) {
   if (portee !== 'case' || statutCaseExplique) return;
   statutCaseExplique = true;
-  toast(`${STATUTS_ENT[code]} sur cette case seulement : l’élève a déjà des résultats dans la leçon, ils sont gardés.`, 'ok');
+  toast(`${STATUTS_ENT[code]} sur cette case seulement : l’élève a déjà des résultats dans la ${motMin('lecon')}, ils sont gardés.`, 'ok');
 }
 
 // Texte tapé à la place d'un statut de case → valeur (ou null si illisible).
@@ -222,16 +225,16 @@ function htmlEntrainement(c) {
     <div class="outils">
       <h2>${esc(c.nom)}</h2>
       <button class="primaire" data-action="ajout-seance">+ Séance</button>
-      <button data-action="excel-ent" title="Exporter ou importer les leçons de la classe (classeur Excel)">⇅ Excel</button>
+      <button data-action="excel-ent" title="Exporter ou importer les ${esc(motMin('lecons'))} de la classe (classeur Excel)">⇅ Excel</button>
       ${exercices.length ? `<label class="choix-tri">Exercice
         <select data-filtre-exercice="${c.id}">
           <option value="">Toutes (${toutes.length} séance${toutes.length > 1 ? 's' : ''})</option>
           ${exercices.map(x => `<option ${x === filtre ? 'selected' : ''}>${esc(x)}</option>`).join('')}
         </select></label>` : ''}
-      <span class="aide aide-saisie">Temps : 3:45 ou 12,5 · <b>A</b> absent · <b>D</b> dispensé · <b>B</b> blessé · <b>M</b> malade · <b>O</b> autre — toute la leçon, ou seulement la case si l’élève a déjà des résultats</span>
+      <span class="aide aide-saisie">Temps : 3:45 ou 12,5 · ${aideCodes(true)} — toute la ${esc(motMin('lecon'))}, ou seulement la case si l’élève a déjà des résultats</span>
     </div>
     ${toutes.length ? (filtre ? '' : '<p class="aide">Choisis un exercice pour voir la meilleure performance et l’évolution de chaque élève.</p>')
-    : '<p class="aide">Crée une séance : les données à relever s’adaptent à l’APSA (temps en CA1, voies et sécurité en escalade, exécution en gym…). Rien ici ne compte dans les moyennes.</p>'}
+    : `<p class="aide">${esc(mot('aideLecons'))} Rien ici ne compte dans les moyennes.</p>`}
     <div class="grille-scroll">
       <table class="grille grille-ent">
         <thead><tr>
@@ -348,7 +351,7 @@ function validerCelluleEnt(input) {
   if (brut) {
     valeur = convertir(ind, brut);
     if (valeur === null) {
-      toast(`« ${brut} » : ${ind.type === 'temps' ? 'temps attendu, par ex. 3:45 ou 12,5' : 'nombre attendu'} — ou A, D, B, M, O.`, 'erreur');
+      toast(`« ${brut} » : ${ind.type === 'temps' ? 'temps attendu, par ex. 3:45 ou 12,5' : 'nombre attendu'} — ou ${lettresCodes(true)}.`, 'erreur');
       input.value = afficherValeur(ind, avant);
       return;
     }
@@ -628,11 +631,11 @@ async function editerSeance(id, preset = null) {
   const exercices = [...new Set(seancesDe(c.id).map(x => x.titre))];
   const { d, resultat } = ouvrirModale(id ? 'Modifier la séance' : 'Nouvelle séance', `
     <div class="ligne">
-      <label>APSA<input name="apsa" list="liste-apsa-ent" value="${esc(s.apsa || '')}" placeholder="ex. Escalade"></label>
+      <label>${esc(mot('activite'))}<input name="apsa" list="liste-apsa-ent" value="${esc(s.apsa || '')}" placeholder="${esc(mot('activiteExemple'))}"></label>
       <label>Date<input type="date" name="date" value="${esc(s.date)}"></label>
     </div>
-    <datalist id="liste-apsa-ent">${APSA.map(a => `<option value="${esc(a)}">`).join('')}</datalist>
-    <label>Nom de la séance / exercice<input name="titre" required list="liste-exercices" value="${esc(s.titre)}" placeholder="ex. Escalade — voies en tête"></label>
+    <datalist id="liste-apsa-ent">${activitesDiscipline().map(a => `<option value="${esc(a)}">`).join('')}</datalist>
+    <label>Nom de la séance / exercice<input name="titre" required list="liste-exercices" value="${esc(s.titre)}" placeholder="${esc(mot('titreSeanceExemple'))}"></label>
     <datalist id="liste-exercices">${exercices.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
     <p class="aide">Garde le même nom d’une séance à l’autre pour suivre les progrès (meilleure performance, évolution).</p>
     <fieldset class="competences" data-zone-etapes ${estSavoirNager(s.apsa) ? '' : 'hidden'}>
@@ -653,7 +656,7 @@ async function editerSeance(id, preset = null) {
       <div class="liste-indic">${s.indicateurs.filter(i => !i.etape).map(ligneIndic).join('')}</div>
       <div class="ligne">
         <button type="button" data-ajout-indic>+ Ajouter une donnée</button>
-        <button type="button" data-modele-indic>Recharger le modèle de l’APSA</button>
+        <button type="button" data-modele-indic>${esc(mot('modeleActivite'))}</button>
       </div>
       <p class="aide">Temps : 3:45 · Distance / nombre : avec unité (m, kg, bpm…) · Échelle 1 à 4 : couleurs des degrés ·
         Choix : options séparées par « / » · Texte : observation libre.</p>
@@ -797,7 +800,7 @@ async function editerSeance(id, preset = null) {
    à l'autre, présence, priorités à travailler (règles simples et visibles) et observations du prof.
    Les données d'une même APSA sont regroupées d'une séance à l'autre par leur nom (étapes ASNS : par étape). */
 
-const apsaDe = s => (s.apsa || s.titre || 'Sans APSA').trim();
+const apsaDe = s => (s.apsa || s.titre || 'Sans ' + mot('activite')).trim();
 const cleIndic = ind => (ind.etape ? ind.id : `${ind.nom.trim().toLocaleLowerCase('fr')}|${ind.type}`);
 const idSuivi = (eleveId, apsa) => `${eleveId}|${apsa.toLocaleLowerCase('fr')}`;
 const pastilleDegre = v => `<span class="degre-fiche${v ? ' n' + v : ''}">${v || '·'}</span>`;
@@ -913,9 +916,9 @@ function htmlFiche(el, apsa, seances) {
   html += `<h3>À travailler en priorité</h3>${priorites.size
     ? `<ol class="liste-fiche priorites">${[...priorites.values()].map(p => `<li>${p.texte}${p.baisse ? ` <span class="tendance regres">↘ ${p.baisse}</span>` : ''}${
       p.critere ? `<br><span class="critere">${esc(p.critere)}</span>` : ''}</li>`).join('')}</ol>`
-    : `<p class="aide">${!lignes.length ? 'Pas encore de données pour cet élève dans cette APSA.'
+    : `<p class="aide">${!lignes.length ? `Pas encore de données pour cet élève ${esc(mot('dansCetteActivite'))}.`
       : lignes.some(d => d.ind.type === 'echelle') ? 'Rien sous le degré 3 ni en baisse : consolider, et viser l’aisance (degré 4).'
-        : 'Pas de baisse depuis la séance précédente. (Sans degré de maîtrise relevé dans cette APSA, la fiche ne propose pas d’autre priorité : appuie-toi sur l’évolution des performances.)'}</p>`}
+        : 'Pas de baisse depuis la séance précédente. (Sans degré de maîtrise relevé ' + mot('dansCetteActivite') + ', la fiche ne propose pas d’autre priorité : appuie-toi sur l’évolution des performances.)'}</p>`}
     ${jamais.length ? `<p class="aide">Pas encore évaluées : ${jamais.join(', ')}.</p>` : ''}`;
 
   // Observations du prof (enregistrées dans le carnet)
@@ -1080,7 +1083,7 @@ function exporterExcel(c, { anonyme = false } = {}) {
   const lisezMoi = {
     nom: 'Lisez-moi', largeurs: [100],
     lignes: [
-      [{ v: `Carnet EPS — leçons de la classe ${c.nom}${prof ? ' — ' + prof : ''}${anonyme ? ' (anonyme)' : ''}`, style: 'titre' }],
+      [{ v: `${profil().carnet} — ${mot('lecons').toLocaleLowerCase('fr')} de la classe ${c.nom}${prof ? ' — ' + prof : ''}${anonyme ? ' (anonyme)' : ''}`, style: 'titre' }],
       [A(`Exporté le ${dateHeure(Date.now())} · ${seances.length} séance${seances.length > 1 ? 's' : ''} · ${eleves.length} élèves`)],
       [],
       ...(anonyme ? [...LIGNES_ANONYME, []] : []),
@@ -1090,7 +1093,7 @@ function exporterExcel(c, { anonyme = false } = {}) {
       ...(anonyme ? [] : [
         ['Tu peux compléter ou corriger les cases, ajouter des élèves (nom et prénom) ou un onglet de séance construit sur le même modèle.'],
         ['Ne supprime pas la colonne A ni les lignes masquées : elles permettent à l’appli de reconnaître les séances et les élèves.'],
-        ['Pour le reprendre : Carnet EPS › onglet Leçons › bouton « Excel » › Importer. Une case vide ne supprime rien dans le carnet.'],
+        [`Pour le reprendre : ${profil().carnet} › onglet ${mot('lecons')} › bouton « Excel » › Importer. Une case vide ne supprime rien dans le carnet.`],
         [],
         [{ v: '⚠ Ce fichier n’est pas chiffré (contrairement au carnet sur la clé) : ne le laisse pas traîner, supprime-le après usage.', style: 'entete' }],
       ]),
@@ -1325,7 +1328,7 @@ async function echangeExcel() {
     </div>
     <div class="bloc-excel">
       <h3>⬆ Importer</h3>
-      <p class="aide">Un classeur exporté par Carnet EPS (le tien, éventuellement complété dans Excel, ou celui d’un collègue).
+      <p class="aide">Un classeur exporté par ${esc(profil().carnet)} (le tien, éventuellement complété dans Excel, ou celui d’un collègue).
         Tu verras ce qui sera repris avant de valider.</p>
       <label class="bouton primaire">Choisir un fichier .xlsx…<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-fichier-excel hidden></label>
     </div>`,

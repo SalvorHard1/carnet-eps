@@ -8,7 +8,7 @@
 // (Fichier chargé avant app.js ; il se sert aussi des outils Excel d'entrainement.js : sansAccent, dateFr, lireDateExcel.)
 
 const CODES_NOTE_EXCEL = { A: 'ABS', ABS: 'ABS', ABSENT: 'ABS', D: 'DISP', DISP: 'DISP', 'DISPENSÉ': 'DISP', DISPENSE: 'DISP', N: 'NE', NE: 'NE', NN: 'NE', 'NON NOTÉ': 'NE', 'NON NOTE': 'NE',
-  B: 'BLE', BLE: 'BLE', 'BLESSÉ': 'BLE', BLESSE: 'BLE', M: 'MAL', MAL: 'MAL', MALADE: 'MAL', O: 'AUT', AUT: 'AUT', AUTRE: 'AUT' };
+  B: 'BLE', BLE: 'BLE', 'BLESSÉ': 'BLE', BLESSE: 'BLE', M: 'MAL', MAL: 'MAL', MALADE: 'MAL', O: 'AUT', AUT: 'AUT', AUTRE: 'AUT', R: 'NR', NR: 'NR', 'NON RENDU': 'NR' };
 // Raisons de santé (dispensé, blessé, malade) : « NE » dans un classeur anonyme.
 const CODES_SANTE = ['DISP', 'BLE', 'MAL'];
 
@@ -25,7 +25,7 @@ function exporterNotesExcel(c, { anonyme = false } = {}) {
   const lisezMoi = {
     nom: 'Lisez-moi', largeurs: [100],
     lignes: [
-      [{ v: `Carnet EPS — notes de la classe ${c.nom}${prof ? ' — ' + prof : ''}${anonyme ? ' (anonyme)' : ''}`, style: 'titre' }],
+      [{ v: `${profil().carnet} — notes de la classe ${c.nom}${prof ? ' — ' + prof : ''}${anonyme ? ' (anonyme)' : ''}`, style: 'titre' }],
       [A(`Exporté le ${dateHeure(Date.now())} · ${evals.length} évaluation${evals.length > 1 ? 's' : ''} · ${eleves.length} élèves`)],
       [],
       ...(anonyme ? [...LIGNES_ANONYME, []] : []),
@@ -36,7 +36,7 @@ function exporterNotesExcel(c, { anonyme = false } = {}) {
       ...(anonyme ? [] : [
         ['Tu peux compléter ou corriger les cases, ajouter des élèves (nom et prénom) ou un onglet d’évaluation construit sur le même modèle.'],
         ['Ne supprime pas la colonne A ni les lignes masquées : elles permettent à l’appli de reconnaître les évaluations, les compétences et les élèves.'],
-        ['Pour le reprendre : Carnet EPS › onglet Notes › bouton « Excel » › Importer. Une case vide ne supprime rien dans le carnet.'],
+        [`Pour le reprendre : ${profil().carnet} › onglet Notes › bouton « Excel » › Importer. Une case vide ne supprime rien dans le carnet.`],
         [],
         [{ v: '⚠ Ce fichier n’est pas chiffré (contrairement au carnet sur la clé) : ne le laisse pas traîner, supprime-le après usage.', style: 'entete' }],
       ]),
@@ -191,8 +191,9 @@ function appliquerImportNotes(plan, c, { structure, ajouterInconnus }) {
     const enreg = Donnees.ecrire('evals', {
       ...e, id: x.id, classeId: c.id, cree: e.cree || Date.now(), titre: x.titre, apsa: x.apsa, date: x.date,
       max: x.max, coef: x.coef,
-      referentiel: e.referentiel || premiere?.refId || (REFERENTIEL.refs[x.refId] ? x.refId : REFERENTIEL_PAR_NIVEAU[c.niveau] || 'cycle4'),
-      ca: e.ca || premiere?.ca || x.ca || '',
+      referentiel: e.referentiel || premiere?.refId || (REFERENTIEL.refs[x.refId] ? x.refId : referentielDuNiveau(c.niveau)),
+      // (Référentiel « toutes compétences », comme en SVT : pas de champ unique.)
+      ca: REFERENTIEL.refs[e.referentiel || premiere?.refId]?.toutes ? '' : e.ca || premiere?.ca || x.ca || '',
       competences: [...officielles], competencesLibres: libres.join('\n'),
     });
     if (x.cible) bilan.majs++; else bilan.creees++;
@@ -286,7 +287,7 @@ async function echangeExcelNotes() {
     </div>
     <div class="bloc-excel">
       <h3>⬆ Importer</h3>
-      <p class="aide">Un classeur de notes exporté par Carnet EPS (le tien, éventuellement complété dans Excel, ou celui d’un collègue).
+      <p class="aide">Un classeur de notes exporté par ${esc(profil().carnet)} (le tien, éventuellement complété dans Excel, ou celui d’un collègue).
         Tu verras ce qui sera repris avant de valider.</p>
       <label class="bouton primaire">Choisir un fichier .xlsx…<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-fichier-excel hidden></label>
     </div>`,

@@ -25,6 +25,10 @@ const NOMS_NIV_APPR = { 0: 'non mentionné', 1: 'insuffisant', 2: 'fragile', 3: 
 const NOMS_NIV_PROG = { 0: 'non mentionnée', 1: 'en baisse', 2: 'stable', 3: 'en progrès', 4: 'nets progrès' };
 const idAppr = (eleveId, periode) => idSuivi(eleveId, 'appréciation ' + periode);
 const estSuiviAppr = s => /^appréciation /i.test(s.apsa || '');
+// Selon la discipline (discipline.js) : noms des rubriques, phrases et objectifs propres (ex. en SVT, « motricité » → « connaissances »).
+const rubriqueAppr = k => ({ ...RUBRIQUES_APPR[k], ...(profil().appreciations?.noms?.[k] || {}) });
+const phrasesAppr = () => ({ ...PHRASES_APPR, ...(profil().appreciations?.phrases || {}) });
+const objectifsAppr = () => ({ ...OBJECTIFS_APPR, ...(profil().appreciations?.objectifs || {}) });
 
 /* ---------- Réglages ---------- */
 
@@ -45,10 +49,10 @@ function htmlReglageAppr(r) {
       les dernières rubriques sont laissées de côté (l’objectif est gardé jusqu’au bout).</p>
     <ol class="rubriques-appr">${r.ordre.map((k, i) => `<li>
       <label class="case"><input type="checkbox" name="appr-${k}" ${r.actives.includes(k) ? 'checked' : ''}>
-        <b>${RUBRIQUES_APPR[k].nom}</b> <span class="aide">${RUBRIQUES_APPR[k].aide}</span></label>
+        <b>${esc(rubriqueAppr(k).nom)}</b> <span class="aide">${esc(rubriqueAppr(k).aide)}</span></label>
       <span class="espace"></span>
-      <button type="button" class="icone-petit" data-appr-monter="${k}" ${i ? '' : 'disabled'} aria-label="Monter ${RUBRIQUES_APPR[k].nom}">↑</button>
-      <button type="button" class="icone-petit" data-appr-descendre="${k}" ${i < r.ordre.length - 1 ? '' : 'disabled'} aria-label="Descendre ${RUBRIQUES_APPR[k].nom}">↓</button>
+      <button type="button" class="icone-petit" data-appr-monter="${k}" ${i ? '' : 'disabled'} aria-label="Monter ${esc(rubriqueAppr(k).nom)}">↑</button>
+      <button type="button" class="icone-petit" data-appr-descendre="${k}" ${i < r.ordre.length - 1 ? '' : 'disabled'} aria-label="Descendre ${esc(rubriqueAppr(k).nom)}">↓</button>
       <input type="hidden" name="appr-ordre" value="${k}"></li>`).join('')}</ol>
     <label class="case"><input type="checkbox" name="appr-bilan" ${r.bilan ? 'checked' : ''}> Commencer par un bilan général (« Bon trimestre. »)</label>
     <div class="ligne">
@@ -88,7 +92,8 @@ function deplacerRubriqueAppr(bouton) {
 const MOTS_APPR = {
   attitude: {
     moins: ['peu investi', 'manque d\'investissement', 'manque d\'engagement', 'manque de motivation', 'passif', 'passive', 'demotive',
-      'n\'essaie pas', 'ne fait rien', 'ne participe pas', 'refuse de', 'oubli de tenue', 'sans tenue', 'pas de tenue', 'tenue oubliee', 'nonchalant', 'traine', 'baisse les bras'],
+      'n\'essaie pas', 'ne fait rien', 'ne participe pas', 'refuse de', 'oubli de tenue', 'sans tenue', 'pas de tenue', 'tenue oubliee', 'nonchalant', 'traine', 'baisse les bras',
+      'non rendu', 'pas rendu', 'oubli du materiel', 'materiel oublie', 'pas de materiel', 'travail non fait'],
     plus: ['investi', 'implique', 'motive', 'dynamique', 'volontaire', 'enthousias', 'serieux', 'serieuse', 'perseverant', 'engage', 'element moteur', 'appliqu'],
   },
   comportement: {
@@ -120,7 +125,7 @@ function motsCles(textes, liste) {
 }
 
 // Catégorie d'une compétence ou d'une donnée relevée en leçon, d'après son intitulé.
-const RE_METHODO = /role|arbitr|juge|jury|coach|observ|chronom|secretaire|entrain|programme|planifi|echauff|preparation|projet|securite|assurage|filmer|mesurer|organis|analys|methode/;
+const RE_METHODO = /role|arbitr|juge|jury|coach|observ|chronom|secretaire|entrain|programme|planifi|echauff|preparation|projet|securite|assurage|filmer|mesurer|organis|analys|methode|protocole|hypothese|experi|demarche|manipul|strategie/;
 const RE_COMPORTEMENT = /respect|solidaire|accepter le resultat|accepter de se produire|comportement|fair|citoyen/;
 const RE_ATTITUDE = /attitude|engagement|investissement|implication|motivation|participation/;
 const categorieAppr = texte => {
@@ -152,7 +157,13 @@ function analyserAppr(el, periode, eleves) {
   // Notes
   const moy = moyenneEleve(el.id, evals);
   let absNotes = 0;
-  for (const e of evals) if (Donnees.note(e.id, el.id) === 'ABS') absNotes++;
+  // (Travail non rendu — code NR — : pris en compte dans l'attitude, comme les observations « non rendu ».)
+  const nonRendus = [];
+  for (const e of evals) {
+    const v = Donnees.note(e.id, el.id);
+    if (v === 'ABS') absNotes++;
+    if (v === 'NR') nonRendus.push('non rendu');
+  }
   // Moyenne par APSA (pour citer la meilleure ou la plus fragile)
   const parApsa = new Map();
   for (const e of evals) { const a = (e.apsa || '').trim(); if (a) parApsa.set(a, [...(parApsa.get(a) || []), e]); }
@@ -181,12 +192,15 @@ function analyserAppr(el, periode, eleves) {
   const parIndic = new Map();
   for (const s of seances) {
     const st = statutEnt(s.id, el.id);
-    if (st) { if (st === 'ABS') abs++; continue; }
+    if (st) { if (st === 'ABS') abs++; if (st === 'NR') nonRendus.push('non rendu'); continue; }
     presences++;
     for (const ind of s.indicateurs || []) {
+      if (statutCase(Donnees.note(s.id, el.id, ind.id) || '') === 'NR') nonRendus.push('non rendu');
       const v = valeurCase(s.id, el.id, ind.id);
       if (!v) continue;
       if (ind.type === 'texte') { observations.push(v); continue; }
+      // (Réponses de liste lues aussi pour les mots-clés : ex. « Non rendu » pour le travail rendu en SVT.)
+      if (ind.type === 'choix') observations.push(v);
       const k = cleIndic(ind);
       if (!parIndic.has(k)) parIndic.set(k, { ind, valeurs: [] });
       parIndic.get(k).valeurs.push(v);
@@ -211,6 +225,7 @@ function analyserAppr(el, periode, eleves) {
   for (const s of Donnees.liste('suivis', x => x.eleveId === el.id && x.texte && !estSuiviAppr(x))) {
     if (periode === 'annee' || !s.maj || periodeDe(new Date(s.maj).toLocaleDateString('sv')) === periode) observations.push(s.texte);
   }
+  observations.push(...nonRendus);
 
   // Motricité : moyenne de la période (seuils note → degré de la classe), sinon degrés « moteurs ».
   const seuils = seuilsClasse(c);
@@ -253,7 +268,7 @@ function analyserAppr(el, periode, eleves) {
     const total = presences + abs;
     if (total) {
       const taux = presences / total;
-      morceaux.push(`${Math.round(taux * 100)} % de présence aux leçons`);
+      morceaux.push(`${Math.round(taux * 100)} % de ${mot('presenceLecons')}`);
       if (n === null) n = 3;
       // (Seules les absences comptent, pas les blessures ni les maladies ; une absence isolée ne suffit pas.)
       if (abs >= 3 || (abs >= 2 && taux < 0.8)) n = Math.min(n, 2);
@@ -262,7 +277,7 @@ function analyserAppr(el, periode, eleves) {
     // Blessé / malade : signalé pour mémoire, sans baisser le niveau (ce n'est pas un manque d'engagement).
     const sante = typeof bilanLecons === 'function' ? bilanLecons(el, periode).sante : 0;
     const santeNotes = evals.filter(e => ['BLE', 'MAL'].includes(Donnees.note(e.id, el.id))).length;
-    if (sante + santeNotes) morceaux.push(`blessé / malade : ${sante + santeNotes} fois (leçons et évaluations), sans effet sur ce niveau`);
+    if (sante + santeNotes) morceaux.push(`blessé / malade : ${sante + santeNotes} fois (${mot('lecons').toLocaleLowerCase('fr')} et évaluations), sans effet sur ce niveau`);
     if (mots.plus || mots.moins) {
       morceaux.push('observations : ' + mots.trouves.join(', '));
       n = Math.max(1, Math.min(4, (n ?? 3) + Math.sign(mots.plus - mots.moins) * (Math.abs(mots.plus - mots.moins) >= 2 ? 2 : 1)));
@@ -490,7 +505,7 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
       if (k === 'objectif' || exclues.includes(k)) continue;
       const n = niv[k];
       if (!n) continue;
-      let banque = PHRASES_APPR[k][n];
+      let banque = phrasesAppr()[k][n];
       if (k === 'progression' && n === 2 && (niv.moteur || 0) >= 3) banque = STABLE_BON_APPR;
       // Importance (pour le manque de place) : niveau par défaut < « stable » < satisfaisant < fragile < extrêmes (1 et 4).
       const importance = a.defaut[k] && !(k in (niveauxPerso || {})) ? 0 : k === 'progression' && n === 2 ? 1 : n === 3 ? 2 : n === 2 ? 3 : 4;
@@ -498,7 +513,7 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
     }
     if (actives.includes('objectif') && niv.objectif !== null) {
       const o = objectifAppr(niv, a, actives);
-      const but = o.texte || choisir(OBJECTIFS_APPR[o.cle], g('but'));
+      const but = o.texte || choisir(objectifsAppr()[o.cle], g('but'));
       const modeles = tele ? (o.cle === 'haut' ? ['Objectif : {but}.'] : ['Objectif : {but}.', 'À travailler : {but}.'])
         : o.cle === 'haut' ? (ton === 'bienveillant' ? ['Bravo ! Il faut maintenant {but}.', 'Bravo, il faut {but} !'] : ['Il faut maintenant {but}.', 'Objectif : {but}.'])
           : ton === 'exigeant' ? ['{S} doit maintenant {but}.', 'Il faut impérativement {but}.']
@@ -564,10 +579,10 @@ function htmlCarteAppr(el, periode, eleves, r) {
     const noms = k === 'progression' ? NOMS_NIV_PROG : NOMS_NIV_APPR;
     const source = change ? `Choisi par toi (calculé : ${analyse.niveaux[k] ? noms[analyse.niveaux[k]] : 'pas de donnée'})` : analyse.sources[k] || 'Pas de donnée : non mentionné';
     return `<button type="button" class="puce-appr n${n}${change ? ' change' : ''}${!change && analyse.defaut[k] ? ' defaut' : ''}" data-appr-niveau="${k}"
-      title="${esc(source + '\n(toucher pour changer)')}">${RUBRIQUES_APPR[k].nom} <b>${n || '–'}</b><small>${esc(noms[n])}</small></button>`;
+      title="${esc(source + '\n(toucher pour changer)')}">${esc(rubriqueAppr(k).nom)} <b>${n || '–'}</b><small>${esc(noms[n])}</small></button>`;
   }).join('');
   const retirees = propose.retirees.length && !manuel
-    ? `<span class="aide">Faute de place, laissé de côté : ${propose.retirees.map(k => k === 'bilan' ? 'bilan' : RUBRIQUES_APPR[k].nom.toLowerCase()).join(', ')}.</span>` : '';
+    ? `<span class="aide">Faute de place, laissé de côté : ${propose.retirees.map(k => k === 'bilan' ? 'bilan' : rubriqueAppr(k).nom.toLowerCase()).join(', ')}.</span>` : '';
   return `<div class="carte-appr" data-appr-eleve="${el.id}">
     <div class="tete-appr"><b>${esc(el.nom)} ${esc(el.prenom)}</b>
       ${manuel ? '<span class="badge-appr">modifiée à la main</span>' : ''}
@@ -592,7 +607,7 @@ async function ouvrirAppreciations(periodeVoulue, eleveVise) {
   let r = reglageAppr();
 
   const { d, resultat } = ouvrirModale(`Appréciations — ${c.nom}`, `
-    <p class="aide">L’appli propose une appréciation pour chaque élève à partir de ton carnet : notes, degrés de maîtrise, leçons
+    <p class="aide">L’appli propose une appréciation pour chaque élève à partir de ton carnet : notes, degrés de maîtrise, ${motMin('lecons')}
       (présence, données relevées) et mots-clés de tes observations. Touche une rubrique pour changer son niveau ;
       tu peux aussi réécrire le texte. Tout reste dans ton carnet (chiffré sur la clé).</p>
     <div class="fiche-onglets" data-appr-periodes></div>

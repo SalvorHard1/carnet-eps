@@ -20,9 +20,10 @@ const PALETTES_DEGRES = {
   daltonien: { nom: 'Lisible par les daltoniens (orange → bleu)', couleurs: ['#d55e00', '#e69f00', '#56b4e9', '#0b5fa5'] },
 };
 const COULEURS_CA = { CA1: '#d64545', CA2: '#2e9e5b', CA3: '#8e5bd0', CA4: '#2f78d6', CA5: '#e8891a' };
-const NOMS_ONGLETS = { eleves: 'Élèves', notes: 'Notes', entrainement: 'Leçons', outils: 'Outils', agenda: 'Agenda' };
+// (L'onglet des séances porte le nom que lui donne la discipline : « Leçons » en EPS.)
+const NOMS_ONGLETS = { eleves: 'Élèves', notes: 'Notes', get entrainement() { return mot('lecons'); }, outils: 'Outils', agenda: 'Agenda' };
 // Codes de la barre de saisie rapide (ceux des notes, puis ceux des leçons).
-const CODES_SAISIE = { ABS: 'Absent', DISP: 'Dispensé', NE: 'Non noté', BLE: 'Blessé', MAL: 'Malade', AUT: 'Autre' };
+const CODES_SAISIE = { ABS: 'Absent', DISP: 'Dispensé', NE: 'Non noté', BLE: 'Blessé', MAL: 'Malade', AUT: 'Autre', NR: 'Non rendu' };
 const TAILLES_TEXTE = { petite: ['Petite', 0.9], normale: ['Normale', 1], grande: ['Grande', 1.12], 'tres-grande': ['Très grande', 1.25] };
 const DENSITES = { compacte: 'Compacte', normale: 'Normale', aeree: 'Aérée' };
 
@@ -31,7 +32,7 @@ const REGLAGES_DEFAUT = {
     theme: 'vert', couleurLibre: '#1f6f5c', mode: 'auto', palette: 'classique', degres: PALETTES_DEGRES.classique.couleurs,
     ca: COULEURS_CA, etablissement: 'S-A', prof: '',
   },
-  notes: { max: 20, coef: 1, seuils: [10, 14, 18], codesMasques: [], libelles: {}, alerte: true, alerteOrange: 2, alerteRouge: 3 },
+  notes: { max: 20, coef: 1, seuils: [10, 14, 18], codesMasques: [], codesAjoutes: [], libelles: {}, alerte: true, alerteOrange: 2, alerteRouge: 3 },
   competences: {
     niveaux: ['Maîtrise insuffisante', 'Maîtrise fragile', 'Maîtrise satisfaisante', 'Très bonne maîtrise'],
     masques: [], refsMasques: [], ajouts: [], refsPerso: [],
@@ -43,6 +44,8 @@ const REGLAGES_DEFAUT = {
     actives: ['attitude', 'competences', 'moteur', 'methodo', 'comportement', 'progression', 'objectif'],
     bilan: true, ton: 'bienveillant', style: 'phrases', longueur: 400,
   },
+  // Discipline du carnet (discipline.js). Jamais exportée avec les réglages partagés : chaque collègue garde la sienne.
+  discipline: { code: 'eps' },
 };
 const FICHES_REGLAGES = Object.keys(REGLAGES_DEFAUT);
 
@@ -63,6 +66,8 @@ function ecrireReglage(nom, valeurs) {
 }
 
 const seuilsDefaut = () => reglage('notes').seuils;
+// Bouton de la barre de saisie affiché : code de la discipline non décoché, ou code ajouté à la main dans les réglages.
+const codeVisible = (n, code) => (codesDiscipline().includes(code) ? !n.codesMasques.includes(code) : (n.codesAjoutes || []).includes(code));
 const ongletsVisibles = () => Object.keys(NOMS_ONGLETS).filter(v => !reglage('onglets').masques.includes(v));
 
 /* ---------- Couleurs ---------- */
@@ -116,7 +121,10 @@ function appliquerApparence(a, appareil, etablissement) {
   const etab = (etablissement ?? a.etablissement).trim();
   const titre = document.querySelector('.titre-etab');
   if (titre) titre.textContent = etab;
-  document.title = etab ? `Carnet EPS ${etab}` : 'Carnet EPS';
+  const carnet = profil().carnet; // « Carnet EPS », ou le nom du carnet de la discipline
+  const h1 = document.querySelector('header h1');
+  if (h1?.firstChild?.nodeType === Node.TEXT_NODE) h1.firstChild.textContent = carnet + ' ';
+  document.title = etab ? `${carnet} ${etab}` : carnet;
   // Copie pour le prochain lancement : la bonne couleur s'affiche tout de suite, avant même la lecture du carnet.
   try { localStorage.setItem('carnet-eps-apparence', JSON.stringify({ a, appareil })); } catch { /* sans importance */ }
 }
@@ -148,7 +156,8 @@ function appliquerReglages(forcer = false) {
   for (const [code, defaut] of Object.entries(CODES_SAISIE)) {
     const b = document.querySelector(`#saisie [data-code="${code}"]`);
     const nom = (n.libelles[code] || '').trim() || defaut;
-    if (b) { b.textContent = nom; b.hidden = n.codesMasques.includes(code); }
+    // (Seulement les codes de la discipline du carnet, sauf ceux décochés dans les réglages.)
+    if (b) { b.textContent = nom; b.hidden = !codeVisible(n, code); }
     // Leçons : un statut renommé s'affiche sous son nouveau nom dans la grille, et peut se taper tel quel.
     if (STATUTS_ENT_BASE[code] && !['ABS', 'DISP'].includes(code)) {
       STATUTS_ENT[code] = (n.libelles[code] || '').trim() || STATUTS_ENT_BASE[code];
@@ -171,6 +180,12 @@ function appliquerReglages(forcer = false) {
 
 const radio = (name, valeur, actuel, contenu, classe = 'segment') =>
   `<label class="${classe}"><input type="radio" name="${name}" value="${esc(valeur)}" ${valeur === actuel ? 'checked' : ''}><span>${contenu}</span></label>`;
+
+// Choix de la discipline du carnet (premier lancement et ⚙ Réglages).
+const htmlChoixDiscipline = actuel => `<div class="segments choix-discipline">${Object.values(DISCIPLINES)
+  .map(x => radio('discipline', x.id, actuel, `<b>${esc(x.nom)}</b> <small>${esc(x.nomComplet)}</small>`)).join('')}</div>`;
+const AIDE_DISCIPLINE = 'Elle adapte le vocabulaire (APSA ou thèmes, leçons ou séances), les compétences officielles proposées, '
+  + 'les modèles de séance, les appréciations et les outils. Changer de discipline n’efface rien.';
 
 function htmlReglageApparence(a, appareil) {
   const palette = PALETTES_DEGRES[a.palette] ? a.palette : 'perso';
@@ -215,10 +230,10 @@ function htmlReglageNotes(n) {
     </div>
     <p class="aide">Chaque classe garde ensuite son propre réglage (⚙ Note → degré dans l’onglet Notes).</p>
     <h4>Barre de saisie rapide</h4>
-    <p class="aide">Coche les boutons à afficher ; tu peux les renommer (ex. « Autre » → « Natation »). Les lettres A, D, N… marchent toujours au clavier.</p>
+    <p class="aide">Coche les boutons à afficher ; tu peux les renommer (ex. « Autre » → « Natation »). Les lettres (${Object.entries(LETTRES_CODES).map(([c, l]) => `<b>${l}</b> ${CODES_SAISIE[c].toLowerCase()}`).join(', ')}) marchent toujours au clavier.</p>
     <div class="table-reglages">
       ${Object.entries(CODES_SAISIE).map(([code, nom]) => `
-        <label class="case"><input type="checkbox" name="code-${code}" ${n.codesMasques.includes(code) ? '' : 'checked'}> ${nom}${code === 'NE' ? ' <span class="aide">(notes)</span>' : ''}</label>
+        <label class="case"><input type="checkbox" name="code-${code}" ${codeVisible(n, code) ? 'checked' : ''}> ${nom}${code === 'NE' ? ' <span class="aide">(notes)</span>' : ''}</label>
         <input name="lib-${code}" value="${esc(n.libelles[code] || '')}" placeholder="${nom}" aria-label="Nom affiché pour ${nom}" maxlength="20">`).join('')}
     </div>
     <h4>Alerte absences</h4>
@@ -274,6 +289,12 @@ async function ouvrirReglages(rubrique = 'apparence') {
         </div>
         <p class="aide">Le nom du professeur est repris en tête des classeurs Excel exportés.</p>
         <button value="periodes" formnovalidate>📅 Trimestres / semestres…</button>
+      </div></details>
+    <details ${ouvert('discipline')}><summary>📚 Discipline <small>${esc(profil().nomComplet)}</small></summary>
+      <div class="rubrique">
+        ${htmlChoixDiscipline(disciplineActive())}
+        <p class="aide">${AIDE_DISCIPLINE} Le choix est gardé dans ton carnet (il te suit sur la clé) ;
+          il n’est jamais transmis avec les réglages partagés avec un collègue.</p>
       </div></details>
     <details ${ouvert('notes')}><summary>📝 Notes <small>barème, codes, alerte absences</small></summary>
       <div class="rubrique">${htmlReglageNotes(n)}</div></details>
@@ -345,7 +366,10 @@ async function ouvrirReglages(rubrique = 'apparence') {
   ecrireReglage('apparence', { ...lireApparence(form, a), etablissement: v.etablissement.trim(), prof: v.prof.trim() });
   ecrireReglage('notes', {
     max: +v.max, coef: +v.coef, seuils: [+v.s2, +v.s3, +v.s4].sort((x, y) => x - y),
-    codesMasques: Object.keys(CODES_SAISIE).filter(code => v['code-' + code] !== 'on'),
+    // Codes de la discipline décochés ; codes hors discipline cochés (« ajoutés ») ; les choix faits dans une autre discipline sont gardés.
+    codesMasques: [...n.codesMasques.filter(c => !codesDiscipline().includes(c)), ...codesDiscipline().filter(c => v['code-' + c] !== 'on')],
+    codesAjoutes: [...(n.codesAjoutes || []).filter(c => codesDiscipline().includes(c)),
+      ...Object.keys(CODES_SAISIE).filter(c => !codesDiscipline().includes(c) && v['code-' + c] === 'on')],
     libelles: Object.fromEntries(Object.keys(CODES_SAISIE).map(code => [code, v['lib-' + code].trim()]).filter(([, l]) => l)),
     alerte: v.alerte === 'on', alerteOrange: +v.alerteOrange, alerteRouge: +v.alerteRouge,
   });
@@ -356,12 +380,24 @@ async function ouvrirReglages(rubrique = 'apparence') {
     demarrage: visibles.includes(v.demarrage) ? v.demarrage : '',
   });
   if (typeof lireReglageAppr === 'function') ecrireReglage('appreciations', lireReglageAppr(form));
+  // Changement de discipline : confirmé, car tout l'affichage change (aucune donnée n'est effacée).
+  const nouvelle = DISCIPLINES[v.discipline] ? v.discipline : disciplineActive();
+  let messageFin = 'Réglages enregistrés ✔';
+  if (nouvelle !== disciplineActive()) {
+    appliquerReglages(true);
+    if (await confirmer(`Passer ce carnet en ${DISCIPLINES[nouvelle].nom} (${DISCIPLINES[nouvelle].nomComplet}) ? `
+      + 'Le vocabulaire, les compétences proposées, les modèles de séance, les appréciations et les outils changent. '
+      + 'Tes classes, élèves, notes et séances sont gardés tels quels.', `Passer en ${DISCIPLINES[nouvelle].nom}`)) {
+      ecrireReglage('discipline', { code: nouvelle });
+      messageFin = `Carnet passé en ${DISCIPLINES[nouvelle].nom} ✔`;
+    }
+  }
   appliquerReglages(true);
   rendre();
   if (r.action === 'periodes') return lancer(editerPeriodes);
   if (r.action === 'competences') return lancer(gererCompetences);
   if (r.action === 'mdp') return lancer(changerMotDePasse);
-  toast('Réglages enregistrés ✔', 'ok');
+  toast(messageFin, 'ok');
 }
 
 async function revenirOrigine() {
@@ -393,7 +429,9 @@ const CHAMPS_MODELE = { CA1: '', CA2: '', CA3: '', CA4: '', CA5: '' };
 
 async function gererCompetences(refChoisi) {
   const cfg = reglage('competences');
-  let refId = REFERENTIEL.refs[refChoisi] ? refChoisi : Object.keys(REFERENTIEL.refs)[0];
+  // Référentiels de la discipline du carnet (et les référentiels personnels).
+  const refsVisibles = () => Object.values(REFERENTIEL.refs).filter(referentielDeLaDiscipline);
+  let refId = referentielDeLaDiscipline(REFERENTIEL.refs[refChoisi]) ? refChoisi : refsVisibles()[0]?.id;
   const { d, resultat } = ouvrirModale('Référentiels et compétences', `
     <div class="ref-entete">
       <label>Référentiel<select data-choix-ref></select></label>
@@ -408,8 +446,8 @@ async function gererCompetences(refChoisi) {
   // L'aperçu se fait sur le vrai référentiel (remis en état si on annule).
   const dessiner = () => {
     REFERENTIEL.personnaliser(cfg);
-    if (!REFERENTIEL.refs[refId]) refId = Object.keys(REFERENTIEL.refs)[0];
-    choix.innerHTML = Object.values(REFERENTIEL.refs).map(r => `<option value="${esc(r.id)}" ${r.id === refId ? 'selected' : ''}>${esc(r.nom || 'Sans nom')}${r.perso ? ' (perso)' : ''}${r.masque ? ' — masqué' : ''}</option>`).join('');
+    if (!referentielDeLaDiscipline(REFERENTIEL.refs[refId])) refId = refsVisibles()[0]?.id;
+    choix.innerHTML = refsVisibles().map(r => `<option value="${esc(r.id)}" ${r.id === refId ? 'selected' : ''}>${esc(r.nom || 'Sans nom')}${r.perso ? ' (perso)' : ''}${r.masque ? ' — masqué' : ''}</option>`).join('');
     const ref = REFERENTIEL.refs[refId];
     zone.innerHTML = `
       <label class="case"><input type="checkbox" data-ref-propose ${ref.masque ? '' : 'checked'}> Proposer ce référentiel dans les évaluations</label>
@@ -429,7 +467,7 @@ async function gererCompetences(refChoisi) {
           </label>`).join('')}
           <div class="ajout-attendu">
             <input data-ajout-code="${esc(ca)}" placeholder="Code" maxlength="12" aria-label="Code de la compétence">
-            <input data-ajout-texte="${esc(ca)}" placeholder="Ajouter une compétence (ex. compétence du projet d’EPS)" maxlength="400" aria-label="Texte de la compétence">
+            <input data-ajout-texte="${esc(ca)}" placeholder="Ajouter une compétence (ex. ${esc(mot('competenceLibreExemple'))})" maxlength="400" aria-label="Texte de la compétence">
             <button type="button" data-ajouter="${esc(ca)}">+ Ajouter</button>
           </div>
         </div>`).join('')}`;
@@ -513,14 +551,14 @@ async function gererCompetences(refChoisi) {
 
 function exporterReglages() {
   const contenu = { format: 'carnet-eps-reglages', version: 1, appli: VERSION_APP, date: aujourdhui(), reglages: {} };
-  for (const nom of [...FICHES_REGLAGES, 'periodes']) {
+  for (const nom of [...FICHES_REGLAGES.filter(n => n !== 'discipline'), 'periodes']) { // (la discipline reste propre à chaque carnet)
     const r = Donnees.get('reglages', nom);
     if (!r) continue;
     const { id, maj, majChamps, majChampsPour, ...valeurs } = r;
     if (nom === 'apparence') delete valeurs.prof; // le nom du prof reste chez lui
     contenu.reglages[nom] = valeurs;
   }
-  const nom = `Réglages Carnet EPS ${aujourdhui()}.json`;
+  const nom = `Réglages ${profil().carnet} ${aujourdhui()}.json`;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new File([JSON.stringify(contenu, null, 2)], nom, { type: 'application/json' }));
   a.download = nom;
@@ -551,6 +589,7 @@ function nettoyerReglage(nom, brut) {
     for (const k of ['max', 'coef', 'alerteOrange', 'alerteRouge']) if (k in propre && !(Number.isFinite(propre[k]) && propre[k] >= 0)) delete propre[k];
     if (propre.seuils && (propre.seuils.length !== 3 || !propre.seuils.every(Number.isFinite))) delete propre.seuils;
     if (propre.codesMasques) propre.codesMasques = propre.codesMasques.filter(c => CODES_SAISIE[c]);
+    if (propre.codesAjoutes) propre.codesAjoutes = propre.codesAjoutes.filter(c => CODES_SAISIE[c]);
     if (propre.libelles) propre.libelles = Object.fromEntries(Object.keys(CODES_SAISIE).filter(c => propre.libelles[c]).map(c => [c, texte(propre.libelles[c], 20)]));
   }
   if (nom === 'competences') {
@@ -573,6 +612,7 @@ function nettoyerReglage(nom, brut) {
     if (propre.noms) propre.noms = Object.fromEntries(Object.keys(NOMS_ONGLETS).filter(v => propre.noms[v]).map(v => [v, texte(propre.noms[v], 16)]));
     if (propre.demarrage && !NOMS_ONGLETS[propre.demarrage]) propre.demarrage = '';
   }
+  if (nom === 'discipline' && propre.code && !DISCIPLINES[propre.code]) delete propre.code;
   if (nom === 'appreciations') {
     for (const k of ['ordre', 'actives']) if (propre[k]) propre[k] = propre[k].filter(x => REGLAGES_DEFAUT.appreciations.ordre.includes(x));
     if (propre.ton && !['bienveillant', 'neutre', 'exigeant'].includes(propre.ton)) delete propre.ton;
@@ -586,11 +626,11 @@ async function importerReglages(fichier) {
   let contenu;
   try { contenu = JSON.parse(await fichier.text()); } catch { contenu = null; }
   if (contenu?.format !== 'carnet-eps-reglages' || typeof contenu.reglages !== 'object') {
-    throw new Error('Ce fichier n’est pas un fichier de réglages du Carnet EPS (« Réglages Carnet EPS ….json »).');
+    throw new Error('Ce fichier n’est pas un fichier de réglages du carnet (« Réglages Carnet … .json »).');
   }
   if (!(await confirmer('Remplacer tes réglages (apparence, notes, compétences, onglets, périodes) par ceux de ce fichier ? '
     + 'Tes classes, élèves et notes ne sont pas touchés ; tes compétences ajoutées sont gardées.', 'Importer'))) return;
-  for (const nom of FICHES_REGLAGES) {
+  for (const nom of FICHES_REGLAGES.filter(n => n !== 'discipline')) {
     if (!contenu.reglages[nom]) continue;
     const propre = nettoyerReglage(nom, contenu.reglages[nom]);
     if (nom === 'competences') {
@@ -618,9 +658,12 @@ async function importerReglages(fichier) {
 async function premierLancement() {
   if (ui.accueilVu || classesTriees().length || Donnees.get('reglages', 'apparence')) return;
   const a = reglage('apparence');
-  const { d, resultat } = ouvrirModale('Bienvenue dans ton carnet EPS 👋', `
+  const { d, resultat } = ouvrirModale('Bienvenue dans ton carnet 👋', `
     <p class="bienvenue-intro">Quelques réglages pour commencer (tout se change ensuite dans <b>⚙ Réglages du carnet</b>, sous la liste des classes).</p>
     <p class="aide">Tu as déjà un carnet sur une clé USB ? Choisis « Plus tard » puis récupère-le avec le bouton 🔑 : tes réglages reviendront avec lui.</p>
+    <h4>Ta discipline</h4>
+    ${htmlChoixDiscipline(disciplineActive())}
+    <p class="aide">${AIDE_DISCIPLINE}</p>
     <div class="ligne">
       <label>Établissement<input name="etablissement" value="" maxlength="30" placeholder="ex. Collège Jean Moulin" autofocus></label>
       <label>Professeur<input name="prof" value="" maxlength="40" placeholder="ex. Mme Martin"></label>
@@ -638,8 +681,16 @@ async function premierLancement() {
   const form = $('form', d);
   const choisi = () => ({ ...a, theme: form.querySelector('[name="theme"]:checked').value, mode: form.querySelector('[name="mode"]:checked').value });
   let importe = null;
+  const disciplineChoisie = () => form.querySelector('[name="discipline"]:checked')?.value || 'eps';
+  let discipline = disciplineActive(); // (mis à jour à chaque choix : la fenêtre n'existe plus une fois fermée)
   d.addEventListener('change', e => {
     if (e.target.closest('[data-rubrique="apparence"]')) appliquerApparence(choisi(), reglagesAppareil(), form.elements.etablissement.value || a.etablissement);
+    // (Le nom du carnet en haut de la page suit tout de suite la discipline choisie.)
+    if (e.target.name === 'discipline') {
+      discipline = disciplineChoisie();
+      const h1 = document.querySelector('header h1');
+      if (h1?.firstChild?.nodeType === Node.TEXT_NODE) h1.firstChild.textContent = DISCIPLINES[discipline].carnet + ' ';
+    }
     const f = e.target.matches('[data-importer-reglages]') && e.target.files[0];
     if (f) { importe = f; d.fermer(); }
   });
@@ -649,6 +700,8 @@ async function premierLancement() {
   const r = await resultat;
   ui.accueilVu = true;
   memoriserUi();
+  // La discipline est gardée dès qu'on a répondu (« C'est parti », ou réglages d'un collègue : ils ne la changent pas).
+  if (importe || r.action === 'ok') ecrireReglage('discipline', { code: discipline });
   if (importe) {
     await importerReglages(importe).catch(signalerErreur);
   } else if (r.action === 'ok') {
