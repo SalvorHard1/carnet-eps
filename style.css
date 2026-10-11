@@ -925,6 +925,78 @@ body[data-densite="aeree"] .tableau-eleves input, body[data-densite="aeree"] .ta
 .famille-groupes { --fam: #8e5bd0; }
 .famille-matchs { --fam: #e8891a; }
 .famille-mesures { --fam: #2e9e5b; }
+.famille-apsa { --fam: #d64545; }
+/* Combiné athlétique (combine.js) */
+.reglages-combine > summary, .vagues-combine > summary { cursor: pointer; font-weight: 600; }
+.liste-epreuves { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.ligne-epreuve { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px; }
+.ligne-epreuve > input { flex: 1 1 160px; min-width: 0; }
+.ligne-epreuve label.etroit input { width: 80px; }
+.onglets-epreuves { margin-top: 10px; }
+.liste-vagues { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; margin-top: 8px; }
+.carte-vague { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 8px 10px; border-radius: 10px; }
+.carte-vague.courante { border: 2px solid var(--accent); background: var(--accent-doux); }
+.noms-vague { font-size: 13px; color: var(--texte2); }
+.course-vague { margin-top: 8px; }
+.tableau-essais tr.dans-vague td:first-child { font-weight: 700; }
+.tableau-combine tr.incomplet td { color: var(--texte2); }
+.tete-saisie-combine { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: space-between; }
+.defile-combine { overflow-x: auto; }
+.tableau-saisie-combine td:first-child { white-space: nowrap; position: sticky; left: 0; background: var(--surface); z-index: 1; }
+.tableau-saisie-combine .debut-ep { border-left: 2px solid var(--bord); }
+.tableau-saisie-combine .tete-ep { text-align: center; color: var(--texte); font-weight: 700; }
+.tableau-saisie-combine .ep-active { background: var(--accent-doux); }
+.tableau-saisie-combine .essai { width: 72px; }
+/* Natation (natation.js) */
+.seuils-nat { margin: 4px 0 8px; }
+.seuils-nat > summary { cursor: pointer; font-weight: 600; }
+.couloirs-nat { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin: 8px 0 14px; }
+.couloir-nat { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--bord); border-radius: 12px; background: var(--surface); }
+.couloir-nat.fini { border-color: var(--accent); background: var(--accent-doux); }
+.couloir-nat.vide { opacity: .6; }
+.tete-couloir { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.grand-temps.petit { font-size: 22px; }
+.gros-plus { min-height: 110px; font-size: 30px; font-weight: 800; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-radius: 14px; background: var(--accent); color: var(--accent-texte); border: 0; touch-action: manipulation; user-select: none; }
+.gros-plus .compteur-nat { font-size: 40px; line-height: 1; }
+.gros-plus small { font-size: 13px; font-weight: 600; }
+.gros-plus:disabled { opacity: .5; }
+.bilan-couloir { font-size: 15px; }
+.in-ok { color: #2e9e5b; }
+.in-bas { color: #d64545; }
+.historique-nat { margin: 4px 0 0; padding-left: 18px; font-size: 13px; font-weight: 400; }
+.tableau-nat td { vertical-align: top; }
+/* Boxe française (boxe.js) */
+.coins-boxe { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+@media (max-width: 560px) { .coins-boxe { grid-template-columns: 1fr; } }
+.coin-boxe { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 12px; border: 3px solid var(--bord); background: var(--surface); }
+.coin-boxe.coin-a { border-color: #d64545; }
+.coin-boxe.coin-b { border-color: #2f78d6; }
+.coin-boxe.gagnant { background: var(--accent-doux); }
+.tete-coin { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.score-coin { font-size: 44px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.touches-boxe { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.touche-boxe { min-height: 72px; font-size: 20px; font-weight: 700; border-radius: 12px; touch-action: manipulation; user-select: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.coin-a .touche-boxe { background: #fde3e1; color: #a3291f; border-color: #f0b4ad; }
+.coin-b .touche-boxe { background: #e2ebfd; color: #2a52a3; border-color: #b3c7ef; }
+.touche-boxe small { font-size: 13px; font-weight: 600; }
+.coin-boxe .touche-boxe.avert { background: var(--surface2); color: var(--attention); }
+.coin-boxe .touche-boxe.bonus { background: #fff4d6; color: #8a5a00; }
+.victoire-boxe { font-size: 20px; font-weight: 800; text-align: center; }
+.phase-boxe.phase-repos { color: var(--attention); }
+.phase-boxe.phase-fini { color: var(--accent); }
+.historique-boxe { margin-top: 8px; }
+.historique-boxe > summary { cursor: pointer; font-weight: 600; }
+.historique-boxe ol { font-size: 14px; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .coin-a .touche-boxe { background: #4a2321; color: #ffb3ab; border-color: #6b3330; }
+  :root:not([data-theme="light"]) .coin-b .touche-boxe { background: #1e2c4a; color: #a9c3ff; border-color: #2e4270; }
+  :root:not([data-theme="light"]) .coin-boxe .touche-boxe.bonus { background: #3d3115; color: #ffd27a; }
+}
+:root[data-theme="dark"] .coin-a .touche-boxe { background: #4a2321; color: #ffb3ab; border-color: #6b3330; }
+:root[data-theme="dark"] .coin-b .touche-boxe { background: #1e2c4a; color: #a9c3ff; border-color: #2e4270; }
+:root[data-theme="dark"] .coin-boxe .touche-boxe.bonus { background: #3d3115; color: #ffd27a; }
 .bulles-outils { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px 8px; }
 .bulle-outil {
   flex-direction: column; justify-content: flex-start; gap: 6px; min-height: 0; padding: 8px 4px;

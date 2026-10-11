@@ -37,6 +37,9 @@ const etatOutilsDefaut = () => ({
   tournoi: { format: 'poule', terrains: 2, texte: '', participants: [], matchs: [], montante: null },
   essais: {}, // classeId → { nb, unite, sens, tri, valeurs: { eleveId: [texte] } }
   vma: { pct: 90, distance: 200 },
+  combine: {}, // classeId → combiné athlétique (combine.js)
+  natation: {}, // classeId → natation : réglages, course en cours, essais (natation.js)
+  boxe: {}, // classeId → boxe française : règles, assaut en cours, assauts enregistrés (boxe.js)
 });
 
 const etatOutils = (() => {
@@ -142,7 +145,10 @@ document.addEventListener('visibilitychange', () => { if (typeof Donnees === 'ob
 function minuteursActifs() {
   const e = etatOutils;
   return e.chronos.some(ch => ch.debut) || Object.values(e.tours).some(t => t.debut && !t.fin)
-    || !!e.intervalles.debut || !!e.ateliers.debut || !!e.marque.debut;
+    || !!e.intervalles.debut || !!e.ateliers.debut || !!e.marque.debut
+    || Object.values(e.combine || {}).some(x => x.vagues?.course?.depart && !x.vagues.course.fin)
+    || Object.values(e.natation || {}).some(x => x.course?.depart && !x.course.fin)
+    || Object.values(e.boxe || {}).some(x => (x.assaut?.phase === 'combat' && x.assaut.debut) || x.assaut?.phase === 'repos');
 }
 
 let tic = null;
@@ -176,7 +182,7 @@ function rendreOutil() {
   relancerTic();
   if (ui.vue !== 'outils') return;
   const a = document.activeElement;
-  const cle = a?.closest?.('#vue') && ['oChamp', 'oEssai', 'oVma', 'oScore']
+  const cle = a?.closest?.('#vue') && ['oChamp', 'oEssai', 'oVma', 'oScore', 'ocPerf', 'ocEp', 'ocVague', 'ocChamp']
     .map(k => a.dataset[k] && `[data-${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}="${CSS.escape(a.dataset[k])}"]`).find(Boolean);
   rendreVue();
   if (cle) $('#vue ' + cle)?.focus();
@@ -216,6 +222,9 @@ function outilEnCours(id) {
     chrono: e.chronos.some(ch => ch.debut), tours: Object.values(e.tours).some(t => t.debut && !t.fin),
     intervalles: !!e.intervalles.debut, ateliers: !!e.ateliers.debut, marque: !!e.marque.debut || !!(e.marque.pa || e.marque.pb),
     tournoi: !!(e.tournoi.matchs.length || e.tournoi.montante),
+    combine: Object.values(e.combine || {}).some(x => x.vagues?.course?.depart && !x.vagues.course.fin),
+    natation: Object.values(e.natation || {}).some(x => x.course?.depart && !x.course.fin),
+    boxe: Object.values(e.boxe || {}).some(x => x.assaut && x.assaut.phase !== 'fini'),
   }[id];
 }
 
@@ -965,6 +974,8 @@ function verifierEcheances() {
     derniersSignaux.rotation = st.rotation;
     derniersSignaux.ateliers = st.rotation + ':' + Math.ceil(st.reste / 1000);
   } else derniersSignaux.rotation = undefined;
+  // Boxe française : fin de reprise, fin du repos (boxe.js).
+  if (typeof verifierBoxe === 'function') verifierBoxe();
   // Marque : fin du temps de jeu.
   const m = e.marque;
   if (m.debut && m.duree > 0 && ecoule(m) >= m.duree * 60000) {
