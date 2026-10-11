@@ -107,8 +107,10 @@ function htmlFicheNotes(el, periode, eleves) {
 
   // Observations : générales (modifiables ici) et celles des fiches Leçons, APSA par APSA (pour mémoire)
   const suivi = Donnees.get('suivis', idSuivi(el.id, ID_BILAN_NOTES));
-  const parApsa = Donnees.liste('suivis', s => s.eleveId === el.id && s.texte && s.apsa !== ID_BILAN_NOTES && !estSuiviAppr(s));
-  html += htmlApprFiche(el, periode, eleves);
+  // (appreciations.js absent, par ex. oublié lors d'une publication : la fiche s'ouvre quand même, sans appréciation.)
+  const apprOk = typeof htmlApprFiche === 'function';
+  const parApsa = Donnees.liste('suivis', s => s.eleveId === el.id && s.texte && s.apsa !== ID_BILAN_NOTES && !/^appréciation /i.test(s.apsa || ''));
+  if (apprOk) html += htmlApprFiche(el, periode, eleves);
   html += `<h3>Mes observations</h3>
     <textarea class="obs-fiche" data-obs-notes rows="4" placeholder="Bilan, attitude, progrès, objectifs fixés avec l’élève…">${esc(suivi?.texte || '')}</textarea>
     ${suivi?.texte ? `<p class="aide">Modifié le ${dateHeure(suivi.maj)}</p>` : ''}

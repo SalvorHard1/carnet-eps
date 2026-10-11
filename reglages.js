@@ -285,9 +285,9 @@ async function ouvrirReglages(rubrique = 'apparence') {
         <button value="competences">📚 Référentiels et compétences…</button>
         <p class="aide">Masquer des compétences officielles, ajouter les tiennes, créer ton propre référentiel.</p>
       </div></details>
-    <details ${ouvert('appreciations')}><summary>✍ Appréciations <small>rubriques, ton, style, longueur</small></summary>
+    ${typeof htmlReglageAppr === 'function' ? `<details ${ouvert('appreciations')}><summary>✍ Appréciations <small>rubriques, ton, style, longueur</small></summary>
       <div class="rubrique" data-rubrique="appreciations">${htmlReglageAppr(reglageAppr())}
-        <p class="aide">Les appréciations se préparent dans l’onglet Notes › ✍ Appréciations, ou dans la fiche d’un élève.</p></div></details>
+        <p class="aide">Les appréciations se préparent dans l’onglet Notes › ✍ Appréciations, ou dans la fiche d’un élève.</p></div></details>` : ''}
     <details ${ouvert('onglets')}><summary>🗂 Onglets <small>afficher, renommer</small></summary>
       <div class="rubrique">${htmlReglageOnglets(o)}</div></details>
     <details ${ouvert('partage')}><summary>🔄 Partager <small>avec un collègue, ou revenir à l’origine</small></summary>
@@ -327,7 +327,7 @@ async function ouvrirReglages(rubrique = 'apparence') {
     if (f) { d.fermer(); lancer(() => importerReglages(f)); }
   });
   $('[data-exporter-reglages]', d).addEventListener('click', () => lancer(exporterReglages));
-  d.addEventListener('click', e => { const b = e.target.closest('[data-appr-monter], [data-appr-descendre]'); if (b) deplacerRubriqueAppr(b); });
+  d.addEventListener('click', e => { const b = e.target.closest('[data-appr-monter], [data-appr-descendre]'); if (b) deplacerRubriqueAppr(b); }); // (seulement si appreciations.js est là)
 
   const r = await resultat;
   if (r.action === 'annuler') { appliquerReglages(true); return; } // aperçu abandonné
@@ -355,7 +355,7 @@ async function ouvrirReglages(rubrique = 'apparence') {
     noms: Object.fromEntries(Object.keys(NOMS_ONGLETS).map(x => [x, v['nom-' + x].trim()]).filter(([, l]) => l)),
     demarrage: visibles.includes(v.demarrage) ? v.demarrage : '',
   });
-  ecrireReglage('appreciations', lireReglageAppr(form));
+  if (typeof lireReglageAppr === 'function') ecrireReglage('appreciations', lireReglageAppr(form));
   appliquerReglages(true);
   rendre();
   if (r.action === 'periodes') return lancer(editerPeriodes);
