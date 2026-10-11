@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8">
@@ -28,7 +28,9 @@
     <nav class="onglets" id="onglets">
       <button data-vue="eleves">Élèves</button>
       <button data-vue="notes">Notes</button>
-      <button data-vue="entrainement"><span class="libelle-long">Entraînement</span><span class="libelle-court">Entraîn.</span></button>
+      <button data-vue="entrainement">Leçons</button>
+      <button data-vue="outils">Outils</button>
+      <button data-vue="agenda">Agenda</button>
     </nav>
     <div class="groupe-sauvegarde">
       <!-- Un seul bouton pour tout ce qui touche à la clé : sa couleur donne l'état, il ouvre le menu de la clé. -->
@@ -63,6 +65,7 @@
       <ul id="liste-classes"></ul>
       <p class="aide astuce-classes" id="astuce-classes" hidden>Appui long sur une classe pour la déplacer.</p>
       <button class="ajout" data-action="ajout-classe">+ Nouvelle classe</button>
+      <button class="bouton-reglages" data-action="reglages" title="Couleurs, établissement, notes, compétences, onglets…">⚙ Réglages du carnet</button>
     </aside>
     <div class="voile" id="voile" data-action="menu" hidden></div>
     <main id="vue"></main>
@@ -88,7 +91,14 @@
   <script src="referentiel.js"></script>
   <script src="tableur.js"></script>
   <script src="entrainement.js"></script>
+  <script src="notesexcel.js"></script>
   <script src="listeclasse.js"></script>
+  <script src="reglages.js"></script>
+  <script src="outils.js"></script>
+  <script src="edtpdf.js"></script>
+  <script src="agenda.js"></script>
+  <script src="fichenotes.js"></script>
+  <script src="appreciations.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

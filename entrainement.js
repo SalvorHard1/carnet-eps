@@ -14,6 +14,8 @@ const TYPES_INDIC = {
 const TYPES_NUMERIQUES = ['temps', 'distance', 'nombre'];
 // « Autre » : par ex. élève pris en charge par un autre prof (natation des 6e).
 const STATUTS_ENT = { ABS: 'ABS', DISP: 'DISP', BLE: 'Blessé', MAL: 'Malade', AUT: 'Autre' };
+// Noms d'origine : ceux des classeurs Excel (STATUTS_ENT peut être renommé dans les réglages, voir reglages.js).
+const STATUTS_ENT_BASE = { ...STATUTS_ENT };
 const CODES_ENT = {
   A: 'ABS', ABS: 'ABS', ABSENT: 'ABS', D: 'DISP', DISP: 'DISP', 'DISPENSÉ': 'DISP',
   B: 'BLE', BLE: 'BLE', 'BLESSÉ': 'BLE', M: 'MAL', MAL: 'MAL', MALADE: 'MAL',
@@ -170,6 +172,36 @@ function convertir(ind, brut) {
 }
 
 const statutEnt = (seanceId, eleveId) => Donnees.note(seanceId, eleveId) || '';
+// Statut sur une seule case (ex. blessée après sa 1re course) : la case contient « @BLE » ; le reste de la séance est gardé.
+const statutCase = v => (v && v[0] === '@' && STATUTS_ENT[v.slice(1)] ? v.slice(1) : '');
+// Valeur d'une case, sans les statuts de case (pour les moyennes, meilleures perfs, fiches…).
+const valeurCase = (seanceId, eleveId, indId) => { const v = Donnees.note(seanceId, eleveId, indId) || ''; return statutCase(v) ? '' : v; };
+
+// Code (A, D, B, M, O) posé sur une case : toute la séance si l'élève n'y a encore rien (absent, dispensé dès le début…),
+// sinon cette case seulement (les résultats déjà relevés restent). Renvoie 'case' ou 'seance'.
+function poserStatutEnt(s, eleveId, indId, code) {
+  const statut = statutEnt(s.id, eleveId);
+  if (statut) { if (code !== statut) Donnees.ecrireNote(s.id, eleveId, code); return 'seance'; }
+  if (s.indicateurs.some(ind => ind.id !== indId && Donnees.note(s.id, eleveId, ind.id))) {
+    if (Donnees.note(s.id, eleveId, indId) !== '@' + code) Donnees.ecrireNote(s.id, eleveId, '@' + code, indId);
+    return 'case';
+  }
+  if (statutCase(Donnees.note(s.id, eleveId, indId))) Donnees.ecrireNote(s.id, eleveId, '', indId);
+  Donnees.ecrireNote(s.id, eleveId, code);
+  return 'seance';
+}
+
+// Explique une fois par session pourquoi le statut ne couvre qu'une case.
+let statutCaseExplique = false;
+function avertirStatutCase(portee, code) {
+  if (portee !== 'case' || statutCaseExplique) return;
+  statutCaseExplique = true;
+  toast(`${STATUTS_ENT[code]} sur cette case seulement : l’élève a déjà des résultats dans la leçon, ils sont gardés.`, 'ok');
+}
+
+// Texte tapé à la place d'un statut de case → valeur (ou null si illisible).
+const valeurTapee = (ind, brut) => (ind.type === 'choix' ? (ind.options || []).find(o => sansAccent(o) === sansAccent(brut)) || null
+  : ind.type === 'echelle' ? (/^[1-4]$/.test(brut) ? brut : null) : convertir(ind, brut));
 const nomCourtIndic = ind => ind.nom + (ind.unite ? ` (${ind.unite})` : '');
 
 /* ---------- Grille ---------- */
@@ -190,13 +222,13 @@ function htmlEntrainement(c) {
     <div class="outils">
       <h2>${esc(c.nom)}</h2>
       <button class="primaire" data-action="ajout-seance">+ Séance</button>
-      <button data-action="excel-ent" title="Exporter ou importer le carnet d’entraînement de la classe (classeur Excel)">⇅ Excel</button>
+      <button data-action="excel-ent" title="Exporter ou importer les leçons de la classe (classeur Excel)">⇅ Excel</button>
       ${exercices.length ? `<label class="choix-tri">Exercice
         <select data-filtre-exercice="${c.id}">
           <option value="">Toutes (${toutes.length} séance${toutes.length > 1 ? 's' : ''})</option>
           ${exercices.map(x => `<option ${x === filtre ? 'selected' : ''}>${esc(x)}</option>`).join('')}
         </select></label>` : ''}
-      <span class="aide aide-saisie">Temps : 3:45 ou 12,5 · <b>A</b> absent · <b>D</b> dispensé · <b>B</b> blessé · <b>M</b> malade · <b>O</b> autre</span>
+      <span class="aide aide-saisie">Temps : 3:45 ou 12,5 · <b>A</b> absent · <b>D</b> dispensé · <b>B</b> blessé · <b>M</b> malade · <b>O</b> autre — toute la leçon, ou seulement la case si l’élève a déjà des résultats</span>
     </div>
     ${toutes.length ? (filtre ? '' : '<p class="aide">Choisis un exercice pour voir la meilleure performance et l’évolution de chaque élève.</p>')
     : '<p class="aide">Crée une séance : les données à relever s’adaptent à l’APSA (temps en CA1, voies et sécurité en escalade, exécution en gym…). Rien ici ne compte dans les moyennes.</p>'}
@@ -254,6 +286,11 @@ function celluleIndic(s, ind, el, i, col, statut, premiere) {
     return `<td${debut}><input class="cellule code-${statut}" value="${STATUTS_ENT[statut]}" ${attrs} autocomplete="off" aria-label="${libelle}"></td>`;
   }
   const v = Donnees.note(s.id, el.id, ind.id);
+  const sc = statutCase(v);
+  if (sc) {
+    return `<td${debut}><input class="cellule code-${sc} statut-case" value="${STATUTS_ENT[sc]}" ${attrs} autocomplete="off"
+      title="${esc(STATUTS_ENT[sc])} sur cette case seulement" aria-label="${libelle}"></td>`;
+  }
   if (ind.type === 'echelle') {
     return `<td${debut ? debut.replace('class="', 'class="td-niveau ') : ' class="td-niveau"'}><button class="niveau${v ? ' n' + v : ''}" data-niveau-ent ${attrs}
       title="${esc(ind.texte ? titreIndic(ind) : ind.nom)}" aria-label="${libelle}">${v}</button></td>`;
@@ -285,9 +322,18 @@ function validerCelluleEnt(input) {
   const brut = input.value.trim();
   const code = CODES_ENT[brut.toLocaleUpperCase('fr')];
   const statut = statutEnt(s.id, eleveId);
+  const sc = statutCase(Donnees.note(s.id, eleveId, ind.id));
   if (code) {
-    if (code !== statut) { Donnees.ecrireNote(s.id, eleveId, code); rafraichirEnt(); }
+    if (code !== (statut || sc)) { avertirStatutCase(poserStatutEnt(s, eleveId, ind.id, code), code); rafraichirEnt(); }
     return;
+  }
+  if (sc && !statut) {
+    if (brut === STATUTS_ENT[sc]) return; // rien de changé
+    // On sort du statut de la case ; si une valeur a été tapée à la place, on l'enregistre.
+    const v = brut ? valeurTapee(ind, brut) : '';
+    if (v === null) toast(`« ${brut} » n’est pas une valeur possible ici : case vidée.`, 'erreur');
+    Donnees.ecrireNote(s.id, eleveId, v || '', ind.id);
+    return rafraichirEnt();
   }
   if (statut) {
     if (brut === STATUTS_ENT[statut]) return; // rien de changé
@@ -317,7 +363,7 @@ function appliquerStatutEnt(cible, code) {
   const { seance, eleve, indic } = cible.dataset;
   const statut = statutEnt(seance, eleve);
   if (code) {
-    if (code !== statut) Donnees.ecrireNote(seance, eleve, code);
+    avertirStatutCase(poserStatutEnt(Donnees.get('seances', seance), eleve, indic, code), code);
   } else if (statut) {
     Donnees.ecrireNote(seance, eleve, '');
   } else {
@@ -429,16 +475,21 @@ function majStatsEnt() {
   for (const s of seances) {
     const presents = eleves.filter(el => !statutEnt(s.id, el.id));
     const statuts = eleves.map(el => statutEnt(s.id, el.id)).filter(Boolean);
-    const resumeStatuts = [['ABS', 'absent'], ['DISP', 'dispensé'], ['BLE', 'blessé'], ['MAL', 'malade'], ['AUT', 'autre']]
-      .map(([code, mot]) => { const n = statuts.filter(x => x === code).length; return n ? `${n} ${mot}${n > 1 ? 's' : ''}` : ''; })
-      .filter(Boolean).join(' · ') || 'Aucun absent, dispensé, blessé, malade ou autre';
+    const resumer = codes => [['ABS', 'absent'], ['DISP', 'dispensé'], ['BLE', 'blessé'], ['MAL', 'malade'], ['AUT', 'autre']]
+      .map(([code, mot]) => { const n = codes.filter(x => x === code).length; return n ? `${n} ${mot}${n > 1 ? 's' : ''}` : ''; })
+      .filter(Boolean).join(' · ');
+    const resumeStatuts = resumer(statuts) || 'Aucun absent, dispensé, blessé, malade ou autre';
     for (const ind of s.indicateurs) {
       const td = $(`[data-stat-indic="${s.id}|${ind.id}"]`);
       if (!td) continue;
-      const valeurs = presents.map(el => Donnees.note(s.id, el.id, ind.id)).filter(Boolean);
+      // Statuts posés sur cette case seulement (ex. blessé à partir de la 2e course) : comptés à part.
+      const codesCase = presents.map(el => statutCase(Donnees.note(s.id, el.id, ind.id))).filter(Boolean);
+      const valeurs = presents.map(el => valeurCase(s.id, el.id, ind.id)).filter(Boolean);
       const bilan = bilanIndic(ind, valeurs);
+      const nbPresents = presents.length - codesCase.length;
       const titre = `${ind.nom}\n${bilan.detail.join('\n')}${bilan.detail.length ? '\n' : ''}`
-        + `${valeurs.length} élève${valeurs.length > 1 ? 's' : ''} renseigné${valeurs.length > 1 ? 's' : ''} sur ${presents.length} présent${presents.length > 1 ? 's' : ''}\n${resumeStatuts}`;
+        + `${valeurs.length} élève${valeurs.length > 1 ? 's' : ''} renseigné${valeurs.length > 1 ? 's' : ''} sur ${nbPresents} présent${nbPresents > 1 ? 's' : ''}\n${resumeStatuts}`
+        + (codesCase.length ? `\nSur cette colonne seulement : ${resumer(codesCase)}` : '');
       // Ligne « Classe » (collée en bas) : l'essentiel, sur une ligne.
       td.replaceChildren();
       if (bilan.barre) td.append(bilan.barre.cloneNode(true));
@@ -460,7 +511,7 @@ function majStatsEnt() {
   for (const el of eleves) {
     const perfs = seances.map(s => {
       const ind = s.indicateurs.find(x => x.nom === ref.nom && x.type === ref.type);
-      return ind && !statutEnt(s.id, el.id) ? valeurSuivie(ind, Donnees.note(s.id, el.id, ind.id)) : null;
+      return ind && !statutEnt(s.id, el.id) ? valeurSuivie(ind, valeurCase(s.id, el.id, ind.id)) : null;
     }).filter(n => n !== null);
     const tdM = $(`[data-meilleure="${el.id}"]`), tdE = $(`[data-evolution="${el.id}"]`);
     tdE.className = 'col-moy';
@@ -562,17 +613,20 @@ function ligneIndic(ind) {
   </div>`;
 }
 
-async function editerSeance(id) {
+// preset : nouvelle séance pré-remplie (ex. envoyée depuis un outil : { titre, apsa, date, indicateurs }).
+// Renvoie l'identifiant de la séance enregistrée (null si annulé ou supprimé).
+async function editerSeance(id, preset = null) {
   const c = classeActive();
   const filtre = ui.exercices?.[c.id];
   // Nouvelle séance : vierge, sauf si un exercice est choisi dans le filtre (on reprend alors sa dernière séance,
   // il suffit souvent de changer la date).
-  const modele = id || !filtre ? null : seancesDe(c.id).filter(s => s.titre === filtre).at(-1) || null;
+  const modele = id || preset || !filtre ? null : seancesDe(c.id).filter(s => s.titre === filtre).at(-1) || null;
   const s = id ? Donnees.get('seances', id)
-    : modele ? { titre: modele.titre, apsa: modele.apsa, date: aujourdhui(), indicateurs: structuredClone(modele.indicateurs), documents: [...(modele.documents || [])] }
-      : { titre: '', apsa: '', date: aujourdhui(), indicateurs: modeleIndicateurs('') };
+    : preset ? { titre: preset.titre || '', apsa: preset.apsa || '', date: preset.date || aujourdhui(), indicateurs: structuredClone(preset.indicateurs) }
+      : modele ? { titre: modele.titre, apsa: modele.apsa, date: aujourdhui(), indicateurs: structuredClone(modele.indicateurs), documents: [...(modele.documents || [])] }
+        : { titre: '', apsa: '', date: aujourdhui(), indicateurs: modeleIndicateurs('') };
   const exercices = [...new Set(seancesDe(c.id).map(x => x.titre))];
-  const { d, resultat } = ouvrirModale(id ? 'Modifier la séance' : 'Nouvelle séance d’entraînement', `
+  const { d, resultat } = ouvrirModale(id ? 'Modifier la séance' : 'Nouvelle séance', `
     <div class="ligne">
       <label>APSA<input name="apsa" list="liste-apsa-ent" value="${esc(s.apsa || '')}" placeholder="ex. Escalade"></label>
       <label>Date<input type="date" name="date" value="${esc(s.date)}"></label>
@@ -615,7 +669,7 @@ async function editerSeance(id) {
   boutonsModale(id ? 'Enregistrer' : 'Créer', id ? BOUTON_SUPPRIMER : ''), 'modale-large');
 
   const liste = $('.liste-indic', d), champApsa = $('[name="apsa"]', d), champTitre = $('[name="titre"]', d);
-  let retouche = !!id || !!modele; // données déjà choisies : on ne les remplace pas sans demander
+  let retouche = !!id || !!modele || !!preset; // données déjà choisies : on ne les remplace pas sans demander
   const majParams = () => liste.querySelectorAll('.ligne-indic').forEach(l => {
     const type = $('[name="ind-type"]', l).value, p = $('[name="ind-param"]', l);
     p.hidden = !['distance', 'nombre', 'choix'].includes(type);
@@ -689,6 +743,7 @@ async function editerSeance(id) {
   }));
 
   const r = await resultat;
+  let enregistree = null;
   if (r.action === 'supprimer') {
     if (await confirmer(`Supprimer la séance « ${s.titre} » du ${dateCourte(s.date)} et toutes ses données ?`)) {
       supprimerNotes(n => n.evalId === id);
@@ -722,7 +777,7 @@ async function editerSeance(id) {
       Donnees.ecrire('documents', { ...fiche, ajouteLe: Date.now() });
     }
     const avant = s.documents || [];
-    Donnees.ecrire('seances', {
+    enregistree = Donnees.ecrire('seances', {
       ...s, id: s.id || Donnees.nouvelId(), classeId: c.id, cree: s.cree || Date.now(),
       titre: r.data.titre.trim(), apsa: r.data.apsa.trim(), ca: caBrut(r.data.apsa), date: r.data.date, indicateurs,
       documents: docs.map(x => x.id),
@@ -734,6 +789,7 @@ async function editerSeance(id) {
     }
   }
   rendre();
+  return enregistree?.id || null;
 }
 
 /* ---------- Fiche élève (toucher le nom d'un élève dans la grille d'entraînement) ----------
@@ -759,7 +815,7 @@ function parcoursEleve(eleveId, seances) {
       if (!donnees.has(k)) donnees.set(k, { ind, valeurs: [] });
       const d = donnees.get(k);
       d.ind = ind; // la définition la plus récente
-      const v = Donnees.note(s.id, eleveId, ind.id);
+      const v = valeurCase(s.id, eleveId, ind.id);
       if (v) d.valeurs.push({ v, s });
     }
   }
@@ -939,7 +995,7 @@ document.addEventListener('click', e => {
 const sansAccent = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
   .toLowerCase().replace(/[’`]/g, '\'').replace(/\s+/g, ' ').trim();
 const LIB_TYPES = { temps: 'Temps', distance: 'Distance', nombre: 'Nombre', echelle: 'Échelle 1 à 4', choix: 'Choix', texte: 'Texte' };
-const STATUTS_PAR_NOM = Object.fromEntries(Object.entries(STATUTS_ENT).map(([code, nom]) => [sansAccent(nom), code]));
+const STATUTS_PAR_NOM = Object.fromEntries(Object.entries(STATUTS_ENT_BASE).map(([code, nom]) => [sansAccent(nom), code]));
 const dateFr = d => (d ? d.split('-').reverse().join('/') : '');
 
 function typeEnTexte(ind) {
@@ -995,60 +1051,91 @@ function lireDateExcel(brut) {
   return '';
 }
 
-function exporterExcel(c) {
-  const eleves = elevesDe(c.id), seances = seancesDe(c.id);
+/* ---------- Export anonyme (notes et leçons) ----------
+   Pour partager sans qu'on puisse reconnaître un élève : noms remplacés par « Élève 1, 2… » dans un ordre tiré au sort,
+   identifiants retirés, statuts liés à la santé et observations écrites retirés, nom du professeur retiré.
+   Le classeur porte la marque « #anonyme » : l'appli refuse de le réimporter (elle ne saurait plus qui est qui). */
+function anonymisation(eleves) {
+  const ordre = [...eleves];
+  for (let i = ordre.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ordre[i], ordre[j]] = [ordre[j], ordre[i]]; }
+  const numero = new Map(ordre.map((el, k) => [el.id, k + 1]));
+  return { eleves: ordre, nom: el => `Élève ${numero.get(el.id)}` };
+}
+const LIGNES_ANONYME = [
+  [{ v: '🔒 Export anonyme : aucun nom, aucune information de santé, aucune observation écrite.', style: 'entete' }],
+  ['Les élèves sont numérotés dans un ordre tiré au sort. Ce classeur sert à consulter ou partager : il ne peut pas être réimporté.'],
+  ['#anonyme'],
+];
+const estAnonyme = feuilles => feuilles.some(f => f.lignes.some(l => l[0] === '#anonyme'));
+
+function exporterExcel(c, { anonyme = false } = {}) {
+  const seances = seancesDe(c.id);
   if (!seances.length) return toast('Aucune séance à exporter pour cette classe.', 'erreur');
+  const anon = anonyme ? anonymisation(elevesDe(c.id)) : null;
+  const eleves = anon ? anon.eleves : elevesDe(c.id);
   const T = v => ({ v, style: 'texte' }), E = v => ({ v, style: 'entete' }), A = v => ({ v, style: 'aide' });
+  const prof = anonyme ? '' : reglage('apparence').prof;
+  // Anonyme : Blessé / Malade / Dispensé deviennent « ABS » (absent de l'activité), sans dire pourquoi.
+  const statutExporte = st => (!st ? '' : anonyme && ['DISP', 'BLE', 'MAL'].includes(st) ? STATUTS_ENT_BASE.ABS : STATUTS_ENT_BASE[st]);
   const lisezMoi = {
     nom: 'Lisez-moi', largeurs: [100],
     lignes: [
-      [{ v: `Carnet EPS — entraînement de la classe ${c.nom}`, style: 'titre' }],
+      [{ v: `Carnet EPS — leçons de la classe ${c.nom}${prof ? ' — ' + prof : ''}${anonyme ? ' (anonyme)' : ''}`, style: 'titre' }],
       [A(`Exporté le ${dateHeure(Date.now())} · ${seances.length} séance${seances.length > 1 ? 's' : ''} · ${eleves.length} élèves`)],
       [],
+      ...(anonyme ? [...LIGNES_ANONYME, []] : []),
       [E('Comment s’en servir')],
       ['Un onglet par séance : une ligne par élève, une colonne par donnée relevée. La ligne « Type » dit ce qu’on attend dans la colonne.'],
-      ['Temps : 3:45 ou 12,5 · Échelle : 1, 2, 3 ou 4 · Choix : une des réponses listées · Statut : ABS, DISP, Blessé, Malade ou Autre.'],
-      ['Tu peux compléter ou corriger les cases, ajouter des élèves (nom et prénom) ou un onglet de séance construit sur le même modèle.'],
-      ['Ne supprime pas la colonne A ni les lignes masquées : elles permettent à l’appli de reconnaître les séances et les élèves.'],
-      ['Pour le reprendre : Carnet EPS › onglet Entraînement › bouton « Excel » › Importer. Une case vide ne supprime rien dans le carnet.'],
-      [],
-      [{ v: '⚠ Ce fichier n’est pas chiffré (contrairement au carnet sur la clé) : ne le laisse pas traîner, supprime-le après usage.', style: 'entete' }],
+      [`Temps : 3:45 ou 12,5 · Échelle : 1, 2, 3 ou 4 · Choix : une des réponses listées · Statut : ${anonyme ? 'ABS ou Autre' : 'ABS, DISP, Blessé, Malade ou Autre'}.`],
+      ...(anonyme ? [] : [
+        ['Tu peux compléter ou corriger les cases, ajouter des élèves (nom et prénom) ou un onglet de séance construit sur le même modèle.'],
+        ['Ne supprime pas la colonne A ni les lignes masquées : elles permettent à l’appli de reconnaître les séances et les élèves.'],
+        ['Pour le reprendre : Carnet EPS › onglet Leçons › bouton « Excel » › Importer. Une case vide ne supprime rien dans le carnet.'],
+        [],
+        [{ v: '⚠ Ce fichier n’est pas chiffré (contrairement au carnet sur la clé) : ne le laisse pas traîner, supprime-le après usage.', style: 'entete' }],
+      ]),
       [],
       [E('Séances')],
       ...seances.map(s => [`${dateFr(s.date)} — ${s.titre}${s.apsa && s.apsa !== s.titre ? ' (' + s.apsa + ')' : ''}`]),
     ],
   };
   const feuilles = seances.map(s => {
-    const inds = s.indicateurs;
+    // Anonyme : les observations écrites (texte libre) ne partent pas.
+    const inds = anonyme ? s.indicateurs.filter(ind => ind.type !== 'texte') : s.indicateurs;
     return {
       nom: `${dateFr(s.date).slice(0, 5).replace('/', '-')} ${s.titre}`,
       largeurs: [10, 18, 16, 11, ...inds.map(ind => (ind.type === 'texte' ? 30 : 14))],
       colonnesMasquees: [0], lignesMasquees: [7], figer: [4, 7],
       lignes: [
         ['#seance', E('Séance'), { v: s.titre, style: 'titre' }],
-        [s.id, E('Date'), T(dateFr(s.date))],
+        [anonyme ? '' : s.id, E('Date'), T(dateFr(s.date))],
         ['', E('APSA'), T(s.apsa || '')],
-        ['', E('Documents'), A(docsDe(s).map(d => d.nom).join(', ') || '—')],
+        ['', E('Documents'), A(anonyme ? '—' : docsDe(s).map(d => d.nom).join(', ') || '—')],
         [],
         ['#eleve', E('Nom'), E('Prénom'), E('Statut'), ...inds.map(ind => E(ind.nom))],
-        ['#type', A('Type'), A(''), A('ABS / DISP / Blessé / Malade / Autre'), ...inds.map(ind => A(typeEnTexte(ind)))],
+        ['#type', A('Type'), A(''), A(anonyme ? 'ABS / Autre' : 'ABS / DISP / Blessé / Malade / Autre'), ...inds.map(ind => A(typeEnTexte(ind)))],
         ['#donnee', '', '', '', ...inds.map(ind => ind.id)],
         ...eleves.map(el => {
           const st = statutEnt(s.id, el.id);
-          return [el.id, T(el.nom), T(el.prenom || ''), T(st ? STATUTS_ENT[st] : ''), ...inds.map(ind => valeurExcel(ind, Donnees.note(s.id, el.id, ind.id)))];
+          return [anonyme ? '' : el.id, T(anon ? anon.nom(el) : el.nom), T(anon ? '' : el.prenom || ''), T(statutExporte(st)),
+            ...inds.map(ind => {
+              const v = Donnees.note(s.id, el.id, ind.id), sc = statutCase(v);
+              return sc ? T(statutExporte(sc)) : valeurExcel(ind, v); // statut d'une seule case : écrit dans la case
+            })];
         }),
       ],
     };
   });
   const blob = Tableur.ecrire([lisezMoi, ...feuilles]);
+  const nom = `Leçons ${c.nom}${anonyme ? ' anonyme' : ''} ${aujourdhui()}.xlsx`;
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new File([blob], `Entraînement ${c.nom} ${aujourdhui()}.xlsx`, { type: blob.type }));
-  a.download = `Entraînement ${c.nom} ${aujourdhui()}.xlsx`.replace(/[\\/:*?"<>|]/g, '-');
+  a.href = URL.createObjectURL(new File([blob], nom, { type: blob.type }));
+  a.download = nom.replace(/[\\/:*?"<>|]/g, '-');
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-  toast(`Classeur exporté (${seances.length} séance${seances.length > 1 ? 's' : ''}). Il n’est pas chiffré : ne le laisse pas traîner.`, 'ok');
+  toast(anonyme ? `Classeur anonyme exporté (${seances.length} séance${seances.length > 1 ? 's' : ''}) : aucun nom d’élève.`
+    : `Classeur exporté (${seances.length} séance${seances.length > 1 ? 's' : ''}). Il n’est pas chiffré : ne le laisse pas traîner.`, 'ok');
 }
-
 // Onglets du classeur → séances lues (les onglets sans ligne « Nom / Prénom » sont ignorés).
 function lireSeancesExcel(feuilles) {
   const res = [];
@@ -1155,6 +1242,13 @@ function appliquerImport(plan, c, { structure, ajouterInconnus }) {
         else if (code !== statutEnt(x.id, l.eleve.id)) { Donnees.ecrireNote(x.id, l.eleve.id, code); bilan.valeurs++; }
       }
       x.colonnes.forEach((col, k) => {
+        // « Blessé », « Malade »… écrit dans une case de donnée : statut de cette case seulement
+        // (sauf une observation écrite, ou une réponse prévue dans la liste de choix).
+        const brut = (l.valeurs[k] || '').trim(), codeCase = brut && STATUTS_PAR_NOM[sansAccent(brut)];
+        if (codeCase && col.ind.type !== 'texte' && !(col.ind.options || []).some(o => sansAccent(o) === sansAccent(brut))) {
+          if (Donnees.note(x.id, l.eleve.id, col.ind.id) !== '@' + codeCase) { Donnees.ecrireNote(x.id, l.eleve.id, '@' + codeCase, col.ind.id); bilan.valeurs++; }
+          return;
+        }
         const r = valeurDepuisExcel(col.ind, l.valeurs[k]);
         if (!r) return;
         if (r.erreur) return bilan.erreurs.push(`${l.nom} ${l.prenom} (${x.titre}, ${col.nom}) : « ${l.valeurs[k]} »`);
@@ -1174,6 +1268,7 @@ async function importerExcel(c, fichier) {
   try { feuilles = await Tableur.lire(fichier); } catch (e) {
     throw new Error(`« ${fichier.name} » n’a pas pu être lu : ${e.message || e}`);
   }
+  if (estAnonyme(feuilles)) throw new Error('Ce classeur est un export anonyme : il ne peut pas être réimporté (l’appli ne saurait pas à quels élèves rattacher les résultats).');
   const lues = lireSeancesExcel(feuilles);
   if (!lues.length) throw new Error(`Aucune séance trouvée dans « ${fichier.name} » (il faut un onglet avec des colonnes « Nom » et « Prénom »).`);
   const plan = preparerImport(lues, c);
@@ -1192,7 +1287,7 @@ async function importerExcel(c, fichier) {
       <label class="case"><input type="radio" name="quoi" value="structure"><span>Seulement <b>les séances</b> (titres, dates, données à relever) — pour reprendre la séquence d’un collègue avec tes élèves</span></label>
     </fieldset>
     ${inconnus.length ? `<div class="inconnus-import">
-      <p>${inconnus.length} élève${inconnus.length > 1 ? 's' : ''} du fichier ne ${inconnus.length > 1 ? 'sont' : 'est'} pas dans ${esc(c.nom)} :
+      <p>${inconnus.length} élève${inconnus.length > 1 ? 's' : ''} du fichier ${inconnus.length > 1 ? 'ne sont' : 'n’est'} pas dans ${esc(c.nom)} :
         <span class="aide">${inconnus.slice(0, 12).map(el => esc(`${el.nom} ${el.prenom}`.trim())).join(', ')}${inconnus.length > 12 ? '…' : ''}</span></p>
       <label class="case"><input type="checkbox" name="ajouter"> Les ajouter à la classe (sinon leurs lignes sont ignorées)</label>
     </div>` : ''}
@@ -1219,12 +1314,13 @@ async function importerExcel(c, fichier) {
 async function echangeExcel() {
   const c = classeActive();
   let fichier = null;
-  const { d, resultat } = ouvrirModale(`Excel — entraînement ${c.nom}`, `
+  const { d, resultat } = ouvrirModale(`Excel — leçons ${c.nom}`, `
     <div class="bloc-excel">
       <h3>⬇ Exporter</h3>
       <p class="aide">Toutes les séances de la classe dans un classeur .xlsx (un onglet par séance) : à garder, à ouvrir dans Excel
         ou LibreOffice, à donner à un collègue. Les documents joints (📎) n’y sont pas.</p>
       <p class="aide">⚠ Le classeur n’est pas chiffré, contrairement au carnet sur la clé : ne le laisse pas traîner.</p>
+      <label class="case"><input type="checkbox" name="anonyme"> <span><b>Anonyme</b> — sans noms ni informations de santé ni observations, pour partager (ne se réimporte pas)</span></label>
       <button value="exporter" class="primaire">Exporter ${esc(c.nom)}</button>
     </div>
     <div class="bloc-excel">
@@ -1239,7 +1335,7 @@ async function echangeExcel() {
     if (fichier) d.fermer();
   });
   const r = await resultat;
-  if (r.action === 'exporter') return exporterExcel(c);
+  if (r.action === 'exporter') return exporterExcel(c, { anonyme: r.data.anonyme === 'on' });
   if (fichier) return importerExcel(c, fichier);
 }
 

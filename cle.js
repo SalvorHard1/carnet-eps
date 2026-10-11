@@ -181,6 +181,24 @@ const Cle = (() => {
     return supprimees;
   }
 
+  // Copies datées de « Sauvegardes » : [{ nom, h }] (pour les rechiffrer après un changement de mot de passe).
+  async function copiesDatees(dossier) {
+    let sous;
+    try { sous = await dossier.getDirectoryHandle('Sauvegardes'); } catch { return []; }
+    const res = [];
+    for await (const [nom, h] of sous.entries()) if (h.kind === 'file' && MOTIF_COPIE.test(nom)) res.push({ nom, h });
+    return res;
+  }
+
+  // Même contenu, nouveau mot de passe ; la date d'enregistrement d'origine est gardée.
+  // (ErreurMdp si l'ancien mot de passe n'ouvre pas ce fichier.)
+  async function rechiffrer(texte, ancien, nouveau) {
+    const donnees = await dechiffrer(texte, ancien);
+    const sortie = JSON.parse(await chiffrer(donnees, nouveau));
+    sortie.enregistreLe = dateCarnet(texte) || sortie.enregistreLe;
+    return JSON.stringify(sortie);
+  }
+
   async function autoriser(h) {
     if ((await h.queryPermission({ mode: 'readwrite' })) === 'granted') return true;
     return (await h.requestPermission({ mode: 'readwrite' })) === 'granted';
@@ -249,6 +267,6 @@ const Cle = (() => {
 
   return {
     NOM_FICHIER, accesDirect, ErreurMdp, chiffrer, dechiffrer, creerTemoin, verifierTemoin, memoriser, dossierMemorise, choisirDossier, contientCarnet, estDossierCopies,
-    fichierCarnet, dateCarnet, autresCarnets, copieDatee, nettoyerCopies, autoriser, lire, ecrire, partagerOuTelecharger, enregistrerSurCle, estFichierTablette, modeTablette,
+    fichierCarnet, dateCarnet, autresCarnets, copieDatee, copiesDatees, rechiffrer, nettoyerCopies, autoriser, lire, ecrire, partagerOuTelecharger, enregistrerSurCle, estFichierTablette, modeTablette,
   };
 })();

@@ -1,5 +1,5 @@
-'use strict';
-const VERSION_APP = '0.36.0'; // garder identique à VERSION dans sw.js
+﻿'use strict';
+const VERSION_APP = '0.58.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -122,6 +122,7 @@ function classesTriees() {
 }
 
 function classeActive() {
+  if (enModeEleve()) return Donnees.get('classes', modeEleve.classeId) || null; // jamais une autre classe en mode élève
   return Donnees.get('classes', ui.classeId) || classesTriees()[0] || null;
 }
 
@@ -382,6 +383,9 @@ function moyenneEval(e, eleves) {
 /* ---------- Rendu ---------- */
 
 function rendre() {
+  appliquerReglages(); // (ne refait rien si aucun réglage n'a changé)
+  appliquerModeEleve(); // 🎓 tablette prêtée aux élèves : outils autorisés seulement (outils.js)
+  if (!enModeEleve() && !ongletsVisibles().includes(ui.vue)) ui.vue = ongletsVisibles()[0]; // onglet masqué dans les réglages
   rendreClasses();
   document.querySelectorAll('#onglets [data-vue]').forEach(b => b.classList.toggle('actif', b.dataset.vue === ui.vue));
   // La barre de codes rapides s'adapte à l'onglet. (Attention : surtout pas « data-vue » sur <body>,
@@ -477,6 +481,8 @@ function rendreVue() {
   planifierAscenseur(); // recalculé une fois la vue dessinée
   const v = $('#vue');
   const c = classeActive();
+  if (ui.vue === 'outils') { v.innerHTML = htmlOutils(c); return; } // (certains outils marchent sans classe)
+  if (ui.vue === 'agenda') { v.innerHTML = htmlAgenda(); apresAgenda(); return; } // (toutes les classes : agenda.js)
   if (!c) {
     v.innerHTML = `
       <div class="vide">
@@ -484,7 +490,8 @@ function rendreVue() {
         <p>Commence par créer ta première classe.</p>
         <button class="primaire" data-action="ajout-classe">+ Nouvelle classe</button>
         <p class="aide">Tu as déjà un carnet sur ta clé USB ? <button class="lien" data-action="cle">Récupère-le ici</button>.
-          · <button class="lien" data-action="guide">Comment ça marche ?</button></p>
+          · <button class="lien" data-action="guide">Comment ça marche ?</button>
+          · <button class="lien" data-action="reglages">⚙ Personnaliser</button></p>
       </div>`;
     return;
   }
@@ -500,7 +507,7 @@ function rendreVue() {
    Trimestre suivi : celui choisi dans l'onglet Notes, sinon celui d'aujourd'hui (année scolaire en cours). */
 
 const MOTIFS_ALERTE = { ABS: 'Absent', BLE: 'Blessé', MAL: 'Malade' };
-const SEUILS_ALERTE = { orange: 2, rouge: 3 };
+const SEUILS_ALERTE = { actif: true, orange: 2, rouge: 3 }; // (réglables : ⚙ Réglages → Notes)
 const anneeScolaire = date => +date.slice(0, 4) - (+date.slice(5, 7) < 8 ? 1 : 0);
 const periodeAlerte = () => { const v = periodeAffichee(); return v !== 'annee' ? v : periodeDe(aujourdhui()); };
 
@@ -517,7 +524,7 @@ function absencesEleve(el) {
   const n = jours.size;
   return {
     n, periode: periodesAnnee().find(x => x.id === p),
-    niveau: n >= SEUILS_ALERTE.rouge ? 'rouge' : n >= SEUILS_ALERTE.orange ? 'orange' : '',
+    niveau: !SEUILS_ALERTE.actif ? '' : n >= SEUILS_ALERTE.rouge ? 'rouge' : n >= SEUILS_ALERTE.orange ? 'orange' : '',
     jours: [...jours].sort(([a], [b]) => a.localeCompare(b)),
   };
 }
@@ -536,7 +543,7 @@ async function voirAbsences(id) {
     <ul class="liste-absences">${a.jours.map(([date, l]) => `<li><b>${dateCourte(date)}</b> — ${[...new Set(l.map(x => MOTIFS_ALERTE[x.code]))].join(' / ')}
       <span class="aide">· ${esc([...new Set(l.map(x => x.quoi))].join(', '))}</span></li>`).join('')}</ul>
     <p class="aide">Alerte orange dès ${SEUILS_ALERTE.orange} jours, rouge dès ${SEUILS_ALERTE.rouge}, sur le trimestre
-      (évaluations et séances d’entraînement réunies, un jour ne compte qu’une fois ; les dispenses ne comptent pas).</p>`,
+      (évaluations et leçons réunies, un jour ne compte qu’une fois ; les dispenses ne comptent pas).</p>`,
   '<span class="espace"></span><button type="button" data-fermer class="primaire">Fermer</button>');
 }
 
@@ -593,6 +600,8 @@ function htmlNotes(c) {
     <div class="outils">
       <h2>${esc(c.nom)}</h2>
       <button class="primaire" data-action="ajout-eval">+ Évaluation</button>
+      <button data-action="excel-notes" title="Exporter ou importer les notes et degrés de maîtrise de la classe (classeur Excel)">⇅ Excel</button>
+      <button data-action="appreciations" title="Appréciations du trimestre proposées par l’appli, d’après les notes et les leçons">✍ Appréciations</button>
       <label class="choix-tri">Période
         <select data-periode>
           <option value="annee">Toute l’année</option>
@@ -718,8 +727,8 @@ const SEUILS_DEFAUT = [10, 14, 18]; // sur 20 : degré 2 dès 10, degré 3 dès 
 const ANCIENS_SEUILS_DEFAUT = '10,15,18'; // défaut de la v0.10.0, remplacé automatiquement
 
 // Les évaluations restées sur l'ancien défaut passent au nouveau, et leurs degrés pré-remplis sont recalculés.
-// Seuils de la classe (réglés dans la fiche de la classe), sinon ceux par défaut.
-const seuilsClasse = c => c?.seuils || SEUILS_DEFAUT;
+// Seuils de la classe (réglés dans la fiche de la classe), sinon ceux par défaut (⚙ Réglages → Notes).
+const seuilsClasse = c => c?.seuils || seuilsDefaut();
 const memesSeuils = (a, b) => String(a) === String(b);
 
 function migrerSeuils() {
@@ -921,7 +930,7 @@ function majPastille() {
 const aEnregistrer = () => { const m = Donnees.meta(); return m.modifieLe > m.dernierEnvoi; };
 
 function rappelerCle() {
-  if (!Cle.accesDirect && aEnregistrer()) notifAuto('🔑 Pense à enregistrer sur la clé : bouton « À enregistrer » en haut.');
+  if (!Cle.accesDirect && aEnregistrer() && !enModeEleve()) notifAuto('🔑 Pense à enregistrer sur la clé : bouton « À enregistrer » en haut.');
 }
 
 // Petite notification discrète en bas de l'écran (ne vole pas le focus de la saisie).
@@ -1085,8 +1094,12 @@ async function editerClasse(id) {
 
 async function editerEval(id) {
   const c = classeActive();
-  const e = id ? Donnees.get('evals', id) : { titre: '', apsa: '', date: aujourdhui(), max: 20, coef: 1 };
-  const refInitial = e.referentiel || REFERENTIEL_PAR_NIVEAU[c.niveau] || 'cycle4';
+  const defaut = reglage('notes');
+  const e = id ? Donnees.get('evals', id) : { titre: '', apsa: '', date: aujourdhui(), max: defaut.max, coef: defaut.coef };
+  // Référentiels proposés : ceux qui ne sont pas masqués dans les réglages (+ celui de l'évaluation, quoi qu'il arrive).
+  const refsProposes = Object.values(REFERENTIEL.refs).filter(r => !r.masque || r.id === e.referentiel);
+  const refNiveau = REFERENTIEL_PAR_NIVEAU[c.niveau] || 'cycle4';
+  const refInitial = e.referentiel || (refsProposes.some(r => r.id === refNiveau) ? refNiveau : refsProposes[0]?.id || refNiveau);
   const seuils = e.seuils || seuilsClasse(c);
   const caInitial = e.ca ?? caDeApsa(e.apsa, refInitial);
   const { d, resultat } = ouvrirModale(id ? 'Modifier l’évaluation' : 'Nouvelle évaluation', `
@@ -1101,8 +1114,8 @@ async function editerEval(id) {
     <fieldset class="competences">
       <legend>Compétences travaillées</legend>
       <div class="ligne">
-        <label>Référentiel<select name="referentiel">${Object.values(REFERENTIEL.refs)
-    .map(r => `<option value="${r.id}" ${r.id === refInitial ? 'selected' : ''}>${esc(r.nom)}</option>`).join('')}</select></label>
+        <label>Référentiel<select name="referentiel">${refsProposes
+    .map(r => `<option value="${esc(r.id)}" ${r.id === refInitial ? 'selected' : ''}>${esc(r.nom)}</option>`).join('')}</select></label>
         <label>Champ d’apprentissage<select name="ca"></select></label>
       </div>
       <div class="zone-competences"></div>
@@ -1128,17 +1141,20 @@ async function editerEval(id) {
   let caChoisiALaMain = !!e.ca;
   const majChamps = ca => {
     const ref = REFERENTIEL.refs[selRef.value];
-    selCa.innerHTML = '<option value="">—</option>' + Object.entries(ref.champs)
-      .map(([k, ch]) => `<option value="${k}" ${k === ca ? 'selected' : ''}>${k} — ${esc(ch.titre)}</option>`).join('');
+    // (Référentiel personnel : un champ sans titre n'est pas utilisé.)
+    selCa.innerHTML = '<option value="">—</option>' + Object.entries(ref.champs).filter(([k, ch]) => ch.titre.trim() || k === ca)
+      .map(([k, ch]) => `<option value="${esc(k)}" ${k === ca ? 'selected' : ''}>${esc(k)} — ${esc(ch.titre)}</option>`).join('');
     majAttendus();
   };
   const majAttendus = () => {
     const champ = REFERENTIEL.refs[selRef.value].champs[selCa.value];
-    zone.innerHTML = champ
-      ? champ.attendus.map(a => `
-          <label class="case competence"><input type="checkbox" name="competence" value="${a.id}" ${coches.has(a.id) ? 'checked' : ''}>
-            <span><b>${a.code}</b> ${esc(a.texte)}</span></label>`).join('')
-      : '<p class="aide">Choisis le champ d’apprentissage pour cocher les compétences travaillées.</p>';
+    // Compétences masquées dans les réglages : plus proposées, sauf si l'évaluation les a déjà.
+    const attendus = champ ? champ.attendus.filter(a => !a.masque || coches.has(a.id)) : [];
+    zone.innerHTML = !champ ? '<p class="aide">Choisis le champ d’apprentissage pour cocher les compétences travaillées.</p>'
+      : attendus.length ? attendus.map(a => `
+          <label class="case competence"><input type="checkbox" name="competence" value="${esc(a.id)}" ${coches.has(a.id) ? 'checked' : ''}>
+            <span><b>${esc(a.code)}</b> ${esc(a.texte)}</span></label>`).join('')
+        : '<p class="aide">Aucune compétence proposée dans ce champ (⚙ Réglages → Compétences).</p>';
   };
   zone.addEventListener('change', ev => {
     if (ev.target.name === 'competence') ev.target.checked ? coches.add(ev.target.value) : coches.delete(ev.target.value);
@@ -1165,13 +1181,13 @@ async function editerEval(id) {
       Donnees.supprimer('evals', id);
     }
   } else if (r.action === 'ok') {
-    // On ne garde que les attendus du référentiel et du champ retenus.
-    const prefixe = `${r.data.referentiel}.${r.data.ca}.`;
+    // On ne garde que les attendus du référentiel et du champ retenus (compétences ajoutées dans les réglages comprises).
+    const duChamp = x => { const a = REFERENTIEL.attendu(x); return a?.refId === r.data.referentiel && a.ca === r.data.ca; };
     const enreg = Donnees.ecrire('evals', {
       ...e, id: e.id || Donnees.nouvelId(), classeId: c.id, cree: e.cree || Date.now(),
       titre: r.data.titre.trim(), apsa: r.data.apsa.trim(), date: r.data.date, max: +r.data.max, coef: +r.data.coef,
       referentiel: r.data.referentiel, ca: r.data.ca,
-      competences: r.data.ca ? r.fd.getAll('competence').filter(x => x.startsWith(prefixe)) : [],
+      competences: r.data.ca ? r.fd.getAll('competence').filter(duChamp) : [],
       competencesLibres: r.data.competencesLibres.trim(),
       preremplir: r.data.preremplir === 'on',
       // Mêmes seuils que la classe : l'évaluation suit la classe (et ses futurs changements)
@@ -1302,7 +1318,7 @@ function migrerNotesOrphelines() {
 //     (témoin), on le redemande et on le vérifie : une faute de frappe ne crée pas un 2e mot de passe.
 //     Sinon (tout premier enregistrement sur cet appareil), on le fait taper deux fois.
 //   Pour lire la clé, pas de vérification ici : c'est le fichier lui-même qui dit si le mot de passe est bon.
-async function obtenirMdp(pourEnregistrer) {
+async function obtenirMdp(pourEnregistrer, aide = '') {
   if (mdpSession) return mdpSession;
   const temoin = Donnees.meta().temoinMdp;
   const nouveau = pourEnregistrer && !temoin;
@@ -1311,7 +1327,7 @@ async function obtenirMdp(pourEnregistrer) {
     ? 'Il chiffre le fichier sur la clé : si tu la perds, personne ne peut lire les données des élèves.<br>'
       + '<b>Tu as déjà un carnet sur ta clé (fait sur l’ordinateur) ? Mets le même mot de passe.</b><br>'
       + 'Note-le bien : sans lui, impossible de récupérer le carnet.'
-    : 'Le mot de passe de ton carnet (le même sur tous tes appareils).'}</p>
+    : aide || 'Le mot de passe de ton carnet (le même sur tous tes appareils).'}</p>
     <label>Mot de passe<input type="password" name="mdp" required autofocus minlength="${nouveau ? 6 : 1}" autocomplete="${nouveau ? 'new-password' : 'current-password'}"></label>
     ${nouveau ? '<label>Confirmer<input type="password" name="mdp2" required autocomplete="new-password"></label>' : ''}`,
   boutonsModale('Valider'));
@@ -1319,11 +1335,11 @@ async function obtenirMdp(pourEnregistrer) {
   if (r.action !== 'ok') throw new Annule();
   if (nouveau && r.data.mdp !== r.data.mdp2) {
     toast('Les deux mots de passe ne correspondent pas.', 'erreur');
-    return obtenirMdp(pourEnregistrer);
+    return obtenirMdp(pourEnregistrer, aide);
   }
   if (pourEnregistrer && temoin && !(await Cle.verifierTemoin(r.data.mdp, temoin))) {
     toast('Ce n’est pas le mot de passe de ton carnet. (Changé de mot de passe ? Fais d’abord « Récupérer depuis la clé ».)', 'erreur');
-    return obtenirMdp(pourEnregistrer);
+    return obtenirMdp(pourEnregistrer, aide);
   }
   mdpSession = r.data.mdp;
   if (nouveau) memoriserTemoin(mdpSession);
@@ -1351,13 +1367,18 @@ function migrerTout() {
 }
 
 // Déchiffre un fichier de la clé et le fusionne avec le carnet de cet appareil.
-async function importerTexte(texte) {
+//   sauvegarde : fichier choisi à la main (ex. une ancienne copie datée, peut-être chiffrée avec un ancien mot de passe) :
+//   son mot de passe ne devient pas celui du carnet (ni témoin, ni mot de passe de la session).
+async function importerTexte(texte, { sauvegarde = false } = {}) {
+  const avant = mdpSession;
   for (;;) {
-    const mdp = await obtenirMdp(false);
+    const mdp = await obtenirMdp(false, sauvegarde
+      ? 'Le mot de passe de ce fichier. S’il date d’avant un changement de mot de passe, tape l’ancien.' : '');
     try {
       const n = Donnees.fusionner(await Cle.dechiffrer(texte, mdp));
       migrerTout();
-      memoriserTemoin(mdp); // ce mot de passe ouvre le carnet de la clé : c'est désormais le bon
+      if (sauvegarde) mdpSession = avant;
+      else memoriserTemoin(mdp); // ce mot de passe ouvre le carnet de la clé : c'est désormais le bon
       return { mdp, n };
     } catch (e) {
       if (!(e instanceof Cle.ErreurMdp)) throw e;
@@ -1401,16 +1422,31 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
         n += Donnees.fusionner(await Cle.dechiffrer(c.texte, mdp));
       } catch (e) {
         if (!(e instanceof Cle.ErreurMdp)) throw e;
-        ignores.push(c.nom); // chiffré avec un autre mot de passe
+        ignores.push(c); // chiffré avec un autre mot de passe (ex. l'ancien, avant un changement)
         continue;
       }
     }
     if (c.nom !== Cle.NOM_FICHIER) repris.push(c.nom);
     if (c.fichier && Cle.estFichierTablette(c.fichier)) tabletteReunis.push(c);
   }
+  // Fichiers chiffrés avec un autre mot de passe : on demande lequel, plutôt que de les laisser de côté.
+  while (ignores.length && !silencieux) {
+    const autre = await demanderAutreMdp(ignores);
+    if (!autre) break;
+    const avantEssai = ignores.length;
+    for (const c of [...ignores]) {
+      try { n += Donnees.fusionner(await Cle.dechiffrer(c.texte, autre)); } catch (e) { if (!(e instanceof Cle.ErreurMdp)) throw e; continue; }
+      ignores.splice(ignores.indexOf(c), 1);
+      repris.push(c.nom);
+      if (c.fichier && Cle.estFichierTablette(c.fichier)) tabletteReunis.push(c);
+    }
+    if (ignores.length === avantEssai) toast('Ce mot de passe n’ouvre aucun de ces fichiers.', 'erreur');
+  }
   if (aReunir.length > 1) migrerTout();
-  if (plusRecents.length) {
-    Donnees.reglerMeta('carnetsReunis', { ...dejaVus, ...Object.fromEntries(plusRecents.map(c => [c.nom, c.date])) });
+  // (Un fichier laissé de côté n'est pas noté « réuni » : il sera proposé à nouveau la prochaine fois.)
+  const reunis = plusRecents.filter(c => !ignores.includes(c));
+  if (reunis.length) {
+    Donnees.reglerMeta('carnetsReunis', { ...dejaVus, ...Object.fromEntries(reunis.map(c => [c.nom, c.date])) });
   }
   if (!mdp) mdp = await obtenirMdp(true);
   const sortie = await Cle.chiffrer(Donnees.exporter(), mdp);
@@ -1439,7 +1475,109 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
   toast(`Clé à jour ✔ (dossier « ${dossier.name} »)${recup}`
     + (repris.length ? `\nRepris aussi : ${repris.join(', ')}` : '')
     + (supprimes ? `\n${supprimes} fichier${supprimes > 1 ? 's' : ''} de la tablette retiré${supprimes > 1 ? 's' : ''} de la clé (contenu gardé dans le carnet)` : '')
-    + (ignores.length ? `\n⚠ Ignoré (autre mot de passe) : ${ignores.join(', ')}` : ''), ignores.length ? 'erreur' : 'ok');
+    + (ignores.length ? `\n⚠ Laissé de côté (autre mot de passe) : ${ignores.map(c => c.nom).join(', ')}` : ''), ignores.length ? 'erreur' : 'ok');
+  return { ignores: ignores.map(c => c.nom) };
+}
+
+// Fichiers de la clé chiffrés avec un autre mot de passe que celui du carnet : on demande lequel.
+async function demanderAutreMdp(fichiers) {
+  const { resultat } = ouvrirModale('Fichier avec un autre mot de passe', `
+    <p>${fichiers.length > 1 ? `${fichiers.length} fichiers de la clé ont été enregistrés` : 'Un fichier de la clé a été enregistré'}
+      avec un <b>autre mot de passe</b> — sans doute l’<b>ancien</b>, avant un changement de mot de passe :</p>
+    <ul class="bilan-import">${fichiers.slice(0, 8).map(c => `<li>${esc(c.nom)}</li>`).join('')}${fichiers.length > 8 ? '<li>…</li>' : ''}</ul>
+    <label>Mot de passe de ${fichiers.length > 1 ? 'ces fichiers' : 'ce fichier'}<input type="password" name="mdp" required autofocus autocomplete="off"></label>
+    <p class="aide">« Passer » les laisse sur la clé sans les reprendre : ils seront proposés à nouveau la prochaine fois.</p>`,
+  '<span class="espace"></span><button type="button" data-fermer>Passer</button><button value="ok" class="primaire">Reprendre</button>');
+  const r = await resultat;
+  return r.action === 'ok' ? r.data.mdp : null;
+}
+
+/* ---------- Changer le mot de passe du carnet (⚙ Réglages → Sécurité) ----------
+   Sur ordinateur seulement (accès direct à la clé). Dans l'ordre :
+   1. vérifie l'ancien mot de passe ; 2. réunit tout ce qui est sur la clé avec l'ancien (fichiers de la tablette
+   compris : rien ne se perd) ; 3. réécrit carnet-eps.json (et une copie datée) avec le nouveau ;
+   4. sur demande, rechiffre les anciennes copies datées de « Sauvegardes » ; 5. retient le nouveau sur cet appareil.
+   Les autres appareils le prennent au prochain « Récupérer depuis la clé » (en tapant le nouveau mot de passe). */
+async function changerMotDePasse() {
+  if (!Cle.accesDirect) {
+    ouvrirModale('Changer le mot de passe', `
+      <p>Le changement de mot de passe se fait <b>sur l’ordinateur</b>, clé branchée : c’est lui qui réécrit le carnet de la clé.</p>
+      <p class="aide">Ensuite, sur cet appareil : bouton 🔑 › « Récupérer depuis la clé », et tape le <b>nouveau</b> mot de passe.</p>`,
+    '<span class="espace"></span><button type="button" data-fermer class="primaire">Compris</button>');
+    return;
+  }
+  const { d, resultat } = ouvrirModale('Changer le mot de passe du carnet', `
+    <p class="aide">Branche ta clé. Le carnet de la clé sera réécrit avec le nouveau mot de passe, après avoir repris tout ce
+      qui s’y trouve (y compris les fichiers déposés par la tablette).</p>
+    <label>Mot de passe actuel<input type="password" name="ancien" required autofocus autocomplete="current-password"></label>
+    <label>Nouveau mot de passe<input type="password" name="nouveau" required minlength="8" autocomplete="new-password"></label>
+    <label>Nouveau mot de passe (encore)<input type="password" name="nouveau2" required minlength="8" autocomplete="new-password"></label>
+    <p class="aide">Au moins 8 caractères. Le plus sûr : une petite phrase facile à retenir (ex. « LeHandDuJeudiMatin! »).
+      Note-le bien : sans lui, le carnet de la clé est illisible, pour toi aussi.</p>
+    <label class="case"><input type="checkbox" name="copies" checked> Rechiffrer aussi les anciennes copies datées (dossier « Sauvegardes »)
+      avec le nouveau mot de passe <span class="aide">— sinon il faudra l’ancien pour en ouvrir une</span></label>`,
+  boutonsModale('Changer le mot de passe'));
+  const r = await resultat;
+  if (r.action !== 'ok') return;
+  const { ancien, nouveau, nouveau2 } = r.data;
+  if (nouveau !== nouveau2) { toast('Les deux nouveaux mots de passe ne correspondent pas.', 'erreur'); return changerMotDePasse(); }
+  if (nouveau === ancien) { toast('Le nouveau mot de passe est le même que l’actuel.', 'erreur'); return changerMotDePasse(); }
+
+  let dossier = await Cle.dossierMemorise();
+  if (dossier && Cle.estDossierCopies(dossier)) dossier = null;
+  if (!dossier) dossier = await choisirDossierCle();
+  if (!(await Cle.autoriser(dossier))) throw new Error('Accès au dossier de la clé refusé.');
+
+  // 1. L'ancien mot de passe doit ouvrir le carnet de la clé (ou, clé vide, correspondre à celui de cet appareil).
+  let texte = '';
+  try { texte = await Cle.lire(await Cle.fichierCarnet(dossier)); } catch { throw new Error('Dossier introuvable : vérifie que la clé est bien branchée.'); }
+  try {
+    if (texte.trim()) await Cle.dechiffrer(texte, ancien);
+    else if (Donnees.meta().temoinMdp && !(await Cle.verifierTemoin(ancien, Donnees.meta().temoinMdp))) throw new Cle.ErreurMdp();
+  } catch (e) {
+    if (e instanceof Cle.ErreurMdp) { toast('Ce n’est pas le mot de passe actuel du carnet.', 'erreur'); return; }
+    throw e;
+  }
+
+  await actionCle(async () => {
+    // 2. Tout réunir avec l'ancien mot de passe (rien ne se perd).
+    mdpSession = ancien;
+    const bilan = await synchroniser(dossier, { copie: true });
+    // 3. Réécrire le carnet de la clé avec le nouveau.
+    const sortie = await Cle.chiffrer(Donnees.exporter(), nouveau);
+    try {
+      await Cle.ecrire(await Cle.fichierCarnet(dossier), sortie);
+      await Cle.copieDatee(dossier, sortie);
+    } catch {
+      throw new Error('Impossible d’écrire sur la clé : le mot de passe n’a PAS été changé (le carnet de la clé garde l’ancien).');
+    }
+    // 5. Le nouveau devient celui de cet appareil.
+    mdpSession = nouveau;
+    Donnees.reglerMeta('temoinMdp', await Cle.creerTemoin(nouveau));
+    Donnees.marquerEnvoi();
+    // 4. Anciennes copies datées.
+    let rechiffrees = 0, autres = 0;
+    if (r.data.copies === 'on') {
+      for (const { h } of await Cle.copiesDatees(dossier)) {
+        try {
+          const t = await Cle.lire(h);
+          await Cle.ecrire(h, await Cle.rechiffrer(t, ancien, nouveau));
+          rechiffrees++;
+        } catch (e) {
+          if (!(e instanceof Cle.ErreurMdp)) console.warn('Copie datée non rechiffrée :', e);
+          autres++; // déjà au nouveau mot de passe, ou encore plus ancien : laissée telle quelle
+        }
+      }
+    }
+    ouvrirModale('Mot de passe changé ✔', `
+      <p>Le carnet de la clé est maintenant chiffré avec le <b>nouveau mot de passe</b>.</p>
+      ${r.data.copies === 'on' ? `<p class="aide">${rechiffrees} copie${rechiffrees > 1 ? 's' : ''} datée${rechiffrees > 1 ? 's' : ''} rechiffrée${rechiffrees > 1 ? 's' : ''}${autres ? ` · ${autres} laissée${autres > 1 ? 's' : ''} telle${autres > 1 ? 's' : ''} quelle${autres > 1 ? 's' : ''} (déjà au nouveau mot de passe, ou plus anciennes)` : ''}.</p>` : ''}
+      ${bilan?.ignores?.length ? `<p class="attention">⚠ Restés sur la clé avec un autre mot de passe : ${esc(bilan.ignores.join(', '))}</p>` : ''}
+      <h3>Sur tes autres appareils (tablette, autre ordinateur)</h3>
+      <p>Bouton 🔑 › <b>« Récupérer depuis la clé »</b>, et tape le <b>nouveau</b> mot de passe : l’appareil le retient.</p>
+      <p class="aide">Si un appareil dépose encore un fichier avec l’ancien mot de passe, l’ordinateur te demandera l’ancien pour le reprendre.</p>`,
+    '<span class="espace"></span><button type="button" data-fermer class="primaire">OK</button>');
+  });
 }
 
 // Bouton 💾 : sur ordinateur, enregistre dans le dossier de la clé (choisi la première fois) ;
@@ -1501,8 +1639,9 @@ function planifierSauvegardeAuto() {
   }, 4000);
 }
 
-async function importerFichier(fichier) {
-  const { n } = await importerTexte(await fichier.text());
+// sauvegarde : fichier choisi dans « Aide et dépannage » (ex. ancienne copie datée) — voir importerTexte.
+async function importerFichier(fichier, { sauvegarde = false } = {}) {
+  const { n } = await importerTexte(await fichier.text(), { sauvegarde });
   rendre();
   toast(n ? `Import réussi ✔ ${n} élément${n > 1 ? 's' : ''} mis à jour.` : 'Import réussi ✔ Rien de nouveau.', 'ok');
 }
@@ -1519,18 +1658,28 @@ const CONSIGNES_TABLETTE = {
     + 'dans le dossier du carnet (celui de <b>carnet-eps.json</b>).' + APRES_DEPOT,
 };
 
-async function exporterTablette() {
+// Copie de secours (Aide et dépannage) : mêmes étapes, consignes sans parler de carnet-eps.json ni de l'ordinateur.
+const CONSIGNES_SECOURS = {
+  enregistrer: 'Touche le bouton ci-dessous : dans la fenêtre qui s’ouvre, va sur ta <b>clé USB</b>, dans ton dossier du carnet, et enregistre.',
+  partager: 'Touche le bouton ci-dessous, choisis <b>« Enregistrer dans Fichiers »</b>, puis ouvre ta <b>clé USB</b> et ton dossier du carnet.',
+  telecharger: 'Touche le bouton ci-dessous : la copie arrive dans <b>Téléchargements</b>.<br>Ensuite, ouvre l’appli <b>Mes fichiers</b> '
+    + 'et <b>déplace</b> la copie dans ton dossier sur la clé USB.',
+};
+const APRES_SECOURS = '<br><span class="aide">Ne remplace et ne renomme rien : chaque copie a un nom différent (avec la date et l’heure).</span>';
+
+async function exporterTablette({ secours = false } = {}) {
   const texte = await Cle.chiffrer(Donnees.exporter(), await obtenirMdp(true));
-  const { d } = ouvrirModale('Fichier prêt', `<p>${CONSIGNES_TABLETTE[Cle.modeTablette]}</p>`,
+  const consigne = secours ? CONSIGNES_SECOURS[Cle.modeTablette] + APRES_SECOURS : CONSIGNES_TABLETTE[Cle.modeTablette];
+  const { d } = ouvrirModale(secours ? 'Copie de secours prête' : 'Fichier prêt', `<p>${consigne}</p>`,
     '<span class="espace"></span><button type="button" data-fermer>Annuler</button><button type="button" class="primaire" data-partager>Enregistrer sur la clé</button>');
   $('[data-partager]', d).addEventListener('click', () => {
     Cle.enregistrerSurCle(texte).then(fait => {
       if (!fait) return; // fenêtre fermée sans enregistrer : on peut réessayer
       Donnees.marquerEnvoi();
       d.fermer();
-      toast(Cle.modeTablette === 'telecharger'
-        ? 'Fichier dans Téléchargements ✔ — déplace-le sur la clé, à côté de carnet-eps.json (sans remplacer).'
-        : 'Fichier enregistré sur la clé ✔', 'ok');
+      toast(Cle.modeTablette !== 'telecharger' ? 'Fichier enregistré sur la clé ✔'
+        : secours ? 'Copie dans Téléchargements ✔ — pense à la déplacer sur ta clé avec « Mes fichiers ».'
+          : 'Fichier dans Téléchargements ✔ — déplace-le sur la clé, à côté de carnet-eps.json (sans remplacer).', 'ok');
     }).catch(signalerErreur);
   });
 }
@@ -1594,26 +1743,47 @@ document.addEventListener('keydown', e => {
 
 /* ---------- Aide et dépannage de la clé ---------- */
 
+// En haut, « 🆘 Mes données » : deux gros boutons pour quelqu'un qui n'y connaît rien. Ils appellent exactement
+// les mêmes fonctions que le menu 🔑 (sauvegarder, importerFichier) : mêmes garde-fous (réunion sans rien effacer,
+// mot de passe vérifié, dossier « Sauvegardes » refusé…). Le reste est replié dans « Plus d'options ».
 async function panneauCle() {
   const dossier = await Cle.dossierMemorise();
+  const m = Donnees.meta();
+  const derniere = !m.dernierEnvoi ? 'aucune pour l’instant'
+    : quandCourt(m.dernierEnvoi).replace(/^auj\./, 'aujourd’hui') + (aEnregistrer() ? ' — des modifications ont été faites depuis' : ' ✔');
   const corps = `
+    <section class="mes-donnees">
+      <h3>🆘 Mes données</h3>
+      <p class="aide">Dernière copie de secours : <b>${esc(derniere)}</b></p>
+      <button type="button" class="carte-secours" data-cle="secours">
+        <span class="secours-icone" aria-hidden="true">📦</span>
+        <span class="secours-texte"><b>Faire une copie de secours</b>
+          <small>Une copie de tout ton carnet, protégée par ton mot de passe, à garder sur ta clé USB.</small></span>
+      </button>
+      <label class="bouton carte-secours">
+        <span class="secours-icone" aria-hidden="true">♻</span>
+        <span class="secours-texte"><b>Restaurer une copie</b>
+          <small>Tablette changée, données effacées ? Choisis ta copie <b>la plus récente</b> (la date est dans son nom), puis tape ton mot de passe.
+            Rien n’est effacé : la copie est ajoutée à ce qui est déjà ici.</small></span>
+        <input type="file" accept=".json,application/json" data-importer hidden>
+      </label>
+    </section>
     <button type="button" class="lien" data-cle="guide">❓ Comment ça marche ? (tablette ⇄ ordinateur)</button>
-    <div class="depannage">
+    <details class="plus-options">
+      <summary>Plus d’options</summary>
       <div class="options">
         ${dossier ? `<p class="aide">Dossier du carnet sur cet ordinateur : <b>${esc(dossier.name)}</b></p>
           <button type="button" data-cle="changer">Changer de dossier</button>` : ''}
-        <label class="bouton">Ouvrir un autre fichier de sauvegarde…<input type="file" accept=".json,application/json" data-importer hidden></label>
-        <p class="aide">Par exemple une copie datée du dossier « Sauvegardes ». Elle est <b>réunie</b> avec ce carnet : rien n’est effacé.</p>
-        ${mdpSession || Donnees.meta().temoinMdp ? `<button type="button" data-cle="verrouiller">Oublier le mot de passe sur cet appareil</button>
+        ${mdpSession || m.temoinMdp ? `<button type="button" data-cle="verrouiller">Oublier le mot de passe sur cet appareil</button>
           <p class="aide">Au prochain enregistrement, l’appli redemandera le mot de passe (à taper deux fois), sans le comparer à l’ancien.</p>` : ''}
         <div class="bloc-version">
           <span>Carnet EPS S-A — <b>version ${VERSION_APP}</b></span>
           <button type="button" data-cle="maj-appli" title="Recharge la dernière version de l’appli (tes données ne sont pas touchées)">🔄 Mettre à jour l’appli</button>
         </div>
       </div>
-    </div>`;
+    </details>`;
 
-  const { d } = ouvrirModale('Aide et dépannage — clé USB', corps, '<span class="espace"></span><button type="button" data-fermer>Fermer</button>');
+  const { d } = ouvrirModale('Aide et dépannage', corps, '<span class="espace"></span><button type="button" data-fermer>Fermer</button>');
   const occupe = async action => {
     d.classList.add('occupe');
     try { await action(); d.fermer(); } catch (e) { signalerErreur(e); } finally { d.classList.remove('occupe'); }
@@ -1624,6 +1794,8 @@ async function panneauCle() {
     if (!b) return;
     switch (b.dataset.cle) {
       case 'guide': d.fermer(); return lancer(afficherGuide);
+      // (Même enregistrement que « Enregistrer sur la clé » ; sur tablette, consignes simplifiées.)
+      case 'secours': d.fermer(); return lancer(() => actionCle(() => (Cle.accesDirect ? sauvegarder() : exporterTablette({ secours: true }))));
       case 'maj-appli': return lancer(forcerMiseAJour);
       case 'changer': return occupe(async () => synchroniser(await choisirDossierCle(), { copie: true }));
       case 'verrouiller':
@@ -1635,7 +1807,7 @@ async function panneauCle() {
   });
   d.addEventListener('change', ev => {
     const f = ev.target.matches('[data-importer]') && ev.target.files[0];
-    if (f) occupe(() => importerFichier(f));
+    if (f) occupe(() => importerFichier(f, { sauvegarde: true }));
   });
 }
 
@@ -1807,8 +1979,11 @@ document.addEventListener('click', e => {
     case 'ajout-classe': basculerMenu(false); return lancer(() => editerClasse());
     case 'ajout-eval': return lancer(() => editerEval());
     case 'periodes': return lancer(editerPeriodes);
+    case 'reglages': basculerMenu(false); return lancer(() => ouvrirReglages());
     case 'ajout-seance': return lancer(() => editerSeance());
     case 'excel-ent': return lancer(echangeExcel);
+    case 'excel-notes': return lancer(echangeExcelNotes);
+    case 'appreciations': return lancer(() => ouvrirAppreciations());
     case 'ajout-eleve': return lancer(ajouterEleve);
     case 'coller-liste': return lancer(collerListe);
     case 'import-ed': return ListeClasse.choisirFichier(classeActive());
@@ -1902,7 +2077,8 @@ document.addEventListener('keydown', e => {
     if (t.dataset.seance) {
       const statut = statutEnt(t.dataset.seance, t.dataset.eleve);
       const ind = Donnees.get('seances', t.dataset.seance)?.indicateurs.find(x => x.id === t.dataset.indic);
-      t.value = statut ? STATUTS_ENT[statut] : afficherValeur(ind, Donnees.note(t.dataset.seance, t.dataset.eleve, t.dataset.indic));
+      const v = Donnees.note(t.dataset.seance, t.dataset.eleve, t.dataset.indic), sc = statutCase(v);
+      t.value = statut ? STATUTS_ENT[statut] : sc ? STATUTS_ENT[sc] : afficherValeur(ind, v);
     } else {
       t.value = affichage(Donnees.note(t.dataset.eval, t.dataset.eleve));
     }
@@ -1963,9 +2139,12 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) rapp
   migrerTout();
   Donnees.surChangement(majPastille);
   Donnees.surChangement(planifierSauvegardeAuto);
+  const demarrage = reglage('onglets').demarrage; // onglet choisi pour le lancement (⚙ Réglages → Onglets)
+  if (demarrage) ui.vue = demarrage;
   rendre();
   rappelerCle();
-  if (!ui.guideVu) lancer(afficherGuide); // premier lancement sur cet appareil : on explique le principe de la clé
+  // Premier lancement sur cet appareil : quelques réglages pour démarrer, puis le principe de la clé.
+  if (!enModeEleve()) lancer(async () => { await premierLancement(); if (!ui.guideVu) await afficherGuide(); });
   navigator.storage?.persist?.().catch(() => {});
   enregistrerServiceWorker();
   surveillerMisesAJour();

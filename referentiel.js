@@ -98,21 +98,41 @@ const REFERENTIEL = (() => {
   };
 
   // Mise en forme : chaque attendu reçoit un identifiant stable (ex. « cycle4.CA1.2 ») et un code (AFC2, AFL1…).
+  // Les réglages du prof (voir reglages.js) s'ajoutent par-dessus : référentiels personnels, compétences ajoutées,
+  // attendus ou référentiels masqués (plus proposés pour les nouvelles évaluations, mais toujours lisibles).
   const refs = {};
   const parId = {};
-  for (const [refId, r] of Object.entries(brut)) {
-    refs[refId] = { id: refId, nom: r.nom, champs: {} };
-    for (const [ca, [titre, liste]] of Object.entries(r.champs)) {
-      const attendus = liste.map((a, i) => {
-        const [code, texte] = Array.isArray(a) ? a : [r.code + (i + 1), a];
-        const attendu = { id: `${refId}.${ca}.${i + 1}`, code, texte, ca, refId };
-        parId[attendu.id] = attendu;
-        return attendu;
-      });
-      refs[refId].champs[ca] = { titre, attendus };
+  function construire(perso = {}) {
+    for (const k of Object.keys(refs)) delete refs[k];
+    for (const k of Object.keys(parId)) delete parId[k];
+    const sources = { ...brut };
+    for (const r of perso.refsPerso || []) {
+      sources[r.id] = { nom: r.nom, code: '', perso: true, champs: Object.fromEntries(Object.entries(r.champs || {}).map(([ca, titre]) => [ca, [titre, []]])) };
     }
+    const refsMasques = new Set(perso.refsMasques || []);
+    for (const [refId, r] of Object.entries(sources)) {
+      refs[refId] = { id: refId, nom: r.nom, perso: !!r.perso, masque: refsMasques.has(refId), champs: {} };
+      for (const [ca, [titre, liste]] of Object.entries(r.champs)) {
+        const attendus = liste.map((a, i) => {
+          const [code, texte] = Array.isArray(a) ? a : [r.code + (i + 1), a];
+          const attendu = { id: `${refId}.${ca}.${i + 1}`, code, texte, ca, refId };
+          parId[attendu.id] = attendu;
+          return attendu;
+        });
+        refs[refId].champs[ca] = { titre, attendus };
+      }
+    }
+    // Compétences ajoutées : toujours retrouvables par leur identifiant (même si leur référentiel a disparu).
+    for (const a of perso.ajouts || []) {
+      const attendu = { id: a.id, code: a.code, texte: a.texte, ca: a.ca, refId: a.refId, perso: true };
+      parId[a.id] = attendu;
+      refs[a.refId]?.champs[a.ca]?.attendus.push(attendu);
+    }
+    const masques = new Set(perso.masques || []);
+    for (const a of Object.values(parId)) a.masque = masques.has(a.id);
   }
-  return { refs, attendu: id => parId[id] || null };
+  construire();
+  return { refs, attendu: id => parId[id] || null, personnaliser: construire };
 })();
 
 const REFERENTIEL_PAR_NIVEAU = {
