@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.78.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.78.1'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -707,6 +707,15 @@ function colonnesMoyenne() {
 const classeAnnee = m => (m.id === 'annee' ? ' moy-annee' : '');
 const evalsDeColonne =(evals, colId) => (colId === 'annee' ? evals : evals.filter(e => periodeDe(e.date) === colId));
 
+// (Notes et leçons) Une valeur plus longue que sa colonne l'élargit tout de suite, pendant la frappe.
+document.addEventListener('input', e => {
+  const i = e.target;
+  if (!i.matches?.('.grille input.cellule[size]')) return;
+  const n = Math.min(16, i.value.length + 1);
+  if (n <= i.size) return;
+  i.closest('table').querySelectorAll(`input.cellule[size][data-col="${CSS.escape(i.dataset.col)}"]`).forEach(x => { x.size = n; });
+});
+
 function htmlNotes(c) {
   const eleves = elevesDe(c.id);
   const vue = periodeAffichee(), periodes = periodesAnnee();
@@ -717,6 +726,8 @@ function htmlNotes(c) {
     return `<div class="vide"><h2>${esc(c.nom)}</h2><p>Pas encore d’élèves dans cette classe.</p>
       <button class="primaire" data-action="vue-eleves">Ajouter des élèves</button></div>`;
   }
+  // Largeur de chaque colonne de notes selon ce qui y est écrit (« 12 », « 15,5 », « ABS »…).
+  const taillesNotes = new Map(evals.map(e => [e.id, Math.min(12, Math.max(4, ...eleves.map(el => affichage(Donnees.note(e.id, el.id)).length)) + 1)]));
   return `
     <div class="outils">
       <h2>${esc(c.nom)}</h2>
@@ -741,7 +752,7 @@ function htmlNotes(c) {
         ${NIVEAUX_MAITRISE.map(n => `<span class="legende-item" title="${n.nom}"><span class="niveau n${n.v}">${n.v}</span> <span class="legende-nom">${n.nom}</span></span>`).join(' ')}
         <span class="legende-item" title="Degré proposé d’après la note : touche-le pour le changer"><span class="niveau n3 auto">3</span> <span class="legende-nom">pré-rempli d’après la note</span></span></div>` : ''}
     <div class="grille-scroll">
-      <table class="grille">
+      <table class="grille grille-notes">
         <thead><tr>
           <th class="col-nom" rowspan="2">Élève</th>
           ${evals.map(e => {
@@ -773,7 +784,7 @@ function htmlNotes(c) {
               const nomEleve = el.nom + ' ' + el.prenom;
               // Case vide un jour où l'élève était dispensé : on le suggère discrètement.
               const suggestion = !v && dispenseLe(el, e.date) ? ' placeholder="disp."' : '';
-              return `<td class="debut-eval${classeCa(e)}"><input class="cellule${classeCode(v)}"${suggestion} value="${esc(affichage(v))}" data-eval="${e.id}" data-eleve="${el.id}"
+              return `<td class="debut-eval${classeCa(e)}"><input class="cellule${classeCode(v)}"${suggestion} value="${esc(affichage(v))}" size="${taillesNotes.get(e.id)}" data-eval="${e.id}" data-eleve="${el.id}"
                 data-ligne="${i}" data-col="${col++}" inputmode="decimal" autocomplete="off" enterkeyhint="next" aria-label="${esc(nomEleve + ' — ' + e.titre)}"></td>
                 ${competencesEval(e).map(a => {
                   const n = Donnees.note(e.id, el.id, a.id);

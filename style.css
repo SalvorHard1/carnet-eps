@@ -421,8 +421,14 @@ button.badge-pai:hover, button.badge-bep:hover { filter: brightness(1.15); }
 
 /* Carnet d'entraînement */
 .grille-ent .sous-comp { white-space: normal; max-width: 110px; line-height: 1.2; }
+/* Colonnes à la largeur de leurs données (attribut size des cases, voir tailleColonne) : en-têtes moins larges. */
+.grille.grille-ent thead th:not(.col-nom) { min-width: 0; }
+.grille.grille-notes thead th.col-eval { min-width: 72px; }
+.grille.grille-ent thead .col-eval { min-width: 64px; }
+.grille.grille-ent .sous-comp { min-width: 44px; }
+.grille-ent .stat-indic { white-space: normal; }
 .cellule-choix {
-  display: block; width: 100%; min-width: 96px; height: 44px; border: 0; background: transparent;
+  display: block; width: 100%; min-width: 64px; height: 44px; border: 0; background: transparent;
   color: var(--texte); font-size: 14px; padding: 0 6px; cursor: pointer;
 }
 .cellule-choix:focus { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-doux); }

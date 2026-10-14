@@ -276,6 +276,8 @@ function htmlEntrainement(c) {
   couleursAct = couleursActivites(toutes, c);
   const legende = couleursAct.size > 1 ? `<div class="legende-act">${[...couleursAct.values()].map(x =>
     `<span class="chip-act act-${x.k}">${esc(x.nom || 'Sans nom')} <small>${x.n}</small></span>`).join('')}</div>` : '';
+  // Largeur de chaque colonne selon ce qui y est écrit (un « 14 » ne prend pas la place d'une phrase).
+  const tailles = new Map(seances.flatMap(s => s.indicateurs.map(ind => [s.id + '|' + ind.id, tailleColonne(s, ind, eleves)])));
   return `
     <div class="outils">
       <h2>${esc(c.nom)}</h2>
@@ -316,7 +318,7 @@ function htmlEntrainement(c) {
               ${celluleNom(el, i)}
               ${seances.map(s => {
                 const statut = statutEnt(s.id, el.id);
-                return s.indicateurs.map((ind, k) => celluleIndic(s, ind, el, i, col++, statut, k === 0)).join('');
+                return s.indicateurs.map((ind, k) => celluleIndic(s, ind, el, i, col++, statut, k === 0, tailles.get(s.id + '|' + ind.id))).join('');
               }).join('')}
               ${suivi ? `<td class="col-moy" data-meilleure="${el.id}"></td><td class="col-moy" data-evolution="${el.id}"></td>` : ''}
             </tr>`;
@@ -337,18 +339,32 @@ function htmlEntrainement(c) {
     </div>`;
 }
 
-function celluleIndic(s, ind, el, i, col, statut, premiere) {
+// Largeur d'une colonne (en caractères) : la plus longue valeur saisie, avec un minimum selon le type
+// (une colonne vide garde la place d'un temps « 3:45,2 », d'une distance « 4,25 »…). Les textes libres restent larges.
+const LARGEUR_MIN_TYPE = { temps: 6, distance: 5, nombre: 4 };
+function tailleColonne(s, ind, eleves) {
+  let n = LARGEUR_MIN_TYPE[ind.type] || 4;
+  for (const el of eleves) {
+    const st = statutEnt(s.id, el.id), v = Donnees.note(s.id, el.id, ind.id), sc = statutCase(v);
+    const t = st || sc ? STATUTS_ENT[st || sc] : afficherValeur(ind, v);
+    n = Math.max(n, String(t || '').length);
+  }
+  return Math.min(n + 1, 16);
+}
+
+function celluleIndic(s, ind, el, i, col, statut, premiere, taille = 6) {
   const attrs = `data-seance="${s.id}" data-eleve="${el.id}" data-indic="${ind.id}" data-ligne="${i}" data-col="${col}"`;
+  const sz = ` size="${taille}"`; // (cases de saisie seulement : sur une liste, size la transformerait en liste déroulée)
   const libelle = esc(`${el.nom} ${el.prenom} — ${s.titre} — ${ind.nom}`);
   const debut = premiere ? ` class="debut-eval${classeAct(s)}"` : '';
   if (statut) {
     // Élève absent / dispensé / blessé / malade : toute la séance est marquée ; on peut retaper dessus pour changer.
-    return `<td${debut}><input class="cellule code-${statut}" value="${STATUTS_ENT[statut]}" ${attrs} autocomplete="off" aria-label="${libelle}"></td>`;
+    return `<td${debut}><input class="cellule code-${statut}" value="${STATUTS_ENT[statut]}" ${attrs}${sz} autocomplete="off" aria-label="${libelle}"></td>`;
   }
   const v = Donnees.note(s.id, el.id, ind.id);
   const sc = statutCase(v);
   if (sc) {
-    return `<td${debut}><input class="cellule code-${sc} statut-case" value="${STATUTS_ENT[sc]}" ${attrs} autocomplete="off"
+    return `<td${debut}><input class="cellule code-${sc} statut-case" value="${STATUTS_ENT[sc]}" ${attrs}${sz} autocomplete="off"
       title="${esc(STATUTS_ENT[sc])} sur cette case seulement" aria-label="${libelle}"></td>`;
   }
   if (ind.type === 'echelle') {
@@ -366,7 +382,7 @@ function celluleIndic(s, ind, el, i, col, statut, premiere) {
   }
   const suggestion = !v && premiere && dispenseLe(el, s.date) ? ' placeholder="disp."' : '';
   const clavier = ind.type === 'distance' || ind.type === 'nombre' ? 'decimal' : 'text';
-  return `<td${debut}><input class="cellule${ind.type === 'texte' ? ' cellule-texte' : ''}"${suggestion} value="${esc(afficherValeur(ind, v))}" ${attrs}
+  return `<td${debut}><input class="cellule${ind.type === 'texte' ? ' cellule-texte' : ''}"${suggestion} value="${esc(afficherValeur(ind, v))}" ${attrs}${ind.type === 'texte' ? '' : sz}
     inputmode="${clavier}" autocomplete="off" enterkeyhint="next" aria-label="${libelle}"></td>`;
 }
 
