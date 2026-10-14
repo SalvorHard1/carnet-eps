@@ -541,7 +541,10 @@ button.badge-disp:hover { filter: brightness(1.1); }
 .modale .ligne { display: flex; gap: 10px; flex-wrap: wrap; }
 .modale .ligne label { min-width: 110px; }
 .modale .ligne label.etroit { flex: 0 0 90px; min-width: 0; }
-.modale-actions { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
+/* Boutons du bas toujours visibles (collés en bas de la fenêtre quand elle défile) : on peut valider sans aller au bout. */
+.modale-actions { display: flex; gap: 8px; flex-wrap: wrap; position: sticky; bottom: 0; z-index: 3;
+  margin: 20px calc(-1 * var(--pad-modale, 20px)) calc(-1 * var(--pad-modale, 20px));
+  padding: 12px var(--pad-modale, 20px) var(--pad-modale, 20px); background: var(--surface); border-top: 1px solid var(--bord); }
 .espace { flex: 1; }
 .modale details { border-top: 1px solid var(--bord); padding-top: 10px; }
 .modale summary { cursor: pointer; color: var(--texte2); font-size: 14px; }
@@ -738,7 +741,7 @@ button.badge-disp:hover { filter: brightness(1.1); }
 
   /* Fenêtres : presque plein écran */
   .modale, .modale.modale-large { width: calc(100vw - 16px); max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
-  .modale form { padding: 16px; }
+  .modale form { padding: 16px; --pad-modale: 16px; }
   .modale fieldset.competences { padding: 8px 10px 12px; }
   .modale fieldset.competences .ligne { flex-direction: column; }
   .modale label.competence:not(.bouton) { font-size: 13px; padding: 8px; }
@@ -826,11 +829,13 @@ button.badge-disp:hover { filter: brightness(1.1); }
 /* ================= Réglages du carnet (⚙) ================= */
 
 /* Taille du texte (réglage propre à l'appareil) : la page et les fenêtres sont agrandies ou réduites d'un bloc. */
-#vue, .classes, .saisie, .modale { zoom: var(--zoom); }
-.modale { width: min(520px, calc((100vw - 24px) / var(--zoom))); max-height: calc((100dvh - 24px) / var(--zoom)); }
-.modale.modale-large { width: min(720px, calc((100vw - 24px) / var(--zoom))); }
+/* (Fenêtres : c'est leur contenu qui est agrandi, pas la fenêtre qui défile — sur certaines tablettes Android,
+   une zone de défilement agrandie par « zoom » s'arrête avant la fin et on ne peut plus descendre.) */
+#vue, .classes, .saisie, .modale > form { zoom: var(--zoom); }
+.modale { width: min(calc(520px * var(--zoom)), calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; }
+.modale.modale-large { width: min(calc(720px * var(--zoom)), calc(100vw - 24px)); }
 @media (max-width: 700px) {
-  .modale, .modale.modale-large { width: calc((100vw - 16px) / var(--zoom)); max-width: none; max-height: calc((100dvh - 16px) / var(--zoom)); }
+  .modale, .modale.modale-large { width: calc(100vw - 16px); max-width: none; max-height: calc(100dvh - 16px); }
 }
 
 /* Densité des grilles et de la liste des élèves (réglage propre à l'appareil) */
@@ -1395,6 +1400,12 @@ button.gros { min-height: 52px; padding: 10px 22px; font-size: 18px; font-weight
 .carte-asns.en-course .temps-asns { font-size: 64px; }
 .carte-asns.en-course .etat-asns { color: inherit; font-size: 20px; font-weight: 700; }
 .carte-asns.attend { opacity: .35; }
+/* Élèves dans l'eau (deux au plus) : en haut, sur toute la largeur, côte à côte s'ils sont deux. */
+.nageurs-asns { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr; gap: 12px; }
+.nageurs-asns.n2 { grid-template-columns: 1fr 1fr; }
+.nageurs-asns .carte-asns.en-course { grid-column: auto; }
+.nageurs-asns.n2 .carte-asns.en-course .nom-asns { font-size: 24px; }
+.nageurs-asns.n2 .carte-asns.en-course .temps-asns { font-size: 48px; }
 @keyframes pulse-asns { 50% { box-shadow: 0 0 0 10px var(--accent-doux); } }
 @media (prefers-reduced-motion: reduce) { .carte-asns.en-course { animation: none; } }
 .reglages-asns { margin: 4px 0 12px; padding: 8px 12px; border: 1px solid var(--bord); border-radius: 10px; }
@@ -1626,3 +1637,83 @@ body.mode-eleve .btn-verrou { display: none; }
 .barre-bas-tb label { display: inline-flex; align-items: center; gap: 4px; }
 .barre-bas-tb select { max-width: 170px; }
 .quitter-presentation-tb { font-weight: 700; }
+/* Natation : deux départs (couloirs / groupé), arrivées au toucher du nom, classement */
+.departs-nat { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 8px 0 14px; }
+.depart-nat { display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 86px; padding: 10px; border-radius: 16px; }
+.depart-nat b { font-size: 22px; }
+.depart-nat small { font-size: 14px; font-weight: 500; opacity: .85; }
+.arrivees-nat { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin: 10px 0; }
+.arrivee-nat { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 92px; padding: 8px; border-radius: 14px;
+  border: 3px solid var(--accent); font-size: 18px; touch-action: manipulation; }
+.arrivee-nat b { font-size: 19px; line-height: 1.15; }
+.arrivee-nat.arrive, .arrivee-nat.arrive:disabled { background: var(--accent-doux); border-color: transparent; opacity: 1; color: var(--texte); cursor: default; }
+.rang-nat { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-texte, #fff); font-weight: 800; font-size: 15px; }
+.temps-arrivee { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.classement-nat { margin: 10px 0; padding-left: 0; list-style: none; display: grid; gap: 6px; }
+.classement-nat li { display: flex; align-items: center; gap: 12px; font-size: 17px; }
+.classement-nat li b { min-width: 160px; }
+/* Tableau blanc : compétences évaluées (bouton coloré, pastille sur la tête, choix du degré) */
+.crit-0 { --crit: #e53935; } .crit-1 { --crit: #1e6fd9; } .crit-2 { --crit: #2e9d4a; } .crit-3 { --crit: #fb8c00; } .crit-4 { --crit: #8e24aa; }
+.chip-crit-tb { border: 2px solid var(--crit); color: var(--crit); font-weight: 700; }
+.chip-crit-tb small { font-weight: 500; opacity: .8; }
+.chip-crit-tb.actif { background: var(--crit); color: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--crit) 35%, transparent); }
+.ajout-crit-tb { border: 2px dashed #e53935; color: #e53935; font-weight: 700; }
+.planche-tb.evaluation .pion-eleve { cursor: pointer; }
+.pion-tb .eval-pion-tb { position: absolute; top: -8px; right: -10px; display: grid; place-items: center; min-width: 24px; height: 24px; margin: 0; padding: 0 4px;
+  border-radius: 8px; border: 2px solid #fff; font-size: 13px; font-weight: 800; line-height: 1; color: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .4); pointer-events: none; }
+.pion-tb .eval-pion-tb.note-tb { background: var(--crit); }
+.eval-eleve-tb { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: center; }
+.degres-tb { display: flex; gap: 12px; }
+.degres-tb .niveau { width: 68px; height: 68px; font-size: 28px; border-radius: 14px; cursor: pointer; }
+.degres-tb .niveau.choisi { outline: 4px solid var(--texte); outline-offset: 2px; }
+.couleurs-crit-tb { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.couleurs-crit-tb label.case { flex: 0 0 auto !important; }
+.pastille-crit { display: inline-block; width: 18px; height: 18px; border-radius: 50%; background: var(--crit); }
+/* Tableau blanc : bouton « Outil » (panneau déplacer / crayon / flèche / gomme, couleurs, annuler, effacer) */
+.menu-outil-tb { position: relative; display: inline-block; }
+.menu-outil-tb > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.menu-outil-tb > summary::-webkit-details-marker { display: none; }
+.panneau-outil-tb { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; display: flex; flex-direction: column; gap: 10px; padding: 12px;
+  width: max-content; max-width: min(92vw, 520px); border: 1px solid var(--bord); border-radius: 14px; background: var(--surface); box-shadow: 0 10px 30px rgba(0, 0, 0, .3); }
+.menu-outil-tb.vers-haut .panneau-outil-tb { top: auto; bottom: calc(100% + 8px); }
+.pastille-tb.mini { width: 14px; height: 14px; min-width: 14px; border-width: 1px; display: inline-block; border-radius: 50%; }
+/* Statut « Oubli de tenue » (leçons, appel) */
+.code-TEN { background: #e8dcf5 !important; color: #5b2d8a !important; font-weight: 600; font-size: 13px !important; }
+:root[data-theme="dark"] .code-TEN { background: #33244a !important; color: #d6bdf5 !important; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .code-TEN { background: #33244a !important; color: #d6bdf5 !important; } }
+
+/* Onglet Appel */
+.bilan-appel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; }
+.pastille-appel { padding: 4px 10px; border-radius: 999px; background: var(--surface2); font-size: 14px; }
+.pastille-appel.present { background: color-mix(in srgb, #2e9d4a 18%, var(--surface)); }
+.pastille-appel.ABS { background: color-mix(in srgb, #e53935 18%, var(--surface)); }
+.pastille-appel.TEN { background: color-mix(in srgb, #8e24aa 18%, var(--surface)); }
+.liste-appel { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.ligne-appel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px;
+  border: 1px solid var(--bord); border-radius: 12px; background: var(--surface); }
+.ligne-appel.etat-present { border-left: 6px solid #2e9d4a; }
+.ligne-appel.etat-ABS { border-left: 6px solid #e53935; background: color-mix(in srgb, #e53935 8%, var(--surface)); }
+.ligne-appel.etat-TEN { border-left: 6px solid #8e24aa; background: color-mix(in srgb, #8e24aa 8%, var(--surface)); }
+.nom-appel { display: inline-flex; align-items: center; gap: 6px; font-size: 16px; flex: 1 1 200px; min-width: 0; flex-wrap: wrap; }
+.boutons-appel { display: inline-flex; gap: 6px; }
+.bouton-appel { min-height: 44px; min-width: 52px; padding: 4px 10px; border-radius: 10px; font-size: 18px; display: inline-flex; align-items: center; gap: 6px; touch-action: manipulation; }
+.bouton-appel .libelle-appel { font-size: 13px; font-weight: 600; }
+.bouton-appel.b-present.choisi { background: #2e9d4a; border-color: #2e9d4a; color: #fff; }
+.bouton-appel.b-ABS.choisi { background: #e53935; border-color: #e53935; color: #fff; }
+.bouton-appel.b-TEN.choisi { background: #8e24aa; border-color: #8e24aa; color: #fff; }
+@media (max-width: 560px) { .bouton-appel .libelle-appel { display: none; } }
+/* Leçons : case « Présence » de l'appel (verte quand l'élève est présent) */
+.cellule-presence { display: block; width: 100%; min-width: 92px; height: 44px; border: 0; border-radius: 0; background: transparent; color: var(--texte2); font-size: 14px; font-weight: 700; cursor: pointer; }
+.cellule-presence.oui { background: #d6f2dc; color: #17692e; }
+:root[data-theme="dark"] .cellule-presence.oui { background: #1e4a2a; color: #9be3ae; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .cellule-presence.oui { background: #1e4a2a; color: #9be3ae; } }
+.cellule-presence:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+body[data-densite="compacte"] .grille .cellule-presence { height: 32px; }
+body[data-densite="aeree"] .grille .cellule-presence { height: 56px; }
+/* Import de notes : une ligne par évaluation du fichier, avec ce qui sera fait */
+.liste-evals-import { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.liste-evals-import li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--bord); border-radius: 10px; }
+.liste-evals-import li > span { flex: 1 1 240px; min-width: 0; }
+.liste-evals-import select { width: auto !important; flex: 0 1 260px; }
+.liste-evals-import .cas-doublon, .liste-evals-import .cas-identique { opacity: .75; }
+.liste-evals-import .cas-conflit-carnet, .liste-evals-import .cas-conflit-fichier { border-color: #f0a020; background: color-mix(in srgb, #f0a020 10%, transparent); }

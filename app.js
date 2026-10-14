@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.79.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.83.2'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -616,7 +616,7 @@ function rendreVue() {
       </div>`;
     return;
   }
-  v.innerHTML = ui.vue === 'eleves' ? htmlEleves(c) : ui.vue === 'entrainement' ? htmlEntrainement(c) : htmlNotes(c);
+  v.innerHTML = ui.vue === 'eleves' ? htmlEleves(c) : ui.vue === 'appel' ? htmlAppel(c) : ui.vue === 'entrainement' ? htmlEntrainement(c) : htmlNotes(c);
   if (ui.vue === 'notes') { majMoyennes(); majBilans(); caleEntete(); }
   if (ui.vue === 'entrainement') { majStatsEnt(); caleEntete(); }
 }
@@ -2369,7 +2369,7 @@ document.addEventListener('focusin', e => {
 
 document.addEventListener('focusout', () => {
   setTimeout(() => {
-    if (!document.activeElement?.matches?.('.cellule, [data-niveau-ent], .cellule-choix')) $('#saisie').hidden = true;
+    if (!document.activeElement?.matches?.('.cellule, [data-niveau-ent], .cellule-choix, [data-presence]')) $('#saisie').hidden = true;
   }, 0);
 });
 
@@ -2378,7 +2378,7 @@ $('#saisie').addEventListener('pointerdown', e => e.preventDefault());
 $('#saisie').addEventListener('click', e => {
   const b = e.target.closest('[data-code]');
   const input = document.activeElement;
-  if (!b || !input?.matches?.('.cellule, [data-niveau-ent], .cellule-choix')) return;
+  if (!b || !input?.matches?.('.cellule, [data-niveau-ent], .cellule-choix, [data-presence]')) return;
   if (input.dataset.seance) appliquerStatutEnt(input, b.dataset.code); // entraînement : statut de l'élève sur la séance
   else { input.value = b.dataset.code; valider(input); }
   deplacer(input, 1, 0);

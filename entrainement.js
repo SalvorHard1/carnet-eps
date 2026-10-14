@@ -31,7 +31,8 @@ const medailleLue = brut => {
 const TYPES_NUMERIQUES = ['temps', 'distance', 'nombre'];
 // « Autre » : par ex. élève pris en charge par un autre prof (natation des 6e).
 // « Non rendu » : surtout en SVT (compte rendu de TP non rendu), sur toute la séance ou sur une case.
-const STATUTS_ENT = { ABS: 'ABS', DISP: 'DISP', BLE: 'Blessé', MAL: 'Malade', AUT: 'Autre', NR: 'Non rendu' };
+// « Oubli de tenue » (TEN) : l'élève est là mais ne pratique pas (aussi depuis l'onglet Appel).
+const STATUTS_ENT = { ABS: 'ABS', DISP: 'DISP', BLE: 'Blessé', MAL: 'Malade', TEN: 'Oubli tenue', AUT: 'Autre', NR: 'Non rendu' };
 // Noms d'origine : ceux des classeurs Excel (STATUTS_ENT peut être renommé dans les réglages, voir reglages.js).
 const STATUTS_ENT_BASE = { ...STATUTS_ENT };
 const CODES_ENT = {
@@ -39,6 +40,7 @@ const CODES_ENT = {
   B: 'BLE', BLE: 'BLE', 'BLESSÉ': 'BLE', M: 'MAL', MAL: 'MAL', MALADE: 'MAL',
   O: 'AUT', AU: 'AUT', AUT: 'AUT', AUTRE: 'AUT',
   R: 'NR', NR: 'NR', 'NON RENDU': 'NR',
+  T: 'TEN', TEN: 'TEN', TENUE: 'TEN', 'OUBLI TENUE': 'TEN', 'OUBLI DE TENUE': 'TEN',
 };
 
 /* ---------- Modèles de données par APSA / champ d'apprentissage ---------- */
@@ -288,7 +290,7 @@ function htmlEntrainement(c) {
           <option value="">Toutes (${toutes.length} séance${toutes.length > 1 ? 's' : ''})</option>
           ${exercices.map(x => `<option ${x === filtre ? 'selected' : ''}>${esc(x)}</option>`).join('')}
         </select></label>` : ''}
-      <span class="aide aide-saisie">Temps : 3:45 ou 12,5 · ${aideCodes(true)} — toute la ${esc(motMin('lecon'))}, ou seulement la case si l’élève a déjà des résultats</span>
+      <span class="aide aide-saisie">Temps : 3:45 ou 12,5 · ${aideCodes(true).replace(/(<b>O<\/b>)/, '<b>T</b> oubli de tenue · $1')} — toute la ${esc(motMin('lecon'))}, ou seulement la case si l’élève a déjà des résultats</span>
     </div>
     ${legende}
     ${toutes.length ? (filtre ? '' : '<p class="aide">Choisis un exercice pour voir la meilleure performance et l’évolution de chaque élève.</p>')
@@ -374,6 +376,11 @@ function celluleIndic(s, ind, el, i, col, statut, premiere, taille = 6) {
   if (ind.medaille) {
     return `<td${debut ? debut.replace('class="', 'class="td-niveau ') : ' class="td-niveau"'}><button ${attrsMedaille(v)} data-niveau-ent data-medaille ${attrs}
       aria-label="${libelle}">${ICONES_MEDAILLE[v] || ''}</button></td>`;
+  }
+  if (ind.id === 'presence') {
+    // Colonne « Présence » de l'appel (onglet Appel) : une case verte « Présent », qu'un toucher met ou enlève.
+    return `<td${debut ? debut.replace('class="', 'class="td-presence ') : ' class="td-presence"'}><button class="cellule-presence${v ? ' oui' : ''}" data-presence ${attrs}
+      aria-pressed="${!!v}" aria-label="${libelle}">${v ? '✔ Présent' : ''}</button></td>`;
   }
   if (ind.type === 'choix') {
     return `<td${debut}><select class="cellule-choix" ${attrs} aria-label="${libelle}">
@@ -1482,6 +1489,13 @@ function migrerSeances() {
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-niveau-ent]');
   if (b) changerEchelleEnt(b);
+  // Case « Présence » (appel) : un toucher met ou enlève « Présent ».
+  const p = e.target.closest('.grille-ent [data-presence]');
+  if (p) {
+    const { seance, eleve, indic } = p.dataset;
+    Donnees.ecrireNote(seance, eleve, Donnees.note(seance, eleve, indic) ? '' : 'Présent', indic);
+    rafraichirEnt();
+  }
 });
 
 document.addEventListener('change', e => {
@@ -1504,6 +1518,15 @@ document.addEventListener('keydown', e => {
     else if (fleches[e.key]) deplacer(t, ...fleches[e.key]);
     else return;
     e.preventDefault();
+  } else if (t.matches?.('.grille-ent [data-presence]')) {
+    // Case « Présence » : P = présent, A / T / D… = statut de la leçon, flèches pour se déplacer.
+    const fleches = { ArrowDown: [1, 0], ArrowUp: [-1, 0], ArrowRight: [0, 1], ArrowLeft: [0, -1] };
+    const code = CODES_ENT[e.key.toUpperCase()];
+    if (e.key.toUpperCase() === 'P') { Donnees.ecrireNote(t.dataset.seance, t.dataset.eleve, 'Présent', t.dataset.indic); rafraichirEnt(); }
+    else if (code) { appliquerStatutEnt(t, code); deplacer(t, 1, 0); }
+    else if (fleches[e.key]) deplacer(t, ...fleches[e.key]);
+    else return;
+    e.preventDefault();
   } else if (t.matches?.('.cellule-choix') && e.key === 'Enter') {
     e.preventDefault();
     deplacer(t, 1, 0);
@@ -1512,7 +1535,7 @@ document.addEventListener('keydown', e => {
 
 // La barre de codes rapides apparaît aussi sur les échelles et les listes de choix.
 document.addEventListener('focusin', e => {
-  if (!e.target.matches?.('.grille-ent [data-niveau-ent], .grille-ent .cellule-choix')) return;
+  if (!e.target.matches?.('.grille-ent [data-niveau-ent], .grille-ent .cellule-choix, .grille-ent [data-presence]')) return;
   $('#saisie').hidden = false;
   placerBarreSaisie();
 });

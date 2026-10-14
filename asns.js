@@ -85,19 +85,24 @@ function htmlAsns(c) {
     </div>
     ${enModeEleve() ? '' : htmlReglagesAsns(c, cfg, mesure, b, res, ids, nbRes)}
     <p class="consigne-asns">${mesureChrono(mesure)
-    ? `<span>👆 Touche le nom : <b>▶ c’est parti</b></span><span>👆 Touche encore : <b>⏹ ${mesure === 'duree' ? 'il a lâché' : 'arrivé'}</b></span>`
+    ? `<span>👆 Touche le nom : <b>▶ c’est parti</b></span><span>👆 Touche encore : <b>⏹ ${mesure === 'duree' ? 'il a lâché' : 'arrivé'}</b></span><span class="aide">2 nageurs à la fois au plus</span>`
     : '<span>👆 Touche le nom, puis écris la <b>distance</b></span>'}</p>
     <div class="cartes-asns">${htmlCartesAsns(c, cfg, mesure, presents, res) || '<p class="aide">Aucun élève présent.</p>'}</div>
     <div class="bilan-asns">${nbRes ? `🥇 <b>${comptes.Or}</b> · 🥈 <b>${comptes.Argent}</b> · 🥉 <b>${comptes.Bronze}</b> · ${BRAVO} <b>${comptes['']}</b>` : ''}</div>`;
 }
 
-// Les élèves passent un par un : celui qui nage d'abord (en grand), les autres grisés ;
-// sinon, le premier sans résultat est marqué « À toi ! ».
+// Jusqu'à deux élèves dans l'eau en même temps, chacun avec son chrono : ceux qui nagent en grand, en haut
+// (côte à côte s'ils sont deux) ; les autres restent touchables tant qu'il reste une place, puis sont grisés.
+// Le premier sans résultat (et pas dans l'eau) est marqué « À toi ! ».
+const MAX_NAGEURS_ASNS = 2;
 function htmlCartesAsns(c, cfg, mesure, presents, res) {
-  const nageur = Object.keys(cfg.enCours || {}).find(id => presents.some(el => el.id === id));
-  const suivant = !nageur && presents.find(el => !(res[el.id] && res[el.id].v !== null && res[el.id].v !== undefined))?.id;
-  const ordre = nageur ? [...presents.filter(el => el.id === nageur), ...presents.filter(el => el.id !== nageur)] : presents;
-  return ordre.map(el => carteAsns(c, cfg, mesure, el, res[el.id], !!nageur && el.id !== nageur, el.id === suivant)).join('');
+  const ids = new Set(presents.map(el => el.id));
+  const nageurs = Object.keys(cfg.enCours || {}).filter(id => ids.has(id));
+  const complet = nageurs.length >= MAX_NAGEURS_ASNS;
+  const suivant = !complet && presents.find(el => !nageurs.includes(el.id) && !(res[el.id] && res[el.id].v !== null && res[el.id].v !== undefined))?.id;
+  const dansLEau = nageurs.map(id => presents.find(el => el.id === id));
+  return (dansLEau.length ? `<div class="nageurs-asns n${dansLEau.length}">${dansLEau.map(el => carteAsns(c, cfg, mesure, el, res[el.id])).join('')}</div>` : '')
+    + presents.filter(el => !nageurs.includes(el.id)).map(el => carteAsns(c, cfg, mesure, el, res[el.id], complet, el.id === suivant)).join('');
 }
 
 function carteAsns(c, cfg, mesure, el, r, attend = false, suivant = false) {
@@ -179,8 +184,10 @@ function actionAsns(action, arg, c) {
       if (!mesureChrono(mesure)) return saisirDistanceAsns(c, cfg, arg);
       const enCours = cfg.enCours ||= {};
       if (!enCours[arg]) {
-        const autre = Object.keys(enCours)[0];
-        if (autre) return toast(`${nomOutil(autre)} nage encore : touche d’abord son nom à l’arrivée.`, 'erreur'); // un par un
+        const autres = Object.keys(enCours);
+        if (autres.length >= MAX_NAGEURS_ASNS) { // deux à la fois au plus
+          return toast(`${autres.map(nomOutil).join(' et ')} nagent encore : touche d’abord l’un des deux à l’arrivée.`, 'erreur');
+        }
         enCours[arg] = Date.now(); son(990, 0.3); return rendreOutil(); // départ
       }
       const ms = Date.now() - enCours[arg];

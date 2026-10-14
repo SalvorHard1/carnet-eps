@@ -213,7 +213,7 @@ const MODES_TB = [['deplacer', '✋ Déplacer'], ['crayon', '✏️ Crayon'], ['
 
 // 🖥 Grand écran : seul le terrain est affiché, aussi grand que possible (plein écran de l'appareil si possible),
 // et les outils se rangent dans une barre en bas. (Propre à cette page : on en sort par « ✕ » ou Échap.)
-let presentationTb = false;
+let presentationTb = false, menuOutilTb = false; // (menuOutilTb : panneau « Outil » ouvert)
 
 function htmlTableau(c) {
   const cfg = cfgTableau(c), t = terrainTb(cfg.terrain);
@@ -230,22 +230,42 @@ function htmlTableau(c) {
       <label class="case"><input type="checkbox" data-tb-champ="noms" ${cfg.noms ? 'checked' : ''}><span>Prénoms</span></label>`;
   const figer = `<button data-tb="figer" class="figer-tb${cfg.fige ? ' fige' : ''}" aria-pressed="${!!cfg.fige}"
         title="${cfg.fige ? 'Tableau figé : toucher pour pouvoir de nouveau dessiner et déplacer' : 'Figer le tableau : le doigt ne déplace plus rien et ne dessine plus'}">${cfg.fige ? '🔒 Figé' : '🔓 Figer'}</button>`;
-  const modes = `<span class="groupe-tb" role="group" aria-label="Outil">${MODES_TB.map(([k, n]) => `<button data-tb="mode" data-arg="${k}" class="${cfg.mode === k ? 'primaire' : ''}" aria-pressed="${cfg.mode === k}" title="${n}">${presentationTb ? n.split(' ')[0] : n}</button>`).join('')}</span>`;
-  const couleurs = `<span class="groupe-tb couleurs-tb" role="group" aria-label="Couleur du crayon">${COULEURS_TB.map(([n], k) => `<button data-tb="couleur" data-arg="${k}" class="pastille-tb ct-${k}${cfg.couleur === k ? ' choisie' : ''}" title="${n}" aria-label="${n}" aria-pressed="${cfg.couleur === k}"></button>`).join('')}</span>`;
-  const effacer = `<button data-tb="annuler" title="Annuler le dernier trait" ${cfg.traits.length ? '' : 'disabled'}>↶${presentationTb ? '' : ' Annuler'}</button>
-      <button data-tb="effacer-traits" title="Effacer tous les traits (les pions restent)" ${cfg.traits.length ? '' : 'disabled'}>🧹${presentationTb ? '' : ' Effacer le dessin'}</button>`;
+  // Un seul bouton « Outil » : il ouvre le panneau déplacer / crayon / flèche / gomme, la couleur, annuler, effacer.
+  const modeCourant = MODES_TB.find(([k]) => k === cfg.mode) || MODES_TB[0];
+  const dessine = cfg.mode === 'crayon' || cfg.mode === 'fleche';
+  const outil = `<details class="menu-outil-tb${presentationTb ? ' vers-haut' : ''}" data-tb-menu ${menuOutilTb ? 'open' : ''}>
+      <summary class="bouton${cfg.mode !== 'deplacer' ? ' primaire' : ''}" title="Déplacer, crayon, flèche, gomme, couleur">${modeCourant[1].split(' ')[0]}${dessine ? `<span class="pastille-tb mini ct-${cfg.couleur}"></span>` : ''} Outil ▾</summary>
+      <div class="panneau-outil-tb">
+        <div class="groupe-tb" role="group" aria-label="Outil">${MODES_TB.map(([k, n]) => `<button data-tb="mode" data-arg="${k}" class="${cfg.mode === k ? 'primaire' : ''}" aria-pressed="${cfg.mode === k}">${n}</button>`).join('')}</div>
+        <div class="groupe-tb couleurs-tb" role="group" aria-label="Couleur du crayon">${COULEURS_TB.map(([n], k) => `<button data-tb="couleur" data-arg="${k}" class="pastille-tb ct-${k}${cfg.couleur === k ? ' choisie' : ''}" title="${n}" aria-label="${n}" aria-pressed="${cfg.couleur === k}"></button>`).join('')}</div>
+        <div class="groupe-tb">
+          <button data-tb="annuler" title="Annuler le dernier trait" ${cfg.traits.length ? '' : 'disabled'}>↶ Annuler</button>
+          <button data-tb="effacer-traits" title="Effacer tous les traits (les pions restent)" ${cfg.traits.length ? '' : 'disabled'}>🧹 Effacer le dessin</button>
+        </div>
+      </div>
+    </details>`;
   const retirer = `<button data-tb="retirer-pions" title="Enlever toutes les têtes et tous les pions" ${cfg.pions.length ? '' : 'disabled'}>Retirer les pions</button>`;
-  const planche = `<div class="planche-tb mode-${cfg.mode}${cfg.fige ? ' fige' : ''}" data-tb-planche>
+  // Compétences à évaluer : une seule « active » ; un toucher sur une tête l'évalue (sinon : couleur d'équipe).
+  const crit = critereActifTb(cfg);
+  const competences = enModeEleve() ? '' : `<span class="groupe-tb crits-tb" role="group" aria-label="Évaluer une compétence">
+      <button data-tb="critere" data-arg="" class="${crit ? '' : 'primaire'}" aria-pressed="${!crit}" title="Aucune compétence : un toucher sur une tête change la couleur de son équipe">🎽${presentationTb ? '' : ' Équipes'}</button>
+      ${(cfg.criteres || []).map(k => `<button data-tb="critere" data-arg="${k.id}" class="chip-crit-tb crit-${k.couleur}${crit === k ? ' actif' : ''}" aria-pressed="${crit === k}"
+        title="${crit === k ? 'Toucher à nouveau pour modifier ou supprimer cette compétence' : 'Évaluer : toucher les têtes des élèves'}">${esc(k.nom)} <small>${k.type === 'degre' ? '1–4' : '/' + fmt(k.sur)}</small></button>`).join('')}
+      <button data-tb="ajout-critere" class="ajout-crit-tb" title="Créer une compétence à évaluer sur le tableau (degré 1 à 4 ou note)">➕${presentationTb ? '' : ' Compétence'}</button>
+      ${presentationTb || !(cfg.criteres || []).some(k => Object.keys(cfg.evals?.[k.id] || {}).length) ? ''
+    : '<button data-tb="vers-eval" title="Ranger ces résultats dans une évaluation (onglet Notes)">📤 Vers une évaluation</button>'}
+    </span>`;
+  const planche = `<div class="planche-tb mode-${cfg.mode}${cfg.fige ? ' fige' : ''}${crit ? ' evaluation' : ''}" data-tb-planche>
       <canvas class="fond-tb" data-tb-fond></canvas>
       <canvas class="dessin-tb" data-tb-dessin></canvas>
-      <div class="pions-tb" data-tb-pions>${cfg.pions.map(htmlPionTb).join('')}</div>
+      <div class="pions-tb" data-tb-pions>${cfg.pions.map(p => htmlPionTb(p, badgeTb(cfg, crit, p))).join('')}</div>
     </div>`;
   if (presentationTb) {
     return `<div class="presentation-tb" data-tb-presentation>
       <div class="scene-tb">${planche}</div>
       <div class="barre-bas-tb" role="toolbar" aria-label="Outils du tableau">
         <button data-tb="presentation" class="quitter-presentation-tb" title="Quitter le grand écran (Échap)">✕ Quitter</button>
-        ${figer}${modes}${couleurs}${effacer}${eleves}${pions}${fond}${reglages}
+        ${competences}${figer}${outil}${eleves}${pions}${fond}${reglages}
       </div>
     </div>`;
   }
@@ -254,8 +274,10 @@ function htmlTableau(c) {
       ${fond}${eleves}${pions}${reglages}
       <button data-tb="presentation" title="Afficher seulement le terrain, en grand (pour les élèves) ; les outils passent dans une barre en bas">🖥 Grand écran</button>
     </div>
-    <div class="barre-tableau">${figer}${modes}${couleurs}${effacer}${retirer}</div>
-    <p class="aide aide-tableau">${cfg.fige ? '🔒 Tableau figé : rien ne bouge au doigt. « 🔒 Figé » pour le débloquer.'
+    <div class="barre-tableau">${figer}${outil}${retirer}</div>
+    ${competences ? `<div class="barre-tableau">${competences}</div>` : ''}
+    <p class="aide aide-tableau">${crit ? `📝 <b>${esc(crit.nom)}</b> : touche la tête d’un élève pour ${crit.type === 'degre' ? 'choisir son degré (1 à 4)' : `lui mettre une note sur ${fmt(crit.sur)}`}${cfg.fige ? ' (tableau figé : les têtes ne bougent pas)' : ''}. « 🎽 Équipes » pour revenir aux couleurs d’équipe.`
+    : cfg.fige ? '🔒 Tableau figé : rien ne bouge au doigt. « 🔒 Figé » pour le débloquer.'
     : cfg.mode === 'gomme' ? 'Gomme : touche un trait ou un pion pour l’effacer.'
     : 'Fais glisser les têtes et les pions au doigt ; un toucher sur une tête change la couleur de son équipe.'}</p>
     ${planche}`;
@@ -274,7 +296,165 @@ document.addEventListener('fullscreenchange', () => { if (!document.fullscreenEl
 // Échap sans plein écran (ex. iPad) : on quitte le grand écran, sauf si une fenêtre est ouverte.
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && presentationTb && !document.querySelector('dialog[open]')) basculerPresentationTb(false); });
 
-function htmlPionTb(p) {
+/* ---------- 📝 Compétences évaluées sur le tableau ----------
+   cfg.criteres : [{ id, nom, type: 'degre' | 'note', sur, couleur }] ; cfg.evals : { critereId: { eleveId: valeur } } ;
+   cfg.critereActif : la compétence évaluée d'un toucher sur une tête. « 📤 Vers une leçon » range les résultats dans le carnet. */
+const COULEURS_CRIT_TB = ['Rouge', 'Bleu', 'Vert', 'Orange', 'Violet'];
+const critereActifTb = cfg => (enModeEleve() ? null : (cfg.criteres || []).find(k => k.id === cfg.critereActif) || null);
+
+// Pastille sur la tête : le degré ou la note de la compétence active.
+function badgeTb(cfg, crit, p) {
+  const v = crit && p.type === 'eleve' ? cfg.evals?.[crit.id]?.[p.id] : undefined;
+  if (v === undefined || v === null) return '';
+  return crit.type === 'degre' ? `<span class="eval-pion-tb niveau n${v}">${v}</span>` : `<span class="eval-pion-tb note-tb crit-${crit.couleur}">${esc(fmt(v))}</span>`;
+}
+
+async function editerCritereTb(c, id = null) {
+  const cfg = cfgTableau(c), avant = id && (cfg.criteres || []).find(k => k.id === id);
+  const k = avant || { nom: '', type: 'degre', sur: 20, couleur: 0 };
+  const nb = id ? Object.keys(cfg.evals?.[id] || {}).length : 0;
+  const { d, resultat } = ouvrirModale(avant ? 'Modifier la compétence' : '➕ Nouvelle compétence', `
+    <label>Nom<input name="nom" required maxlength="40" value="${esc(k.nom)}" placeholder="ex. Se démarquer, Passe décisive, Repli défensif…" autocomplete="off"></label>
+    <div class="ligne">
+      <label>Évaluée par<select name="type">
+        <option value="degre" ${k.type === 'degre' ? 'selected' : ''}>un degré de 1 à 4</option>
+        <option value="note" ${k.type === 'note' ? 'selected' : ''}>une note</option></select></label>
+      <label class="etroit" data-note-sur ${k.type === 'note' ? '' : 'hidden'}>sur<input name="sur" type="number" min="1" max="100" step="1" value="${k.sur || 20}"></label>
+    </div>
+    <fieldset class="choix-import"><legend>Couleur du bouton</legend>
+      <div class="couleurs-crit-tb">${COULEURS_CRIT_TB.map((n, i) => `<label class="case"><input type="radio" name="couleur" value="${i}" ${k.couleur === i ? 'checked' : ''}><span class="pastille-crit crit-${i}"></span>${n}</label>`).join('')}</div>
+    </fieldset>
+    ${nb ? `<p class="aide">${nb} élève${nb > 1 ? 's' : ''} déjà évalué${nb > 1 ? 's' : ''}${k.type ? ' — changer « degré / note » efface ces évaluations' : ''}.</p>` : ''}`,
+  boutonsModale(avant ? 'Enregistrer' : 'Créer', avant ? '<button value="supprimer" class="danger" formnovalidate>Supprimer</button>' : ''));
+  $('[name="nom"]', d).focus();
+  d.addEventListener('change', e => { if (e.target.name === 'type') $('[data-note-sur]', d).hidden = e.target.value !== 'note'; });
+  const r = await resultat;
+  if (r.action === 'supprimer') {
+    if (!(await confirmer(`Supprimer la compétence « ${k.nom} »${nb ? ` et ses ${nb} évaluation${nb > 1 ? 's' : ''}` : ''} ?`))) return;
+    cfg.criteres = cfg.criteres.filter(x => x.id !== id);
+    if (cfg.evals) delete cfg.evals[id];
+    if (cfg.critereActif === id) cfg.critereActif = null;
+    return rendreOutil();
+  }
+  if (r.action !== 'ok' || !r.data.nom.trim()) return;
+  const nouveau = { id: id || 'k' + Date.now().toString(36), nom: r.data.nom.trim(), type: r.data.type === 'note' ? 'note' : 'degre',
+    sur: Math.max(1, Math.min(100, Math.round(+r.data.sur || 20))), couleur: +r.data.couleur || 0 };
+  if (avant && avant.type !== nouveau.type && cfg.evals) delete cfg.evals[id]; // (degrés et notes ne se convertissent pas)
+  cfg.criteres = avant ? cfg.criteres.map(x => (x.id === id ? nouveau : x)) : [...(cfg.criteres || []), nouveau];
+  cfg.critereActif = nouveau.id;
+  rendreOutil();
+}
+
+// Évaluer un élève (toucher sa tête, compétence active) : 4 gros boutons de degré, ou une note.
+async function evaluerTb(c, eleveId) {
+  const cfg = cfgTableau(c), k = critereActifTb(cfg), el = Donnees.get('eleves', eleveId);
+  if (!k || !el) return;
+  const ev = ((cfg.evals ??= {})[k.id] ??= {}), v = ev[eleveId];
+  const { d, resultat } = ouvrirModale(`${k.nom} — ${nomEleveOutil(el)}`, `
+    <div class="eval-eleve-tb">${Trombi.mini(el, 'photo-fiche')}
+      ${k.type === 'degre'
+    ? `<div class="degres-tb">${[1, 2, 3, 4].map(n => `<button value="d${n}" class="niveau n${n}${v === n ? ' choisi' : ''}" aria-label="Degré ${n}">${n}</button>`).join('')}</div>`
+    : `<label>Note sur ${fmt(k.sur)}<input name="note" inputmode="decimal" value="${v === undefined ? '' : esc(String(v).replace('.', ','))}" autocomplete="off" class="grand-champ-nat"></label>`}
+    </div>`,
+  `${v !== undefined ? '<button value="effacer" formnovalidate>Effacer</button>' : ''}<span class="espace"></span><button type="button" data-fermer>Annuler</button>${k.type === 'note' ? '<button value="ok" class="primaire">Enregistrer</button>' : ''}`);
+  $('[name="note"]', d)?.focus();
+  const r = await resultat;
+  if (r.action === 'effacer') delete ev[eleveId];
+  else if (/^d[1-4]$/.test(r.action)) ev[eleveId] = +r.action.slice(1);
+  else if (r.action === 'ok') {
+    const n = nombreOutil(r.data.note);
+    if (n === null || n < 0 || n > k.sur) return toast(`Note entre 0 et ${fmt(k.sur)}.`, 'erreur');
+    ev[eleveId] = n;
+  } else return;
+  bipToucher();
+  rendreOutil();
+}
+
+// 📤 Vers une leçon : une colonne par compétence évaluée (degré → échelle 1 à 4 ; note → nombre).
+TRANSFERTS.tableau = c => {
+  const cfg = cfgTableau(c);
+  const crits = (cfg.criteres || []).filter(k => Object.keys(cfg.evals?.[k.id] || {}).some(id => Donnees.get('eleves', id)));
+  if (!crits.length) throw new Error('Aucune compétence évaluée sur le tableau : crée une compétence (➕), puis touche les têtes des élèves.');
+  const apsa = terrainTb(cfg.terrain).nom.replace(/\s*[(:].*$/, '').trim();
+  return { titre: `Tableau blanc — ${crits.map(k => k.nom).join(', ')}`.slice(0, 80), apsa: ['Fond blanc', 'Quadrillage'].includes(apsa) ? '' : apsa,
+    colonnes: crits.map(k => ({ nom: k.nom, type: k.type === 'degre' ? 'echelle' : 'nombre', ...(k.type === 'note' ? { unite: '/' + k.sur } : {}),
+      valeurs: Object.fromEntries(Object.entries(cfg.evals[k.id]).filter(([id]) => Donnees.get('eleves', id)).map(([id, v]) => [id, String(v)])) })) };
+};
+
+// 📤 Vers une évaluation (onglet Notes) : nouvelle ou existante. Une note → la note de l'évaluation (ramenée à son barème) ;
+// un degré → une compétence de l'évaluation (la même, ajoutée comme compétence libre, ou une compétence déjà cochée).
+async function envoyerVersEvalTb(c) {
+  const cfg = cfgTableau(c), evalues = (cfg.criteres || []).filter(k => Object.keys(cfg.evals?.[k.id] || {}).some(id => Donnees.get('eleves', id)));
+  if (!evalues.length) throw new Error('Aucune compétence évaluée sur le tableau : crée une compétence (➕), puis touche les têtes des élèves.');
+  const evals = evalsDe(c.id).slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const note = evalues.find(k => k.type === 'note');
+  const optionsDest = (k, e) => k.type === 'note'
+    ? `<option value="note">la note de l’évaluation${e ? ` (ramenée sur ${fmt(e.max)})` : ''}</option><option value="">ne pas envoyer</option>`
+    : `<option value="libre">la compétence « ${esc(k.nom)} »${e && competencesEval(e).some(a => a.id === 'libre:' + k.nom) ? '' : ' (ajoutée à l’évaluation)'}</option>
+       ${e ? competencesEval(e).filter(a => a.id !== 'libre:' + k.nom).map(a => `<option value="${esc(a.id)}">${esc(a.code)} — ${esc(a.texte.slice(0, 70))}</option>`).join('') : ''}
+       <option value="">ne pas envoyer</option>`;
+  const { d, resultat } = ouvrirModale(`📤 Vers une évaluation — ${c.nom}`, `
+    <fieldset class="choix-import"><legend>Vers</legend>
+      <label class="case"><input type="radio" name="vers" value="nouvelle" checked> <span>Une <b>nouvelle évaluation</b></span></label>
+      <div class="ligne" data-nouvelle-eval>
+        <label>Titre<input name="titre" maxlength="80" value="${esc(evalues.map(k => k.nom).join(', ').slice(0, 80))}"></label>
+        <label class="etroit">Date<input name="date" type="date" value="${aujourdhui()}"></label>
+        ${note ? `<label class="etroit">Notée sur<input name="max" type="number" min="1" max="100" value="${note.sur}"></label>` : ''}
+      </div>
+      ${note ? '' : '<p class="aide">Évaluation par compétences seulement (degrés 1 à 4) : aucune note n’est mise.</p>'}
+      ${evals.length ? `<label class="case"><input type="radio" name="vers" value="existante"> <span>Une évaluation existante :</span></label>
+        <select name="eval" aria-label="Évaluation existante">${evals.map(e => `<option value="${e.id}">${dateCourte(e.date)} — ${esc(e.titre)}${note ? ` (/${fmt(e.max)})` : ''}</option>`).join('')}</select>` : ''}
+    </fieldset>
+    <fieldset class="choix-import"><legend>Chaque compétence du tableau va dans…</legend>
+      ${evalues.map(k => `<label>${esc(k.nom)} <span class="aide">${k.type === 'degre' ? 'degrés 1 à 4' : 'note sur ' + fmt(k.sur)} · ${Object.keys(cfg.evals[k.id]).length} élève(s)</span>
+        <select name="dest-${k.id}" data-dest="${k.id}">${optionsDest(k, null)}</select></label>`).join('')}
+    </fieldset>
+    <p class="aide">Une case déjà remplie dans l’évaluation est remplacée par la valeur du tableau.</p>`,
+  boutonsModale('Envoyer'));
+  // Évaluation existante choisie : ses compétences sont proposées comme destination des degrés.
+  const majDest = () => {
+    const e = $('[name="vers"]:checked', d).value === 'existante' ? Donnees.get('evals', $('[name="eval"]', d).value) : null;
+    $('[data-nouvelle-eval]', d).hidden = !!e;
+    evalues.forEach(k => { const s = $(`[data-dest="${k.id}"]`, d), v = s.value; s.innerHTML = optionsDest(k, e); if ([...s.options].some(o => o.value === v)) s.value = v; });
+  };
+  d.addEventListener('change', ev => {
+    if (ev.target.name === 'eval') $('[name="vers"][value="existante"]', d).checked = true;
+    if (['vers', 'eval'].includes(ev.target.name)) majDest();
+  });
+  const r = await resultat;
+  if (r.action !== 'ok') return;
+  const dest = Object.fromEntries(evalues.map(k => [k.id, r.data['dest-' + k.id] || '']));
+  const envoyes = evalues.filter(k => dest[k.id]);
+  if (!envoyes.length) return toast('Rien à envoyer.', 'erreur');
+  if (envoyes.filter(k => dest[k.id] === 'note').length > 1) return toast('Une seule compétence peut devenir la note de l’évaluation.', 'erreur');
+  let e;
+  const libres = envoyes.filter(k => dest[k.id] === 'libre').map(k => k.nom);
+  if (r.data.vers === 'existante') {
+    e = Donnees.get('evals', r.data.eval);
+    const deja = (e.competencesLibres || '').split('\n').map(s => s.trim()).filter(Boolean);
+    const manquent = libres.filter(n => !deja.includes(n));
+    if (manquent.length) e = Donnees.ecrire('evals', { ...e, competencesLibres: [...deja, ...manquent].join('\n') });
+  } else {
+    e = Donnees.ecrire('evals', { id: Donnees.nouvelId(), classeId: c.id, cree: Date.now(), titre: (r.data.titre || '').trim() || 'Tableau blanc',
+      apsa: TRANSFERTS.tableau(c).apsa, date: r.data.date || aujourdhui(), max: Math.max(1, +r.data.max || +reglage('notes').max || 20), coef: 1,
+      referentiel: '', ca: '', competences: [], competencesLibres: libres.join('\n'), preremplir: false });
+  }
+  let n = 0;
+  for (const k of envoyes) {
+    for (const [id, v] of Object.entries(cfg.evals[k.id])) {
+      if (!Donnees.get('eleves', id)) continue;
+      if (dest[k.id] === 'note') Donnees.ecrireNote(e.id, id, String(Math.round((v * e.max / k.sur) * 100) / 100));
+      else Donnees.ecrireNote(e.id, id, String(v), dest[k.id] === 'libre' ? 'libre:' + k.nom : dest[k.id]);
+      n++;
+    }
+  }
+  ui.vue = 'notes';
+  memoriserUi();
+  rendre();
+  toast(`Envoyé dans « ${e.titre} » : ${n} résultat${n > 1 ? 's' : ''} ✔`, 'ok');
+}
+
+function htmlPionTb(p, badge = '') {
   if (p.type !== 'eleve') {
     const contenu = p.type === 'ballon' ? '⚽' : p.type === 'plot' ? '' : esc(p.n ?? '');
     return `<div class="pion-tb pion-${p.type}" data-tb-pion="${esc(p.id)}">${contenu}</div>`;
@@ -286,7 +466,7 @@ function htmlPionTb(p) {
   const eq = p.eq === null || p.eq === undefined ? '' : ` eq-tb-${p.eq}`;
   const photo = el.photo && !enModeEleve() ? `<img src="${el.photo}" alt="" draggable="false">`
     : `<span class="initiales-tb">${esc(`${(el.prenom || '')[0] || ''}${(el.nom || '')[0] || ''}`.toUpperCase())}</span>`;
-  return `<div class="pion-tb pion-eleve${eq}" data-tb-pion="${esc(p.id)}" title="${esc(nomEleveOutil(el))}">${photo}<span class="nom-pion-tb" hidden>${esc(nom)}</span></div>`;
+  return `<div class="pion-tb pion-eleve${eq}" data-tb-pion="${esc(p.id)}" title="${esc(nomEleveOutil(el))}">${photo}<span class="nom-pion-tb" hidden>${esc(nom)}</span>${badge}</div>`;
 }
 
 // Taille de la planche (le terrain garde ses proportions, et tient dans l'écran), fond, dessin, pions.
@@ -393,7 +573,12 @@ document.addEventListener('pointerdown', e => {
   const c = classeActive();
   if (!c) return;
   const cfg = cfgTableau(c), p = pointTb(e, planche), noeud = e.target.closest('[data-tb-pion]');
-  if (cfg.fige) return; // tableau figé : le doigt ne modifie rien (la page défile normalement)
+  if (cfg.fige) {
+    // Tableau figé : rien ne bouge (la page défile normalement), mais on peut encore évaluer une tête.
+    const pion = noeud && critereActifTb(cfg) && cfg.pions.find(x => x.id === noeud.dataset.tbPion);
+    if (pion?.type === 'eleve') gesteTb = { pion, noeud, depart: [e.clientX, e.clientY], decal: [0, 0], bouge: false, fige: true };
+    return;
+  }
   e.preventDefault();
   if (cfg.mode === 'gomme') {
     if (noeud) {
@@ -435,7 +620,7 @@ document.addEventListener('pointermove', e => {
   }
   if (gesteTb.pion) {
     if (Math.hypot(e.clientX - gesteTb.depart[0], e.clientY - gesteTb.depart[1]) > 6) gesteTb.bouge = true;
-    if (!gesteTb.bouge) return;
+    if (!gesteTb.bouge || gesteTb.fige) return;
     gesteTb.pion.x = Math.min(1, Math.max(0, p[0] + gesteTb.decal[0]));
     gesteTb.pion.y = Math.min(1, Math.max(0, p[1] + gesteTb.decal[1]));
     placerPionsTb();
@@ -463,7 +648,12 @@ document.addEventListener('pointerup', () => {
   if (g.pion) {
     g.noeud.classList.remove('tenu');
     // Simple toucher sur une tête : couleur d'équipe suivante.
-    if (!g.bouge && g.pion.type === 'eleve') {
+    if (!g.bouge && g.pion.type === 'eleve' && critereActifTb(cfg)) {
+      // Compétence active : un toucher sur la tête = l'évaluer.
+      sauverOutils();
+      return lancer(() => evaluerTb(c, g.pion.id));
+    }
+    if (!g.bouge && g.pion.type === 'eleve' && !g.fige) {
       const k = CYCLE_EQ_TB.indexOf(g.pion.eq ?? null);
       g.pion.eq = CYCLE_EQ_TB[(k + 1) % CYCLE_EQ_TB.length];
       g.noeud.className = 'pion-tb pion-eleve' + (g.pion.eq === null ? '' : ' eq-tb-' + g.pion.eq);
@@ -546,9 +736,17 @@ function actionTableau(action, arg, c) {
   const cfg = cfgTableau(c);
   switch (action) {
     case 'figer': cfg.fige = !cfg.fige; return rendreOutil();
+    case 'critere':
+      // Toucher la compétence déjà active : la modifier (ou la supprimer).
+      if (arg && cfg.critereActif === arg) return editerCritereTb(c, arg);
+      cfg.critereActif = arg || null;
+      return rendreOutil();
+    case 'ajout-critere': return editerCritereTb(c);
+    case 'vers-eval': return envoyerVersEvalTb(c);
     case 'presentation': return basculerPresentationTb();
-    case 'mode': cfg.mode = arg; cfg.fige = false; return rendreOutil();
-    case 'couleur': cfg.couleur = +arg; if (cfg.mode !== 'crayon' && cfg.mode !== 'fleche') cfg.mode = 'crayon'; return rendreOutil();
+    // (Choisir un outil ou une couleur referme le panneau « Outil ».)
+    case 'mode': cfg.mode = arg; cfg.fige = false; menuOutilTb = false; return rendreOutil();
+    case 'couleur': cfg.couleur = +arg; if (cfg.mode !== 'crayon' && cfg.mode !== 'fleche') cfg.mode = 'crayon'; menuOutilTb = false; return rendreOutil();
     case 'annuler': cfg.traits.pop(); return rendreOutil();
     case 'effacer-traits': cfg.traits = []; return rendreOutil();
     case 'eleves': return choisirElevesTb(c);
@@ -588,5 +786,8 @@ let minuteurTailleTb = null;
 const reajusterTb = () => { clearTimeout(minuteurTailleTb); minuteurTailleTb = setTimeout(() => { if (ui.vue === 'outils' && ui.outil === 'tableau') majTableau(); }, 80); };
 window.addEventListener('resize', reajusterTb);
 document.addEventListener('fullscreenchange', reajusterTb);
+
+// Panneau « Outil » : reste ouvert ou fermé d'un affichage à l'autre (annuler / effacer ne le referment pas).
+document.addEventListener('toggle', e => { if (e.target.matches?.('#vue [data-tb-menu]')) menuOutilTb = e.target.open; }, true);
 
 RENDUS_OUTILS.tableau = htmlTableau;

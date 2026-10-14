@@ -8,7 +8,9 @@
 // (Fichier chargé avant app.js ; il se sert aussi des outils Excel d'entrainement.js : sansAccent, dateFr, lireDateExcel.)
 
 const CODES_NOTE_EXCEL = { A: 'ABS', ABS: 'ABS', ABSENT: 'ABS', D: 'DISP', DISP: 'DISP', 'DISPENSÉ': 'DISP', DISPENSE: 'DISP', N: 'NE', NE: 'NE', NN: 'NE', 'NON NOTÉ': 'NE', 'NON NOTE': 'NE',
-  B: 'BLE', BLE: 'BLE', 'BLESSÉ': 'BLE', BLESSE: 'BLE', M: 'MAL', MAL: 'MAL', MALADE: 'MAL', O: 'AUT', AUT: 'AUT', AUTRE: 'AUT', R: 'NR', NR: 'NR', 'NON RENDU': 'NR' };
+  B: 'BLE', BLE: 'BLE', 'BLESSÉ': 'BLE', BLESSE: 'BLE', M: 'MAL', MAL: 'MAL', MALADE: 'MAL', O: 'AUT', AUT: 'AUT', AUTRE: 'AUT', R: 'NR', NR: 'NR', 'NON RENDU': 'NR',
+  // (Codes des relevés d'École Directe : « Abs », « Disp », « Inapte », « Absent excusé »…)
+  'ABS.': 'ABS', 'ABSENT EXCUSÉ': 'ABS', 'ABS EXCUSÉ': 'ABS', 'DISP.': 'DISP', INAPTE: 'DISP', INAP: 'DISP', 'NON NOTÉE': 'NE' };
 // Raisons de santé (dispensé, blessé, malade) : « NE » dans un classeur anonyme.
 const CODES_SANTE = ['DISP', 'BLE', 'MAL'];
 
@@ -136,6 +138,86 @@ function lireEvalsExcel(feuilles) {
   return res;
 }
 
+/* ---------- Relevé de notes exporté d'École Directe (ou d'un autre logiciel) ----------
+   Une seule feuille : en haut une ligne de titres (« Classe… », Moyennes, Rang, puis une colonne par évaluation :
+   « Titre JJ/MM/AAAA (EPS) »), une ligne « Coefficients », une ligne « Noté sur », puis un élève par ligne
+   (« NOM Prénom », moyenne, rang, notes). Les colonnes Moyenne(s) et Rang ne sont pas reprises. */
+
+// Fichier → feuilles : .xlsx, ou « .xls » qui est en fait une page web (export fréquent des logiciels de vie scolaire).
+async function lireClasseurNotes(fichier) {
+  const debut = new Uint8Array(await fichier.slice(0, 8).arrayBuffer());
+  if (debut[0] === 0x50 && debut[1] === 0x4b) return Tableur.lire(fichier); // « PK » : vrai classeur .xlsx
+  if (debut[0] === 0xd0 && debut[1] === 0xcf) throw new Error('Ce fichier est à l’ancien format Excel (.xls) : ouvre-le dans Excel ou LibreOffice, « Enregistrer sous » au format .xlsx, puis importe ce nouveau fichier.');
+  const octets = new Uint8Array(await fichier.arrayBuffer());
+  let texte = new TextDecoder('utf-8').decode(octets);
+  if (texte.includes('�')) texte = new TextDecoder('windows-1252').decode(octets);
+  if (!/<table/i.test(texte)) throw new Error('Format de fichier non reconnu : il faut un classeur Excel (.xlsx ou .xls).');
+  // (Page web : chaque tableau devient une feuille ; une case fusionnée sur plusieurs colonnes laisse des cases vides.)
+  const doc = new DOMParser().parseFromString(texte, 'text/html');
+  return [...doc.querySelectorAll('table')].map((t, i) => ({
+    nom: 'Tableau ' + (i + 1),
+    lignes: [...t.rows].map(tr => [...tr.cells].flatMap(td => [td.innerText ?? td.textContent, ...Array(Math.max(0, (+td.colSpan || 1) - 1)).fill('')]
+      .map(x => String(x ?? '').replace(/ /g, ' ').replace(/[ \t]+/g, ' ').trim()))),
+  }));
+}
+
+function lireNotesEcoleDirecte(feuilles) {
+  const res = [];
+  const sa = x => sansAccent(String(x ?? '')).replace(/\s+/g, ' ').trim();
+  const estCoef = t => /^coef/.test(t);
+  const estSur = t => /^(not(e|é)e?s? sur|bareme|sur)$/.test(t.replace(/[:\s]+$/, ''));
+  // Lignes de statistiques de la classe (en bas du relevé) : pas des élèves.
+  // (Mots entiers seulement : un élève « MINARD » ou « MAXIME » reste un élève.)
+  const estStat = t => t.startsWith('%') || /^(moyennes?|moy|min(imum|imale)?|max(imum|imale)?|ecarts?|medianes?|nombre|effectifs?|total|classe)\b/.test(t);
+  for (const f of feuilles) {
+    const L = Array.from(f.lignes, l => Array.from(l || [], x => String(x ?? '').trim()));
+    // Cases « Coefficients » et « Noté sur » : n'importe où dans la feuille (souvent dans une colonne fusionnée).
+    let iCoef = -1, cLab = -1, iSur = -1;
+    L.forEach((l, i) => l.forEach((x, k) => {
+      const t = sa(x);
+      if (iCoef < 0 && estCoef(t)) { iCoef = i; cLab = k; }
+      if (iSur < 0 && estSur(t)) { iSur = i; if (cLab < 0) cLab = k; }
+    }));
+    if (iCoef < 0 && iSur < 0) continue;
+    const ref = iCoef >= 0 ? iCoef : iSur;
+    const lu = (i, k) => (i >= 0 ? nombre(String(L[i]?.[k] || '').replace(',', '.')) : null);
+    // Colonnes d'évaluation : celles qui ont un coefficient (ou un barème) — Moyennes et Rang n'en ont pas.
+    const largeur = Math.max(...L.map(l => l.length));
+    // Titre : la case non vide la plus proche au-dessus de la ligne des coefficients, dans la colonne.
+    const titreDe = k => { for (let i = Math.min(iCoef, iSur >= 0 ? iSur : iCoef) - 1; i >= 0; i--) if (L[i]?.[k]) return L[i][k]; return ''; };
+    const cols = [];
+    for (let k = cLab + 1; k < largeur; k++) {
+      if (lu(iCoef, k) === null && lu(iSur, k) === null) continue;
+      if (/^(moyennes?|moy|rangs?|appreciations?)\b/.test(sa(titreDe(k)))) continue; // (jamais une évaluation)
+      cols.push(k);
+    }
+    if (!cols.length) continue;
+    // Élèves : sous les lignes d'en-tête, un nom dans les colonnes avant les évaluations, et au moins une case remplie.
+    const debut = Math.max(iCoef, iSur) + 1;
+    const eleves = [];
+    for (const l of L.slice(debut)) {
+      const avant = l.slice(0, cols[0]).filter(x => /\p{L}/u.test(x));
+      const nom = avant.sort((a, b) => b.length - a.length)[0] || '';
+      if (!nom || estStat(sa(nom)) || avant.some(x => estStat(sa(x)))) continue;
+      eleves.push({ ...ListeClasse.separerNom(nom), l });
+    }
+    if (!eleves.length) continue;
+    for (const k of cols) {
+      const t = titreDe(k).replace(/\s+/g, ' ').trim() || `Évaluation ${cols.indexOf(k) + 1}`;
+      const date = t.match(/(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
+      // Titre : le texte avant la date (sans la matière entre parenthèses à la fin).
+      const titre = (date ? t.slice(0, date.index) : t).replace(/\(\s*[^)]*\)\s*$/, '').replace(/[\s—–-]+$/, '').trim() || t;
+      const coef = lu(iCoef, k), sur = lu(iSur, k);
+      res.push({
+        onglet: f.nom, fichierId: '', refId: '', titre, date: (date && lireDateExcel(date[0])) || aujourdhui(), apsa: '', ca: '',
+        max: sur > 0 ? sur : 20, coef: coef !== null && coef >= 0 ? coef : 1, colonnes: [],
+        lignes: eleves.map(({ nom, prenom, l }) => ({ id: '', nom: majuscules(nom), prenom, note: String(l[k] || '').replace(/\s*\/\s*\d+([.,]\d+)?$/, ''), degres: [] })),
+      });
+    }
+  }
+  return res;
+}
+
 // Compétence d'une colonne : celle du référentiel (identifiant connu), sinon une compétence « libre » de l'évaluation.
 function competenceColonne(col) {
   if (col.id && REFERENTIEL.attendu(col.id)) return { id: col.id };
@@ -225,25 +307,105 @@ function appliquerImportNotes(plan, c, { structure, ajouterInconnus }) {
   return bilan;
 }
 
+/* ---------- Doublons à l'import ----------
+   Chaque évaluation du fichier est comparée aux autres colonnes du fichier et aux évaluations du carnet
+   (même titre et même date) : identique → pas recopiée ; mêmes titre et date mais notes différentes → à vérifier. */
+
+// Note du fichier telle qu'elle serait enregistrée ('' si vide ; « ?… » si illisible).
+function valeurImport(brut, max) {
+  const t = String(brut || '').trim();
+  if (!t) return '';
+  const code = CODES_NOTE_EXCEL[t.toLocaleUpperCase('fr')], n = nombre(t.replace(',', '.'));
+  return code || (n !== null && n >= 0 && n <= max ? String(n) : '?' + t);
+}
+const empreinteImport = x => JSON.stringify([x.max, x.coef, x.lignes.map(l => [l.cle, valeurImport(l.note, x.max), ...l.degres.map(d => String(d).trim())]).sort()]);
+
+// Nombre de valeurs du fichier qui diffèrent de l'évaluation du carnet (barème et coefficient compris).
+function differencesCarnet(x) {
+  let n = x.cible.max !== x.max || x.cible.coef !== x.coef ? 1 : 0;
+  for (const l of x.lignes) {
+    if (!l.eleve) continue;
+    const v = valeurImport(l.note, x.max);
+    if (v && v !== Donnees.note(x.cible.id, l.eleve.id)) n++;
+    x.colonnes.forEach((col, k) => {
+      const d = String(l.degres[k] || '').trim();
+      if (d && col.comp && d !== Donnees.note(x.cible.id, l.eleve.id, col.comp.id)) n++;
+    });
+  }
+  return n;
+}
+
+// x.cas : 'nouvelle' | 'doublon' (copie exacte d'une autre colonne du fichier) | 'identique' (déjà dans le carnet)
+//         | 'conflit-carnet' (dans le carnet, avec des notes différentes) | 'conflit-fichier' (même titre et date qu'une autre colonne, notes différentes).
+function analyserDoublonsImport(plan) {
+  const vus = new Map();
+  // (Une évaluation déjà importée « à part » s'appelle « Titre (2) », « Titre (3) »… : elle compte aussi.)
+  const variantes = x => evalsDe(plan.evals[0]?.cible?.classeId || classeActive().id)
+    .filter(e => e.date === x.date && sansAccent(e.titre).replace(/\s*\(\d+\)$/, '') === sansAccent(x.titre));
+  const dejaIdentique = x => variantes(x).find(e => differencesCarnet({ ...x, cible: e }) === 0);
+  for (const x of plan.evals) {
+    const cle = sansAccent(x.titre) + '|' + x.date, avant = vus.get(cle) || [];
+    const jumelle = !x.cible || differencesCarnet(x) ? dejaIdentique(x) : null;
+    if (avant.some(y => empreinteImport(y) === empreinteImport(x))) x.cas = 'doublon';
+    else if (jumelle) { x.cible = jumelle; x.id = jumelle.id; x.cas = 'identique'; }
+    else if (avant.length) x.cas = 'conflit-fichier';
+    else if (x.cible) { x.diff = differencesCarnet(x); x.cas = x.diff ? 'conflit-carnet' : 'identique'; }
+    else x.cas = 'nouvelle';
+    avant.push(x);
+    vus.set(cle, avant);
+  }
+}
+
+const LIBELLES_CAS_IMPORT = {
+  nouvelle: () => '🆕 Nouvelle',
+  doublon: () => '♊ En double dans le fichier (même titre, même date, mêmes notes) : pas recopiée',
+  identique: () => '✔ Déjà dans le carnet, identique : rien à faire',
+  'conflit-carnet': x => `⚠ À vérifier : déjà dans le carnet, avec ${x.diff} différence${x.diff > 1 ? 's' : ''}`,
+  'conflit-fichier': () => '⚠ À vérifier : même titre et même date qu’une autre colonne du fichier, mais notes différentes',
+};
+const CHOIX_CAS_IMPORT = {
+  nouvelle: [['importer', 'Importer'], ['ignorer', 'Ne pas importer']],
+  doublon: [['ignorer', 'Ne pas importer'], ['a-part', 'Importer quand même, à part']],
+  identique: [['ignorer', 'Ne pas importer'], ['importer', 'Réimporter quand même']],
+  'conflit-carnet': [['', '— Choisir —'], ['importer', 'Mettre à jour l’évaluation du carnet'], ['a-part', 'Importer à part (nouvelle évaluation)'], ['ignorer', 'Ne pas importer']],
+  'conflit-fichier': [['', '— Choisir —'], ['a-part', 'Importer aussi, à part'], ['ignorer', 'Ne pas importer']],
+};
+
 async function importerNotesExcel(c, fichier) {
   let feuilles;
-  try { feuilles = await Tableur.lire(fichier); } catch (e) {
+  try { feuilles = await lireClasseurNotes(fichier); } catch (e) {
     throw new Error(`« ${fichier.name} » n’a pas pu être lu : ${e.message || e}`);
   }
   if (estAnonyme(feuilles)) throw new Error('Ce classeur est un export anonyme : il ne peut pas être réimporté (l’appli ne saurait pas à quels élèves rattacher les notes).');
-  const lues = lireEvalsExcel(feuilles);
-  if (!lues.length) throw new Error(`Aucune évaluation trouvée dans « ${fichier.name} » (il faut un onglet avec des colonnes « Nom », « Prénom » et « Note »).`);
+  // Classeur de l'appli (un onglet par évaluation), sinon relevé de notes d'École Directe (une colonne par évaluation).
+  let lues = lireEvalsExcel(feuilles);
+  if (!lues.length) lues = lireNotesEcoleDirecte(feuilles);
+  if (!lues.length) throw new Error(`Aucune évaluation trouvée dans « ${fichier.name} » : il faut le classeur exporté par l’appli, ou le relevé de notes d’École Directe (lignes « Coefficients » et « Noté sur » sous les titres des évaluations).`);
   const plan = preparerImportNotes(lues, c);
-  const nbMaj = plan.evals.filter(x => x.cible).length, nbNeuves = plan.evals.length - nbMaj;
+  analyserDoublonsImport(plan);
   const totalEleves = plan.reconnus.size + plan.inconnus.size;
   const inconnus = [...plan.inconnus.values()];
+  const nbCas = cas => plan.evals.filter(x => x.cas === cas).length;
+  const aVerifier = nbCas('conflit-carnet') + nbCas('conflit-fichier');
   const { resultat } = ouvrirModale(`Importer dans ${c.nom}`, `
     <p><b>${esc(fichier.name)}</b></p>
     <ul class="bilan-import">
-      <li>${plan.evals.length} évaluation${plan.evals.length > 1 ? 's' : ''} :
-        ${nbNeuves ? `${nbNeuves} nouvelle${nbNeuves > 1 ? 's' : ''}` : ''}${nbNeuves && nbMaj ? ', ' : ''}${nbMaj ? `${nbMaj} déjà dans le carnet (mise${nbMaj > 1 ? 's' : ''} à jour)` : ''}</li>
+      <li>${plan.evals.length} évaluation${plan.evals.length > 1 ? 's' : ''} dans le fichier : ${[
+        nbCas('nouvelle') && `${nbCas('nouvelle')} nouvelle${nbCas('nouvelle') > 1 ? 's' : ''}`,
+        nbCas('identique') && `${nbCas('identique')} déjà dans le carnet (identique${nbCas('identique') > 1 ? 's' : ''})`,
+        nbCas('doublon') && `${nbCas('doublon')} en double dans le fichier`,
+        aVerifier && `<b>${aVerifier} à vérifier</b>`].filter(Boolean).join(', ')}</li>
       <li>${plan.reconnus.size} élève${plan.reconnus.size > 1 ? 's' : ''} reconnu${plan.reconnus.size > 1 ? 's' : ''} sur ${totalEleves}</li>
     </ul>
+    <fieldset class="choix-import"><legend>Évaluations du fichier</legend>
+      <p class="aide">Seules les évaluations <b>uniques</b> sont importées : une évaluation identique (même titre, même date, mêmes notes)
+        n’est pas recopiée. ${aVerifier ? '<b>⚠ Choisis quoi faire pour celles marquées « à vérifier ».</b>' : ''}</p>
+      <ul class="liste-evals-import">${plan.evals.map((x, i) => `<li class="cas-${x.cas}">
+        <span><b>${esc(x.titre)}</b> <span class="aide">${esc(dateCourte(x.date))} · /${fmt(x.max)} · coef ${fmt(x.coef)}</span><br>
+          <small>${esc(LIBELLES_CAS_IMPORT[x.cas](x))}</small></span>
+        <select name="act-${i}" ${x.cas.startsWith('conflit') ? 'required' : ''} aria-label="Que faire de ${esc(x.titre)} du ${esc(dateCourte(x.date))}">
+          ${CHOIX_CAS_IMPORT[x.cas].map(([v, nom]) => `<option value="${v}">${esc(nom)}</option>`).join('')}</select></li>`).join('')}</ul>
+    </fieldset>
     <fieldset class="choix-import"><legend>Que reprendre ?</legend>
       <label class="case"><input type="radio" name="quoi" value="tout" checked><span>Les évaluations <b>et les notes / degrés</b> des élèves</span></label>
       <label class="case"><input type="radio" name="quoi" value="structure"><span>Seulement <b>les évaluations</b> (titres, dates, barèmes, compétences) — pour reprendre les évaluations d’un collègue avec tes élèves</span></label>
@@ -257,6 +419,20 @@ async function importerNotesExcel(c, fichier) {
   boutonsModale('Importer'));
   const r = await resultat;
   if (r.action !== 'ok') return;
+  // Les choix de l'enseignant : ignorer, mettre à jour l'évaluation du carnet, ou importer à part (titre « … (2) »).
+  const pris = new Set(evalsDe(c.id).map(e => sansAccent(e.titre) + '|' + e.date));
+  plan.evals = plan.evals.filter((x, i) => {
+    const choix = r.data['act-' + i];
+    if (!choix || choix === 'ignorer') return false;
+    if (choix === 'a-part') {
+      let n = 2, titre;
+      do titre = `${x.titre} (${n++})`; while (pris.has(sansAccent(titre) + '|' + x.date));
+      Object.assign(x, { titre, cible: null, id: Donnees.nouvelId() });
+    }
+    pris.add(sansAccent(x.titre) + '|' + x.date);
+    return true;
+  });
+  if (!plan.evals.length) return toast('Rien à importer : toutes les évaluations du fichier sont déjà dans le carnet ou ont été laissées de côté.');
   const bilan = appliquerImportNotes(plan, c, { structure: r.data.quoi === 'structure', ajouterInconnus: r.data.ajouter === 'on' });
   rendre();
   const morceaux = [
@@ -287,9 +463,10 @@ async function echangeExcelNotes() {
     </div>
     <div class="bloc-excel">
       <h3>⬆ Importer</h3>
-      <p class="aide">Un classeur de notes exporté par ${esc(profil().carnet)} (le tien, éventuellement complété dans Excel, ou celui d’un collègue).
+      <p class="aide">Un classeur de notes exporté par ${esc(profil().carnet)} (le tien, éventuellement complété dans Excel, ou celui d’un collègue),
+        ou le <b>relevé de notes exporté d’École Directe</b> (une colonne par évaluation : titre et date, coefficient, « noté sur », puis les notes).
         Tu verras ce qui sera repris avant de valider.</p>
-      <label class="bouton primaire">Choisir un fichier .xlsx…<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-fichier-excel hidden></label>
+      <label class="bouton primaire">Choisir un fichier .xlsx ou .xls…<input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" data-fichier-excel hidden></label>
     </div>`,
   '<span class="espace"></span><button type="button" data-fermer>Fermer</button>');
   d.querySelector('[data-fichier-excel]').addEventListener('change', e => {

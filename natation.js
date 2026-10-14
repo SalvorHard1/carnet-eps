@@ -64,7 +64,25 @@ let reglagesNatOuverts = false, resultatsNatOuverts = true;
 function htmlNatation(c) {
   const cfg = cfgNatation(c), co = cfg.course, enCours = co?.depart && !co.fin;
   const L = co ? nbLongueurs(co.distance, co.bassin) : nbLongueurs(cfg.distance, cfg.bassin);
-  const resume = `${cfg.distance} m ${cfg.nage.toLowerCase()} · bassin ${fmt(cfg.bassin)} m (${L} longueur${L > 1 ? 's' : ''}) · on compte ${cfg.compte === 'coups' ? 'les coups de bras' : 'les cycles'}`;
+  const resume = `${cfg.distance} m ${cfg.nage.toLowerCase()} · bassin ${fmt(cfg.bassin)} m (${L} longueur${L > 1 ? 's' : ''}) · ${cfg.chronoSeul ? 'chrono seul (sans coups de bras)' : 'on compte ' + (cfg.compte === 'coups' ? 'les coups de bras' : 'les cycles')}`;
+
+  // Départ groupé : un seul chrono ; on touche le nom de chaque élève quand il arrive au mur (son temps lui est attribué).
+  if (enCours && co.groupe) {
+    const arrives = co.lanes.filter(l => l.temps.length).sort((a, b) => a.temps[0] - b.temps[0]);
+    return `<div class="barre-outil course-nat">
+        <span class="grand-temps moyen" data-o-bloc="natation" data-arg="${c.id}|-1">${fmtTemps(ecouleNat(co))}</span>
+        <span class="aide">${esc(`${co.distance} m ${co.nage.toLowerCase()} · départ groupé`)} · ${arrives.length} / ${co.lanes.length} arrivé${arrives.length > 1 ? 's' : ''}</span>
+        <span class="espace-outil"></span>
+        <button class="danger" data-on="arreter">⏹ Arrêter</button>
+      </div>
+      <p class="consigne-nat"><span>👆 Touche le <b>nom</b> de l’élève dès qu’il touche le mur : son temps est enregistré</span></p>
+      <div class="arrivees-nat">${co.lanes.map(lane => {
+        const rang = arrives.indexOf(lane) + 1;
+        return rang ? `<button class="arrivee-nat arrive" disabled><span class="rang-nat">${rang}</span><b>${esc(nomOutil(lane.id))}</b><span class="temps-arrivee">${fmtTemps(lane.temps[0])}</span></button>`
+          : `<button class="arrivee-nat" data-on="arrive" data-arg="${lane.id}"><b>${esc(nomOutil(lane.id))}</b><span class="aide">touche à l’arrivée</span></button>`;
+      }).join('')}</div>
+      <div class="boutons-outil centre"><button data-on="annuler-arrivee" ${arrives.length ? '' : 'disabled'}>↶ Annuler la dernière arrivée</button></div>`;
+  }
 
   // Pendant la course : seulement le chrono et les couloirs.
   if (enCours) {
@@ -74,8 +92,18 @@ function htmlNatation(c) {
         <span class="espace-outil"></span>
         <button class="danger" data-on="arreter">⏹ Arrêter</button>
       </div>
-      <p class="consigne-nat">${co.compter === false ? `<span>✎ les ${motCompte(co.compte)} se notent après</span>` : `<span>👆 <b>+1</b> à chaque ${motCompte(co.compte, 1)}</span>`}<span>👆 <b>Virage</b> au mur</span><span>🏁 la dernière = <b>arrivée</b></span></p>
+      <p class="consigne-nat">${co.chronoSeul ? '' : co.compter === false ? `<span>✎ les ${motCompte(co.compte)} se notent après</span>` : `<span>👆 <b>+1</b> à chaque ${motCompte(co.compte, 1)}</span>`}<span>👆 <b>Virage</b> au mur</span><span>🏁 la dernière = <b>arrivée</b></span></p>
       <div class="couloirs-nat en-course">${co.lanes.map((lane, k) => htmlCouloir(c, cfg, co, lane, k, L)).join('')}</div>`;
+  }
+
+  // Départ groupé terminé : le classement.
+  if (co?.groupe) {
+    const arrives = co.lanes.filter(l => l.temps.length).sort((a, b) => a.temps[0] - b.temps[0]), absents = co.lanes.filter(l => !l.temps.length);
+    return `<div class="etape-nat"><b>🏁 Course terminée</b> <span class="aide">${co.distance} m ${esc(co.nage.toLowerCase())} · départ groupé — les temps sont enregistrés.</span></div>
+      <ol class="classement-nat">${arrives.map((l, i) => `<li><span class="rang-nat">${i + 1}</span><b>${esc(nomOutil(l.id))}</b><span class="temps-arrivee">${fmtTemps(l.temps[0])}</span><span class="aide">${f2(co.distance / (l.temps[0] / 1000))} m/s</span></li>`).join('')}</ol>
+      ${absents.length ? `<p class="aide">Non arrivé${absents.length > 1 ? 's' : ''} : ${absents.map(l => esc(nomOutil(l.id))).join(', ')}</p>` : ''}
+      <div class="boutons-outil centre"><button class="primaire gros" data-on="nouvelle">↺ Nouvelle course</button></div>
+      ${htmlResultatsNat(c, cfg)}`;
   }
 
   // Course terminée : résultats dans les couloirs, puis on enchaîne.
@@ -113,8 +141,11 @@ function htmlNatation(c) {
     </div>
     ${htmlPresents(c)}
     <div class="etape-nat"><span class="num-etape">2</span><b>Départ</b></div>
-    <div class="boutons-outil centre">
-      <button class="primaire tres-gros" data-on="depart" ${places.size ? '' : 'disabled'}>▶ Départ${places.size ? ` (${places.size} nageur${places.size > 1 ? 's' : ''})` : ''}</button>
+    <div class="departs-nat">
+      <button class="primaire depart-nat" data-on="depart" ${places.size ? '' : 'disabled'}>
+        <b>▶ Départ par couloirs</b><small>${places.size ? `${places.size} nageur${places.size > 1 ? 's' : ''} · virages, coups de bras` : 'mets d’abord des élèves dans les couloirs'}</small></button>
+      <button class="depart-nat" data-on="depart-groupe" ${places.size || presents.length ? '' : 'disabled'}>
+        <b>⏱ Départ groupé</b><small>${places.size || presents.length} élève${(places.size || presents.length) > 1 ? 's' : ''} · touche son nom à l’arrivée</small></button>
     </div>
     ${htmlResultatsNat(c, cfg)}`;
 }
@@ -126,10 +157,11 @@ function htmlReglagesNat(cfg) {
       <label class="etroit">Distance<select data-on-champ="distance">${choix(cfg.distance, [25, 50, 75, 100, 150, 200, 400].map(d => [d, d + ' m']))}</select></label>
       <label class="etroit">Bassin<select data-on-champ="bassin">${choix(cfg.bassin, [[25, '25 m'], [50, '50 m'], [12.5, '12,5 m'], [33.33, '33 m']])}</select></label>
       <label class="etroit">Couloirs<select data-on-champ="couloirs">${choix(cfg.couloirs, [1, 2, 3, 4, 5, 6].map(n => [n, n]))}</select></label>
-      <label>On compte<select data-on-champ="compte">${choix(cfg.compte, [['cycles', 'les cycles (2 bras en crawl / dos)'], ['coups', 'chaque coup de bras']])}</select></label>
-      <label>Les ${motCompte(cfg.compte)}<select data-on-champ="compterPendant">${choix(cfg.compterPendant === false ? 'apres' : 'pendant',
-    [['pendant', 'se comptent pendant la course (+1)'], ['apres', 'se notent après la course']])}</select></label>
+      <label>Coups de bras<select data-on-champ="compterPendant">${choix(cfg.chronoSeul ? 'non' : cfg.compterPendant === false ? 'apres' : 'pendant',
+    [['pendant', 'comptés pendant la course (+1)'], ['apres', 'notés après la course'], ['non', '— aucun : chrono seul']])}</select></label>
+      ${cfg.chronoSeul ? '' : `<label>On compte<select data-on-champ="compte">${choix(cfg.compte, [['cycles', 'les cycles (2 bras en crawl / dos)'], ['coups', 'chaque coup de bras']])}</select></label>`}
     </div>
+    ${cfg.chronoSeul ? '<p class="aide">Chrono seul : seulement les temps (et la vitesse). Sans coups de bras, pas d’amplitude, de fréquence ni d’indice de nage.</p>' : `
     <label class="case"><input type="checkbox" data-on-champ="seuils" ${cfg.seuils === false ? '' : 'checked'}>
       <span>Colorer l’indice de nage en vert / rouge selon des seuils</span></label>
     ${cfg.seuils === false ? '' : `<div class="ligne reglage-outil">
@@ -140,7 +172,7 @@ function htmlReglagesNat(cfg) {
       ${cfg.seuils === false ? 'Sans seuils, l’indice est simplement affiché.' : `Le <b>seuil sur la course entière</b> s’applique à l’indice calculé sur toute la distance ;
       le <b>seuil sur chaque longueur</b>, à l’indice de chaque longueur (pour voir où l’élève faiblit). Au-dessus : vert ; en dessous : rouge.
       Valeurs par défaut de l’académie de Lyon (1,4 et 1,2), prévues pour des cycles comptés en crawl.
-      ${cfg.compte === 'coups' ? '⚠ En comptant chaque coup de bras, l’indice est environ deux fois plus petit : baisse les seuils.' : ''}`}</p>`;
+      ${cfg.compte === 'coups' ? '⚠ En comptant chaque coup de bras, l’indice est environ deux fois plus petit : baisse les seuils.' : ''}`}</p>`}`;
 }
 
 function htmlCouloir(c, cfg, co, lane, k, L) {
@@ -153,7 +185,8 @@ function htmlCouloir(c, cfg, co, lane, k, L) {
       <span class="grand-temps petit" data-o-bloc="natation" data-arg="${c.id}|${k}">${fmtTemps(ecouleNat(co, lane))}</span></div>
     <div class="progression-nat">${Array.from({ length: L }, (_, i) => `<span class="${i < lane.temps.length ? 'faite' : i === lane.temps.length && !fini ? 'en-cours' : ''}">${i + 1}</span>`).join('')}</div>
     ${lane.cycles.some(n => n > 0) ? `<div class="aide">${lane.cycles.map((n, i) => `L${i + 1} : ${n} ${motCompte(co.compte, n)}`).join(' · ')}</div>` : ''}
-    ${fini ? `<div class="bilan-couloir">🏁 <b>${fmtTemps(lane.temps.at(-1))}</b> · IN <b class="${classeIN(dernier.IN, seuilNat(cfg, 'seuilCourse')).trim()}">${f2(dernier.IN)}</b>
+    ${fini && co.chronoSeul ? `<div class="bilan-couloir">🏁 <b>${fmtTemps(lane.temps.at(-1))}</b> <span class="aide">· ${f2(dernier.V)} m/s</span></div>`
+    : fini ? `<div class="bilan-couloir">🏁 <b>${fmtTemps(lane.temps.at(-1))}</b> · IN <b class="${classeIN(dernier.IN, seuilNat(cfg, 'seuilCourse')).trim()}">${f2(dernier.IN)}</b>
         ${dernier.IN === null ? '' : `<div class="aide">${f2(dernier.V)} m/s · ${f2(dernier.A)} ${uniteAmpl(co.compte)} · ${f1(dernier.F)} /min</div>`}</div>
       ${lane.essai !== undefined ? `<button class="${lane.cycles.some(n => n > 0) ? '' : 'primaire '}bouton-cycles" data-on="cycles" data-arg="${lane.id}|${lane.essai}">✎ ${lane.cycles.some(n => n > 0)
     ? 'Corriger les ' + motCompte(co.compte) : 'Noter les ' + motCompte(co.compte)}</button>` : ''}`
@@ -172,6 +205,8 @@ function htmlResultatsNat(c, cfg) {
   const ids = Object.keys(cfg.essais).filter(id => cfg.essais[id]?.length && Donnees.get('eleves', id));
   if (!ids.length) return '<div class="boutons-outil"><button data-on="saisir" data-arg="">✎ Saisir un essai à la main (sans chrono)…</button></div>';
   const ordre = elevesDe(c.id).map(el => el.id).filter(id => ids.includes(id));
+  // Aucun coup de bras noté (chrono seul, départ groupé…) : seulement les temps et la vitesse.
+  const sc = !ordre.some(id => cfg.essais[id].some(e => e.cycles.some(n => n > 0)));
   return `<details class="resultats-nat" data-on-resultats ${resultatsNatOuverts ? 'open' : ''}>
     <summary>📊 <b>Résultats de la classe</b> <span class="aide">${ordre.length} nageur${ordre.length > 1 ? 's' : ''}</span></summary>
     <div class="tete-saisie-combine">
@@ -180,7 +215,7 @@ function htmlResultatsNat(c, cfg) {
         <option value="meilleur" ${cfg.vue === 'meilleur' ? 'selected' : ''}>le meilleur indice de nage</option>
         <option value="rapide" ${cfg.vue === 'rapide' ? 'selected' : ''}>le meilleur temps</option></select></label></div>
     <div class="carte defile-combine"><table class="tableau-outil tableau-nat">
-      <thead><tr><th>Élève</th><th>Nage</th><th>Temps</th><th>${cfg.compte === 'coups' ? 'Coups de bras' : 'Cycles'}</th><th>Vitesse</th><th>Amplitude</th><th>Fréquence</th><th>Indice de nage</th><th></th></tr></thead>
+      <thead><tr><th>Élève</th><th>Nage</th><th>Temps</th>${sc ? '<th>Vitesse</th>' : `<th>${cfg.compte === 'coups' ? 'Coups de bras' : 'Cycles'}</th><th>Vitesse</th><th>Amplitude</th><th>Fréquence</th><th>Indice de nage</th><th></th>`}</tr></thead>
       <tbody>${ordre.map(id => {
     const e = essaiRetenu(cfg, id), a = analyseEssai(e), n = cfg.essais[id].length;
     return `<tr><td><details><summary>${esc(nomOutil(id))}${n > 1 ? ` <span class="aide">· ${n} essais</span>` : ''}</summary>
@@ -188,16 +223,17 @@ function htmlResultatsNat(c, cfg) {
           ${enModeEleve() ? '' : `<button class="icone-petit" data-on="suppr-essai" data-arg="${id}|${i}" aria-label="Supprimer cet essai">🗑</button>`}</li>`; }).join('')}</ol></details></td>
       <td>${esc(e.nage)} ${e.distance} m</td>
       <td><b>${fmtTemps(e.temps.at(-1))}</b>${a.longueurs.length > 1 ? `<div class="aide">${a.longueurs.map(l => f1(l.s) + ' s').join(' · ')}${a.ecart !== null ? ` (écart ${f1(a.ecart)} s)` : ''}</div>` : ''}</td>
-      <td>${a.cycles}${a.longueurs.length > 1 ? `<div class="aide">${e.cycles.join(' · ')}</div>` : ''}</td>
+      ${sc ? `<td>${f2(a.V)} <span class="aide">m/s</span></td></tr>` : `
+      <td>${a.cycles || '–'}${a.longueurs.length > 1 && a.cycles ? `<div class="aide">${e.cycles.join(' · ')}</div>` : ''}</td>
       <td>${f2(a.V)} <span class="aide">m/s</span></td>
       <td>${f2(a.A)} <span class="aide">${uniteAmpl(e.compte)}</span></td>
       <td>${f1(a.F)} <span class="aide">/min</span></td>
       <td><b class="${classeIN(a.IN, seuilNat(cfg, 'seuilCourse')).trim()}">${f2(a.IN)}</b>${a.longueurs.length > 1 ? `<div class="aide">${a.longueurs.map((l, i) => `<span class="${classeIN(l.IN, seuilNat(cfg, 'seuilLongueur')).trim()}">L${i + 1} ${f2(l.IN)}</span>`).join(' · ')}</div>` : ''}</td>
-      <td><button class="icone-petit" data-on="cycles" data-arg="${id}|${cfg.essais[id].indexOf(e)}" title="Noter ou corriger les ${motCompte(e.compte)} de cet essai">✎</button></td></tr>`;
+      <td><button class="icone-petit" data-on="cycles" data-arg="${id}|${cfg.essais[id].indexOf(e)}" title="Noter ou corriger les ${motCompte(e.compte)} de cet essai">✎</button></td></tr>`}`;
   }).join('')}</tbody></table></div>
     <div class="boutons-outil"><button data-on="saisir" data-arg="">✎ Saisir un essai à la main…</button></div>
-    <p class="aide">Vitesse = distance ÷ temps · Amplitude = distance ÷ ${motCompte(cfg.compte)} · Fréquence = ${motCompte(cfg.compte)} par minute ·
-      Indice de nage = vitesse × amplitude. Vert : au-dessus du seuil ; rouge : en dessous. Toucher un nom : tous ses essais.</p>
+    <p class="aide">${sc ? 'Vitesse = distance ÷ temps. Toucher un nom : tous ses essais.</p>' : `Vitesse = distance ÷ temps · Amplitude = distance ÷ ${motCompte(cfg.compte)} · Fréquence = ${motCompte(cfg.compte)} par minute ·
+      Indice de nage = vitesse × amplitude. Vert : au-dessus du seuil ; rouge : en dessous. Toucher un nom : tous ses essais.</p>`}
   </details>`;
 }
 
@@ -208,7 +244,7 @@ async function saisirEssaiNat(c, cfg, eleveId) {
   let distance = cfg.distance, bassin = cfg.bassin;
   const lignes = () => Array.from({ length: nbLongueurs(distance, bassin) }, (_, i) => `<div class="ligne">
       <label class="etroit">Temps à ${fmt((i + 1) * bassin)} m<input name="t${i}" inputmode="decimal" placeholder="${i ? '1:02,5' : '28,4'}" required></label>
-      <label class="etroit">${cfg.compte === 'coups' ? 'Coups de bras' : 'Cycles'} (longueur ${i + 1})<input name="c${i}" type="number" min="0" max="200" step="1" placeholder="si compté"></label></div>`).join('');
+      ${cfg.chronoSeul ? '' : `<label class="etroit">${cfg.compte === 'coups' ? 'Coups de bras' : 'Cycles'} (longueur ${i + 1})<input name="c${i}" type="number" min="0" max="200" step="1" placeholder="si compté"></label>`}</div>`).join('');
   const { d, resultat } = ouvrirModale('Saisir un essai', `
     <label>Élève<select name="eleve" required>${els.map(el => `<option value="${el.id}" ${el.id === eleveId ? 'selected' : ''}>${esc(nomEleveOutil(el))}</option>`).join('')}</select></label>
     <div class="ligne">
@@ -216,7 +252,7 @@ async function saisirEssaiNat(c, cfg, eleveId) {
       <label class="etroit">Distance<select name="distance">${[25, 50, 75, 100, 150, 200, 400].map(x => `<option value="${x}" ${x === distance ? 'selected' : ''}>${x} m</option>`).join('')}</select></label>
       <label class="etroit">Bassin<select name="bassin">${[[25, '25 m'], [50, '50 m'], [12.5, '12,5 m'], [33.33, '33 m']].map(([x, n]) => `<option value="${x}" ${x === bassin ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
     </div>
-    <p class="aide">Temps de passage cumulés (au bout de chaque longueur), et, si tu les as comptés, les ${motCompte(cfg.compte)} de chaque longueur (sinon, laisse vide : tu pourras les noter plus tard avec ✎).</p>
+    <p class="aide">Temps de passage cumulés (au bout de chaque longueur)${cfg.chronoSeul ? '.' : `, et, si tu les as comptés, les ${motCompte(cfg.compte)} de chaque longueur (sinon, laisse vide : tu pourras les noter plus tard avec ✎).`}</p>
     <div data-lignes-nat>${lignes()}</div>`, boutonsModale('Enregistrer'));
   d.addEventListener('change', e => {
     if (!['distance', 'bassin'].includes(e.target.name)) return;
@@ -276,9 +312,38 @@ function actionNatation(action, arg, c, bouton) {
       const ids = Array.from({ length: cfg.couloirs }, (_, k) => cfg.couloir[k] || '');
       if (!ids.some(Boolean)) return toast('Choisis au moins un nageur.', 'erreur');
       if (new Set(ids.filter(Boolean)).size < ids.filter(Boolean).length) return toast('Un même élève est dans deux couloirs.', 'erreur');
-      cfg.course = { depart: Date.now(), fin: null, nage: cfg.nage, distance: cfg.distance, bassin: cfg.bassin, compte: cfg.compte, compter: cfg.compterPendant !== false,
+      cfg.course = { depart: Date.now(), fin: null, nage: cfg.nage, distance: cfg.distance, bassin: cfg.bassin, compte: cfg.compte, compter: cfg.compterPendant !== false && !cfg.chronoSeul, chronoSeul: !!cfg.chronoSeul,
         lanes: ids.map(id => ({ id, temps: [], cycles: [], compteur: 0, pile: [], fin: null })) };
       son(990, 0.4);
+      return rendreOutil();
+    }
+    case 'depart-groupe': {
+      // Les nageurs des couloirs s'il y en a, sinon tous les présents. Une seule « longueur » : toute la distance.
+      const places = cfg.couloir.slice(0, cfg.couloirs).filter(Boolean);
+      const ids = places.length ? places : presentsOutil(c).map(el => el.id);
+      if (!ids.length) return toast('Aucun élève présent.', 'erreur');
+      cfg.course = { depart: Date.now(), fin: null, groupe: true, nage: cfg.nage, distance: cfg.distance, bassin: cfg.distance, compte: cfg.compte,
+        compter: false, chronoSeul: true, ordre: [], lanes: ids.map(id => ({ id, temps: [], cycles: [], compteur: 0, pile: [], fin: null })) };
+      son(990, 0.4);
+      return rendreOutil();
+    }
+    case 'arrive': {
+      const lane = co?.groupe && co.lanes.find(l => l.id === arg);
+      if (!co?.depart || co.fin || !lane || lane.temps.length) return;
+      const ms = Date.now() - co.depart;
+      if (ms < 3000) return toast('Touché trop tôt ? (moins de 3 s après le départ)');
+      lane.temps = [ms]; lane.cycles = [0]; lane.fin = co.depart + ms;
+      enregistrerCouloir(cfg, co, lane);
+      co.ordre.push(lane.id);
+      bipToucher();
+      if (co.lanes.every(l => l.temps.length)) { co.fin = Date.now(); bipFin(); }
+      return rendreOutil();
+    }
+    case 'annuler-arrivee': {
+      const id = co?.ordre?.pop(), lane = id && co.lanes.find(l => l.id === id);
+      if (!lane) return;
+      if (lane.essai !== undefined) { cfg.essais[lane.id]?.splice(lane.essai, 1); if (!cfg.essais[lane.id]?.length) delete cfg.essais[lane.id]; delete lane.essai; }
+      lane.temps = []; lane.cycles = []; lane.fin = null; co.fin = null;
       return rendreOutil();
     }
     case 'plus': {
@@ -389,7 +454,7 @@ document.addEventListener('change', e => {
   if (t.dataset.onChamp) {
     const k = t.dataset.onChamp;
     if (k === 'seuils') cfg.seuils = t.checked;
-    else if (k === 'compterPendant') cfg.compterPendant = t.value !== 'apres';
+    else if (k === 'compterPendant') { cfg.compterPendant = t.value === 'pendant'; cfg.chronoSeul = t.value === 'non'; }
     else if (['bassin', 'distance', 'couloirs'].includes(k)) cfg[k] = +t.value;
     else if (k.startsWith('seuil')) { cfg[k] = Math.max(0.1, Math.min(6, nombreOutil(t.value) || cfg[k])); t.value = cfg[k]; return sauverOutils(); }
     else cfg[k] = t.value;
@@ -409,7 +474,8 @@ TRANSFERTS.natation = c => {
   const an = Object.fromEntries(ids.map(id => [id, analyseEssai(ret[id])]));
   const col = (nom, type, f, extra = {}) => ({ nom, type, ...extra, valeurs: Object.fromEntries(ids.map(id => [id, f(id)]).filter(([, v]) => v !== null && v !== '')) });
   const nb = v => (v === null || !Number.isFinite(v) ? null : String(Math.round(v * 100) / 100));
-  return { titre: 'Natation — indice de nage', apsa: 'Natation', colonnes: [
+  // (Colonnes sans aucune valeur — ex. chrono seul : ni coups de bras ni indice — pas envoyées.)
+  return { titre: cfg.chronoSeul ? 'Natation — chrono' : 'Natation — indice de nage', apsa: 'Natation', colonnes: [
     col('Nage', 'choix', id => ret[id].nage, { options: [...NAGES] }),
     col('Distance', 'distance', id => String(ret[id].distance), { unite: 'm' }),
     col('Temps', 'temps', id => String(Math.round(ret[id].temps.at(-1) / 10) / 100)),
@@ -418,5 +484,5 @@ TRANSFERTS.natation = c => {
     col('Amplitude', 'nombre', id => nb(an[id].A), { unite: uniteAmpl(cfg.compte) }),
     col('Fréquence', 'nombre', id => nb(an[id].F), { unite: '/min' }),
     col('Indice de nage', 'nombre', id => nb(an[id].IN)),
-  ] };
+  ].filter(x => Object.keys(x.valeurs).length) };
 };
