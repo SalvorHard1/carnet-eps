@@ -321,8 +321,9 @@ async function ouvrirReglages(rubrique = 'apparence') {
         </div>
         <button value="origine" formnovalidate class="danger">Revenir aux réglages d’origine</button>
       </div></details>
-    <details ${ouvert('securite')}><summary>🔒 Sécurité <small>mot de passe du carnet</small></summary>
+    <details ${ouvert('securite')}><summary>🔒 Sécurité <small>mot de passe, verrouillage automatique</small></summary>
       <div class="rubrique">
+        ${typeof htmlReglageVerrou === 'function' ? htmlReglageVerrou() + '<h4>Mot de passe</h4>' : ''}
         <p class="aide">Le mot de passe chiffre le carnet sur ta clé. Pour le changer : sur l’ordinateur, clé branchée.
           Tout ce qui est sur la clé est d’abord repris, rien ne se perd ; tes autres appareils prennent le nouveau
           au prochain « Récupérer depuis la clé ».</p>

@@ -315,19 +315,111 @@ const PdfTexte = (() => {
     m[4] * n[0] + m[5] * n[2] + n[4], m[4] * n[1] + m[5] * n[3] + n[5]];
   const point = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 
-  async function lirePage(doc, page) {
+  async function lirePage(doc, page, avecImages = false) {
     const ressourcesDe = p => { let n = p, k = 0; while (n && k++ < 30) { const r = doc.resoudre(n.Resources); if (r) return r; n = doc.resoudre(n.Parent); } return {}; };
     const boite = (() => { let n = page, k = 0; while (n && k++ < 30) { const b = doc.resoudre(n.MediaBox); if (b) return b.map(x => doc.resoudre(x)); n = doc.resoudre(n.Parent); } return [0, 0, 595, 842]; })();
-    const items = [], rects = [];
+    const items = [], rects = [], images = avecImages ? [] : null;
     let contenus = doc.resoudre(page.Contents);
     contenus = contenus instanceof Array ? contenus.map(c => doc.resoudre(c)) : [contenus];
     let texte = '';
     for (const c of contenus) if (doc.estFlux(c)) texte += ((await doc.contenuFlux(c).catch(() => '')) || '') + '\n';
-    await interpreter(doc, texte, ressourcesDe(page), [1, 0, 0, 1, 0, 0], items, rects, 0);
-    return { largeur: boite[2] - boite[0], hauteur: boite[3] - boite[1], x0: boite[0], y0: boite[1], items, rects };
+    await interpreter(doc, texte, ressourcesDe(page), [1, 0, 0, 1, 0, 0], items, rects, 0, images);
+    const res = { largeur: boite[2] - boite[0], hauteur: boite[3] - boite[1], x0: boite[0], y0: boite[1], items, rects };
+    // (flux : le même objet pour une image répétée, ex. silhouette « pas de photo ».)
+    if (images) res.images = images.map(im => ({ ...im, dessiner: maxi => imageEnCanvas(doc, im.flux, maxi) }));
+    return res;
   }
 
-  async function interpreter(doc, contenu, ressources, ctmDepart, items, rects, profondeur) {
+  /* ---------- Images (photos d'un trombinoscope) : flux → canvas ---------- */
+
+  // Espace de couleurs → nombre de composantes (et palette pour /Indexed).
+  function couleurs(doc, cs) {
+    cs = doc.resoudre(cs);
+    const nom = cs instanceof Nom ? cs.n : cs instanceof Array ? doc.resoudre(cs[0])?.n : '';
+    if (nom === 'DeviceGray' || nom === 'G' || nom === 'CalGray') return { n: 1 };
+    if (nom === 'DeviceRGB' || nom === 'RGB' || nom === 'CalRGB') return { n: 3 };
+    if (nom === 'DeviceCMYK' || nom === 'CMYK') return { n: 4 };
+    if (nom === 'ICCBased') { const f = doc.resoudre(cs[1]); return { n: doc.resoudre(f?.dict?.N) || 3 }; }
+    if (nom === 'Indexed' || nom === 'I') {
+      const base = couleurs(doc, cs[1]), table = doc.resoudre(cs[3]);
+      return { n: 1, base, table };
+    }
+    return { n: 3 };
+  }
+
+  // Prédicteurs PNG (/DecodeParms /Predictor ≥ 10) : chaque ligne commence par un octet de filtre.
+  function predicteurPng(o, colonnes, composantes, bpc) {
+    const bpp = Math.max(1, Math.ceil((composantes * bpc) / 8)), ligne = Math.ceil((colonnes * composantes * bpc) / 8);
+    const nb = Math.floor(o.length / (ligne + 1)), r = new Uint8Array(nb * ligne);
+    for (let y = 0; y < nb; y++) {
+      const f = o[y * (ligne + 1)], src = y * (ligne + 1) + 1, dst = y * ligne;
+      for (let i = 0; i < ligne; i++) {
+        const a = i >= bpp ? r[dst + i - bpp] : 0, b = y ? r[dst - ligne + i] : 0, c = y && i >= bpp ? r[dst - ligne + i - bpp] : 0;
+        let v = o[src + i];
+        if (f === 1) v += a; else if (f === 2) v += b; else if (f === 3) v += (a + b) >> 1;
+        else if (f === 4) { const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c); v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c; }
+        r[dst + i] = v & 255;
+      }
+    }
+    return r;
+  }
+
+  // Dessine l'image dans un canvas (réduit pour tenir dans maxi × maxi). null si son format n'est pas lisible ici.
+  async function imageEnCanvas(doc, f, maxi = 240) {
+    const d = f.dict;
+    if (doc.resoudre(d.ImageMask)) return null;
+    let filtres = doc.resoudre(d.Filter);
+    filtres = filtres ? (filtres instanceof Array ? filtres : [filtres]).map(x => doc.resoudre(x)?.n) : [];
+    let parms = doc.resoudre(d.DecodeParms);
+    if (parms instanceof Array) parms = doc.resoudre(parms.at(-1));
+    let octets = enOctets(f.brut), source = null;
+    for (const filtre of filtres) {
+      if (filtre === 'FlateDecode' || filtre === 'Fl') octets = await decompresser(octets);
+      else if (filtre === 'DCTDecode' || filtre === 'DCT') { source = await createImageBitmap(new Blob([octets], { type: 'image/jpeg' })); break; }
+      else return null; // (JPEG 2000, fax… : non pris en charge)
+    }
+    const W = doc.resoudre(d.Width) || 0, H = doc.resoudre(d.Height) || 0;
+    if (!source) {
+      if (!W || !H) return null;
+      const bpc = doc.resoudre(d.BitsPerComponent) || 8, cs = couleurs(doc, d.ColorSpace);
+      if (parms && (doc.resoudre(parms.Predictor) || 1) >= 10) octets = predicteurPng(octets, doc.resoudre(parms.Columns) || W, doc.resoudre(parms.Colors) || cs.n, bpc);
+      const parLigne = Math.ceil((W * cs.n * bpc) / 8), lire = (y, i) => {
+        if (bpc === 8) return octets[y * parLigne + i];
+        const bit = i * bpc, o = octets[y * parLigne + (bit >> 3)] || 0;
+        return (o >> (8 - bpc - (bit & 7))) & ((1 << bpc) - 1);
+      };
+      const echelle = v => (bpc === 8 ? v : Math.round((v * 255) / ((1 << bpc) - 1)));
+      let palette = null;
+      if (cs.table) palette = typeof cs.table === 'string' ? enOctets(cs.table) : cs.table instanceof Chaine ? enOctets(cs.table.b) : doc.estFlux(cs.table) ? enOctets((await doc.contenuFlux(cs.table)) || '') : null;
+      const img = new ImageData(W, H), p = img.data;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const k = (y * W + x) * 4;
+          let rgb;
+          if (palette) {
+            const n = cs.base.n, j = lire(y, x) * n;
+            rgb = n === 1 ? [palette[j], palette[j], palette[j]] : n === 4 ? cmjn(palette[j], palette[j + 1], palette[j + 2], palette[j + 3]) : [palette[j], palette[j + 1], palette[j + 2]];
+          } else if (cs.n === 1) { const g = echelle(lire(y, x)); rgb = [g, g, g]; }
+          else if (cs.n === 4) rgb = cmjn(...[0, 1, 2, 3].map(c => echelle(lire(y, x * 4 + c))));
+          else rgb = [0, 1, 2].map(c => echelle(lire(y, x * 3 + c)));
+          p[k] = rgb[0] ?? 0; p[k + 1] = rgb[1] ?? 0; p[k + 2] = rgb[2] ?? 0; p[k + 3] = 255;
+        }
+      }
+      source = await createImageBitmap(img);
+    }
+    const r = Math.min(1, maxi / Math.max(source.width, source.height));
+    const cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.round(source.width * r));
+    cv.height = Math.max(1, Math.round(source.height * r));
+    const ctx = cv.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(source, 0, 0, cv.width, cv.height);
+    source.close?.();
+    return cv;
+  }
+  const cmjn = (c, m, j, n) => [255 - Math.min(255, c + n), 255 - Math.min(255, m + n), 255 - Math.min(255, j + n)];
+
+  async function interpreter(doc, contenu, ressources, ctmDepart, items, rects, profondeur, images = null) {
     if (profondeur > 6) return;
     const L = lecteur(contenu);
     const pile = [];
@@ -389,11 +481,21 @@ const PdfTexte = (() => {
         }
         case 'Do': {
           const o = doc.resoudre(objets[a[0]?.n]);
-          if (!doc.estFlux(o) || doc.resoudre(o.dict.Subtype)?.n !== 'Form') break;
+          if (!doc.estFlux(o)) break;
+          if (doc.resoudre(o.dict.Subtype)?.n === 'Image') {
+            // Image posée dans le carré unité transformé par la matrice courante : on garde sa boîte sur la page.
+            if (images) {
+              const coins = [[0, 0], [1, 0], [0, 1], [1, 1]].map(([u, v]) => point(ctm, u, v));
+              const xs = coins.map(p => p[0]), ys = coins.map(p => p[1]);
+              images.push({ x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys), flux: o });
+            }
+            break;
+          }
+          if (doc.resoudre(o.dict.Subtype)?.n !== 'Form') break;
           const sous = await doc.contenuFlux(o).catch(() => null);
           if (!sous) break;
           const matrice = (doc.resoudre(o.dict.Matrix) || [1, 0, 0, 1, 0, 0]).map(x => doc.resoudre(x));
-          await interpreter(doc, sous, doc.resoudre(o.dict.Resources) || ressources, mult(matrice, ctm), items, rects, profondeur + 1);
+          await interpreter(doc, sous, doc.resoudre(o.dict.Resources) || ressources, mult(matrice, ctm), items, rects, profondeur + 1, images);
           break;
         }
         case 'BI': { const fin = contenu.indexOf('EI', L.pos); L.pos = fin < 0 ? contenu.length : fin + 2; break; }
@@ -403,10 +505,11 @@ const PdfTexte = (() => {
   }
 
   // Toutes les pages d'un PDF : [{ largeur, hauteur, items: [{ x, y, t, taille }], rects: [{ x, y, w, h }] }]
-  async function lire(buffer) {
+  // { images: true } : relève aussi les images de chaque page ({ x, y, w, h, dessiner(maxi) → canvas }).
+  async function lire(buffer, { images = false, pages = 10 } = {}) {
     const doc = await ouvrir(buffer);
     const res = [];
-    for (const p of doc.pages.slice(0, 10)) res.push(await lirePage(doc, p));
+    for (const p of doc.pages.slice(0, pages)) res.push(await lirePage(doc, p, images));
     return res;
   }
   return { lire };

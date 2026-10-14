@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.67.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.78.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -56,7 +56,9 @@ function ouvrirModale(titre, corps, actions, classe = '') {
       fini = true;
       resolve(res);
       if (d.open) d.close();
+      if (d.contains($('#ascenseur'))) document.body.append($('#ascenseur')); // ne pas l'emporter avec la fenêtre
       d.remove();
+      planifierAscenseur();
     };
   });
   const annuler = () => terminer({ action: 'annuler', data: {} });
@@ -78,6 +80,8 @@ function ouvrirModale(titre, corps, actions, classe = '') {
     if (i >= 0 && i < champs.length - 1) { e.preventDefault(); champs[i + 1].focus(); }
   });
   d.showModal();
+  planifierAscenseur();
+  if (typeof remonterVerrou === 'function') remonterVerrou(); // (carnet verrouillé : l'écran reste au-dessus)
   return { d, resultat };
 }
 
@@ -89,6 +93,129 @@ async function confirmer(message, ok = 'Supprimer') {
   const { resultat } = ouvrirModale('Confirmation', `<p>${esc(message)}</p>`,
     `<span class="espace"></span><button type="button" data-fermer>Annuler</button><button value="ok" class="danger">${ok}</button>`);
   return (await resultat).action === 'ok';
+}
+
+/* ---------- Guides d'import (École Directe ou Pronote) : les consignes, puis le choix du fichier ----------
+   Pour aider les collègues : chaque import explique où trouver le document et quel fichier choisir, selon le logiciel
+   de l'établissement (choix retenu sur cet appareil). Les noms de menus peuvent varier selon la version du logiciel. */
+const LOGICIELS_ED = [['ed', 'École Directe'], ['pronote', 'Pronote']];
+const CLE_LOGICIEL = 'carnet-eps-logiciel';
+const logicielGuide = () => { try { return localStorage.getItem(CLE_LOGICIEL) === 'pronote' ? 'pronote' : 'ed'; } catch { return 'ed'; } };
+const TELECHARGEMENTS = 'le fichier arrive dans le dossier <b>Téléchargements</b>';
+const EN_PDF = 'en <b>PDF</b> (bouton imprimante, puis « Enregistrer au format PDF » / « Microsoft Print to PDF » comme imprimante)';
+const GUIDES_IMPORT = {
+  liste: {
+    titre: '📥 Liste de classe (École Directe / Pronote)', bouton: 'Choisir le fichier…',
+    accept: '.xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv',
+    ed: {
+      etapes: [
+        'Connecte-toi à <b>École Directe</b> (espace professeur), de préférence sur un ordinateur.',
+        'Ouvre la <b>classe</b>, puis la <b>liste des élèves</b>.',
+        `Exporte la liste au format <b>Excel (.xlsx)</b> : ${TELECHARGEMENTS}.`,
+        'Reviens ici, touche <b>« Choisir le fichier »</b> et sélectionne ce fichier.',
+      ],
+      attendu: 'Un fichier <b>.xlsx</b> avec une ligne de titres « Nom », « Date de naissance », « Sexe »… (pas un PDF ni une capture d’écran).',
+    },
+    pronote: {
+      etapes: [
+        'Connecte-toi à <b>Pronote</b> (espace professeur), de préférence sur un ordinateur.',
+        'Affiche la <b>liste des élèves</b> de la classe (onglet <b>Ressources › Élèves</b>, ou depuis la classe).',
+        `Exporte-la avec le bouton d’export (en haut de la liste) au format <b>CSV</b> ou <b>Excel</b> : ${TELECHARGEMENTS}.`,
+        'Reviens ici, touche <b>« Choisir le fichier »</b> et sélectionne ce fichier.',
+      ],
+      attendu: 'Un fichier <b>.csv</b> ou <b>.xlsx</b> avec une colonne « Élève » ou « Nom » (et si possible « Prénom », « Né(e) le », « Sexe »). '
+        + 'Pas d’export possible ? Sélectionne la liste dans Pronote (Ctrl+A), copie-la (Ctrl+C), puis ici « 📋 Coller une liste ».',
+    },
+    apres: 'L’appli te montre ce qu’elle a trouvé et tu choisis ce que tu reprends (date de naissance, dispositifs, régime, responsables) avant d’enregistrer.',
+  },
+  trombi: {
+    titre: '📷 Trombinoscope (École Directe / Pronote)', bouton: 'Choisir le PDF…', accept: '.pdf,application/pdf',
+    ed: {
+      etapes: [
+        'Connecte-toi à <b>École Directe</b> (espace professeur).',
+        'Ouvre la <b>classe</b>, puis son <b>trombinoscope</b>.',
+        `Télécharge-le ou imprime-le ${EN_PDF} : ${TELECHARGEMENTS}.`,
+        'Reviens ici, touche <b>« Choisir le PDF »</b> et sélectionne ce fichier.',
+      ],
+    },
+    pronote: {
+      etapes: [
+        'Connecte-toi à <b>Pronote</b> (espace professeur).',
+        'Affiche le <b>trombinoscope</b> de la classe (onglet <b>Ressources › Élèves › Trombinoscope</b>).',
+        `Imprime-le ${EN_PDF} : ${TELECHARGEMENTS}.`,
+        'Reviens ici, touche <b>« Choisir le PDF »</b> et sélectionne ce fichier.',
+      ],
+    },
+    attendu: 'Le <b>PDF</b> du trombinoscope, avec le nom de chaque élève écrit sous sa photo (pas une photo ni un scan de la feuille imprimée).',
+    apres: 'L’appli rattache chaque photo au nom écrit dessous ; tu vérifies (et corriges si besoin) avant d’enregistrer.',
+  },
+  edt: {
+    titre: '🕒 Emploi du temps (École Directe / Pronote)', bouton: 'Choisir le PDF…', accept: '.pdf,application/pdf',
+    ed: {
+      etapes: [
+        'Connecte-toi à <b>École Directe</b> (espace professeur) et ouvre ton <b>emploi du temps</b>.',
+        'Affiche une <b>semaine normale</b> : sans vacances ni jour férié.',
+        `Télécharge-la ou imprime-la ${EN_PDF} : ${TELECHARGEMENTS}.`,
+        'Reviens ici, touche <b>« Choisir le PDF »</b> et sélectionne ce fichier.',
+      ],
+    },
+    pronote: {
+      etapes: [
+        'Connecte-toi à <b>Pronote</b> (espace professeur) et ouvre <b>Emploi du temps › Mon emploi du temps</b>.',
+        'Affiche une <b>semaine normale</b> : sans vacances ni jour férié.',
+        `Imprime-la ${EN_PDF} : ${TELECHARGEMENTS}.`,
+        'Reviens ici, touche <b>« Choisir le PDF »</b> et sélectionne ce fichier.',
+      ],
+      note: 'La lecture a été mise au point sur le PDF d’École Directe : si la grille de Pronote n’est pas reconnue, saisis les créneaux à la main (en dessous).',
+    },
+    attendu: 'Le <b>PDF</b> de la semaine, avec la grille des jours et des heures.',
+    apres: 'L’appli te montre les créneaux trouvés pour chaque classe avant d’enregistrer.',
+  },
+};
+
+// Consignes (aussi affichées dans d'autres fenêtres, ex. emploi du temps), avec le choix École Directe / Pronote.
+function htmlGuideImport(type) {
+  const g = GUIDES_IMPORT[type], choisi = logicielGuide();
+  return `<div class="guide-import" data-guide>
+    <div class="choix-logiciel" role="group" aria-label="Logiciel de l’établissement">
+      <span class="aide">Ton établissement utilise :</span>
+      ${LOGICIELS_ED.map(([k, nom]) => `<button type="button" data-guide-logiciel="${k}" class="${k === choisi ? 'primaire' : ''}" aria-pressed="${k === choisi}">${nom}</button>`).join('')}
+    </div>
+    ${LOGICIELS_ED.map(([k]) => `<div data-guide-pour="${k}" ${k === choisi ? '' : 'hidden'}>
+      <ol class="etapes-guide">${g[k].etapes.map(e => `<li><span>${e}</span></li>`).join('')}</ol>
+      <p class="attendu-guide">📄 <b>Fichier attendu :</b> ${g[k].attendu || g.attendu}</p>
+      ${g[k].note ? `<p class="aide">ℹ ${g[k].note}</p>` : ''}
+    </div>`).join('')}
+    <p class="aide">${g.apres} Le fichier est lu sur cet appareil : rien n’est envoyé nulle part.
+      <br>Les noms des menus peuvent changer un peu selon la version du logiciel.</p>
+  </div>`;
+}
+
+// Choix du logiciel : retenu sur cet appareil, appliqué à tous les guides affichés.
+document.addEventListener('click', e => {
+  const b = e.target.closest?.('[data-guide-logiciel]');
+  if (!b) return;
+  const k = b.dataset.guideLogiciel;
+  try { localStorage.setItem(CLE_LOGICIEL, k); } catch { /* sans importance */ }
+  document.querySelectorAll('[data-guide]').forEach(g => {
+    g.querySelectorAll('[data-guide-logiciel]').forEach(x => { x.classList.toggle('primaire', x === b || x.dataset.guideLogiciel === k); x.setAttribute('aria-pressed', x.dataset.guideLogiciel === k); });
+    g.querySelectorAll('[data-guide-pour]').forEach(x => { x.hidden = x.dataset.guidePour !== k; });
+  });
+});
+
+// Fenêtre de consignes, puis choix du fichier ; suite(fichier) reçoit le fichier choisi.
+function guideImport(type, suite) {
+  const g = GUIDES_IMPORT[type];
+  const { d } = ouvrirModale(g.titre, htmlGuideImport(type),
+    `<span class="espace"></span><button type="button" data-fermer>Annuler</button><button type="button" class="primaire" data-guide-choisir>📂 ${g.bouton}</button>`);
+  // (Le sélecteur de fichier s'ouvre directement dans le toucher : certaines tablettes le refusent sinon.)
+  $('[data-guide-choisir]', d).addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = g.accept;
+    input.addEventListener('change', () => { const f = input.files[0]; if (f) { d.fermer(); lancer(() => suite(f)); } });
+    input.click();
+  });
 }
 
 const aujourdhui = () => new Date().toLocaleDateString('sv'); // AAAA-MM-JJ
@@ -558,7 +685,7 @@ function celluleNom(el, i) {
     el.remarque, statutDispense(el)?.texte,
     el.adapte ? 'Pratique adaptée : ' + (el.adaptation || '(particularités non précisées)') : '',
   ].filter(Boolean).join('\n');
-  return `<th class="col-nom${alerte.niveau ? ' alerte-' + alerte.niveau : ''}" title="${esc(infos)}"><span class="num-eleve">${i + 1}</span><span class="nom-eleve">${esc(el.nom)} ${esc(el.prenom)}</span>`
+  return `<th class="col-nom${alerte.niveau ? ' alerte-' + alerte.niveau : ''}" data-nom-eleve="${el.id}" title="${esc(infos)}"><span class="num-eleve">${i + 1}</span><span class="nom-eleve">${esc(el.nom)} ${esc(el.prenom)}</span>`
     + badgeAlerte(el, alerte)
     + (aPai(el) ? ` <button class="badge-pai" data-voir-besoin="pai" data-id="${el.id}" title="Voir le PAI">PAI</button>` : '')
     + (el.bep ? ` <button class="badge-bep" data-voir-besoin="bep" data-id="${el.id}" title="Voir le BEP">BEP</button>` : '')
@@ -847,8 +974,9 @@ function htmlEleves(c) {
     <div class="outils">
       <h2>${esc(c.nom)}</h2>
       <button class="primaire" data-action="ajout-eleve">+ Élève</button>
-      <button data-action="coller-liste">Coller une liste</button>
-      <button data-action="import-ed" title="Créer ou compléter les fiches à partir de la liste de classe exportée d’École Directe (.xlsx)">📥 École Directe</button>
+      <button data-action="coller-liste" title="Coller une liste copiée depuis Pronote ou un tableur">📋 Coller une liste</button>
+      <button data-action="import-ed" title="Créer ou compléter les fiches à partir de la liste de classe exportée d’École Directe ou de Pronote (.xlsx, .csv)">📥 École Directe / Pronote</button>
+      <button data-action="trombi" title="Photos des élèves : importer le trombinoscope de la classe (PDF)">📷 Trombinoscope</button>
       <label class="choix-tri">Ordre
         <select data-tri-classe="${c.id}">
           <option value="alpha" ${c.tri !== 'perso' ? 'selected' : ''}>Alphabétique</option>
@@ -858,7 +986,7 @@ function htmlEleves(c) {
     </div>
     ${eleves.length ? `
       <div class="carte"><table class="tableau-eleves">
-        <thead><tr><th class="c-num">N°</th><th>Nom</th><th>Prénom</th><th>Sexe</th><th>PAI</th><th title="Besoin éducatif particulier">BEP</th><th>Dispense / adapté</th><th>Remarques (santé, inaptitude…)</th><th></th></tr></thead>
+        <thead><tr><th class="c-num">N°</th><th>Nom</th><th>Prénom</th><th class="c-sexe">Sexe</th><th>PAI</th><th title="Besoin éducatif particulier">BEP</th><th>Dispense / adapté</th><th title="Santé, inaptitude…">Remarques</th><th></th></tr></thead>
         <tbody>${eleves.map((el, i) => {
           const s = statutDispense(el);
           return `
@@ -868,7 +996,7 @@ function htmlEleves(c) {
                 <button data-monter="${el.id}" ${i === 0 ? 'disabled' : ''} title="Monter" aria-label="Monter ${esc(el.nom)}">▲</button>
                 <button data-descendre="${el.id}" ${i === eleves.length - 1 ? 'disabled' : ''} title="Descendre" aria-label="Descendre ${esc(el.nom)}">▼</button>
               </span>` : ''}</td>
-            <td class="c-nom" data-label="Nom"><input data-champ="nom" class="majuscules" value="${esc(el.nom)}" aria-label="Nom" autocapitalize="characters"></td>
+            <td class="c-nom" data-label="Nom">${el.photo ? `<div class="nom-photo"><button class="photo-eleve" data-photo-eleve="${el.id}" title="Trombinoscope" aria-label="Photo de ${esc(el.nom)}">${Trombi.mini(el)}</button>` : ''}<input data-champ="nom" class="majuscules" value="${esc(el.nom)}" aria-label="Nom" autocapitalize="characters">${el.photo ? '</div>' : ''}</td>
             <td class="c-prenom" data-label="Prénom"><input data-champ="prenom" value="${esc(el.prenom)}" aria-label="Prénom"></td>
             <td class="c-sexe" data-label="Sexe"><select data-champ="sexe" aria-label="Sexe">${optionsSexe(el.sexe || '')}</select></td>
             <td class="case-pai" data-label="PAI">${boutonBesoin(el, 'pai')}</td>
@@ -898,7 +1026,7 @@ function htmlEleves(c) {
         </tbody>
       </table></div>`
     : `<div class="vide"><p>Aucun élève pour l’instant.</p>
-        <p class="aide">Astuce : « 📥 École Directe » avec la liste de classe exportée (.xlsx), ou copie la liste depuis Pronote ou un tableur, puis « Coller une liste ».</p></div>`}`;
+        <p class="aide">Astuce : « 📥 École Directe / Pronote » avec la liste de classe exportée (.xlsx ou .csv), ou copie la liste depuis Pronote ou un tableur, puis « Coller une liste ».</p></div>`}`;
 }
 
 function majPastille() {
@@ -923,6 +1051,30 @@ function majPastille() {
 
 const aEnregistrer = () => { const m = Donnees.meta(); return m.modifieLe > m.dernierEnvoi; };
 
+// Modifications faites sur cet appareil depuis le dernier envoi (Donnees.enAttente), en clair :
+// « 3 nouveaux élèves, 18 notes, 1 leçon modifiée, 2 supprimés ».
+function texteChangements(ch) {
+  const pl = (n, s, p) => `${n} ${n > 1 ? p : s}`;
+  const NOMS = {
+    classes: ['classe', 'classes', 'f'], eleves: ['élève', 'élèves', 'm'], evals: ['évaluation', 'évaluations', 'f'],
+    seances: [motMin('lecon'), motMin('lecons'), 'f'], documents: ['document joint', 'documents joints', 'm'],
+    suivis: ['observation', 'observations', 'f'], agenda: ['élément d’agenda', 'éléments d’agenda', 'm'], reglages: ['réglage', 'réglages', 'm'],
+  };
+  const parts = [];
+  let supprimes = 0;
+  for (const col of ['classes', 'eleves', 'notes', 'evals', 'seances', 'suivis', 'documents', 'agenda', 'reglages']) {
+    const r = ch?.[col];
+    if (!r) continue;
+    supprimes += r.s;
+    if (col === 'notes') { if (r.n + r.m) parts.push(pl(r.n + r.m, 'note ou degré', 'notes ou degrés')); continue; }
+    const [s, p, g] = NOMS[col], e = g === 'f' ? 'e' : '';
+    if (r.n) parts.push(`${r.n} ${r.n > 1 ? `nouve${g === 'f' ? 'lles' : 'aux'} ${p}` : `nouve${g === 'f' ? 'lle' : 'au'} ${s}`}`);
+    if (r.m) parts.push(`${pl(r.m, s, p)} modifié${e}${r.m > 1 ? 's' : ''}`);
+  }
+  if (supprimes) parts.push(pl(supprimes, 'élément supprimé', 'éléments supprimés'));
+  return parts.join(', ');
+}
+
 function rappelerCle() {
   if (!Cle.accesDirect && aEnregistrer() && !enModeEleve()) notifAuto('🔑 Pense à enregistrer sur la clé : bouton « À enregistrer » en haut.');
 }
@@ -944,17 +1096,35 @@ function notifAuto(message, erreur = false) {
 
 const ascenseurPossible = () => matchMedia('(pointer: coarse)').matches;
 
-// Ce qui défile en hauteur : la grille (Notes, Entraînement) si elle déborde, sinon la page.
+// Fenêtre ouverte au premier plan (la dernière ouverte), s'il y en a une.
+const modaleOuverte = () => [...document.querySelectorAll('dialog.modale[open]')].pop() || null;
+
+// Ce qui défile en hauteur : la fenêtre ouverte, sinon la grille (Notes, Entraînement) si elle déborde, sinon la page.
 function zoneDefilement() {
+  const m = modaleOuverte();
+  if (m) return m;
   const g = $('#vue .grille-scroll');
   return g && g.scrollHeight > g.clientHeight + 1 ? g : $('#vue');
 }
 
+// Une fenêtre s'affiche au-dessus de tout : l'ascenseur doit y entrer pour rester visible et utilisable.
+const suiviTailleModale = new ResizeObserver(() => planifierAscenseur());
+function placerAscenseur() {
+  const a = $('#ascenseur'), m = modaleOuverte();
+  const hote = m || document.body;
+  if (a.parentElement !== hote) {
+    hote.append(a);
+    suiviTailleModale.disconnect();
+    if (m) suiviTailleModale.observe(m.firstElementChild); // la fenêtre grandit (ajout d'un observable…)
+  }
+}
+
 function majAscenseur() {
   const a = $('#ascenseur');
+  placerAscenseur();
   const z = ascenseurPossible() ? zoneDefilement() : null;
   const reste = z ? z.scrollHeight - z.clientHeight : 0;
-  if (!z || reste < 40) { a.hidden = true; return; } // rien (ou presque) à faire défiler
+  if (!z || reste < (z.matches('dialog') ? 10 : 40)) { a.hidden = true; return; } // rien (ou presque) à faire défiler
   const r = z.getBoundingClientRect();
   const hauteur = Math.max(48, (r.height * z.clientHeight) / z.scrollHeight); // assez grand pour le doigt
   a.hidden = false;
@@ -965,12 +1135,13 @@ function majAscenseur() {
   curseur.style.transform = `translateY(${((r.height - hauteur) * z.scrollTop) / reste}px)`;
 }
 
-let majAscenseurPrevue = false;
-const planifierAscenseur = () => {
+// (déclaration classique : une fenêtre peut s'ouvrir avant que ce bout du fichier ait été lu)
+var majAscenseurPrevue = false;
+function planifierAscenseur() {
   if (majAscenseurPrevue) return;
   majAscenseurPrevue = true;
   requestAnimationFrame(() => { majAscenseurPrevue = false; majAscenseur(); });
-};
+}
 document.addEventListener('scroll', planifierAscenseur, true); // (capture : la grille défile aussi)
 window.addEventListener('resize', planifierAscenseur);
 
@@ -1057,7 +1228,7 @@ async function editerClasse(id) {
   boutonsModale(id ? 'Enregistrer' : 'Créer', id
     ? BOUTON_SUPPRIMER + (elevesDe(id).some(el => el.responsables)
       ? '<button value="effacer-coord" formnovalidate title="Retire téléphones, emails et adresses des responsables de toute la classe">Effacer les coordonnées</button>' : '')
-    : '<button value="ecole-directe" formnovalidate title="Créer la classe et ses élèves à partir de la liste exportée d’École Directe (.xlsx)">📥 Depuis École Directe…</button>'), 'modale-large');
+    : '<button value="ecole-directe" formnovalidate title="Créer la classe et ses élèves à partir de la liste exportée d’École Directe ou de Pronote (.xlsx, .csv)">📥 Depuis École Directe / Pronote…</button>'), 'modale-large');
   const r = await resultat;
   if (r.action === 'ecole-directe') return ListeClasse.choisirFichier(null);
   if (r.action === 'effacer-coord') {
@@ -1480,12 +1651,13 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
     }
   }
   if (!silencieux) etatAuto = null;
-  Donnees.marquerEnvoi();
+  const envoye = texteChangements(Donnees.marquerEnvoi());
   if (silencieux && !n) return; // ne pas redessiner : la saisie en cours n'est pas interrompue
   rendre();
   if (silencieux) return;
   const recup = n ? ` · ${n} élément${n > 1 ? 's' : ''} récupéré${n > 1 ? 's' : ''} de la clé` : '';
   toast(`Clé à jour ✔ (dossier « ${dossier.name} »)${recup}`
+    + `\n${envoye ? '⬆ Envoyé : ' + envoye : 'Rien de nouveau à envoyer depuis cet appareil.'}`
     + (repris.length ? `\nRepris aussi : ${repris.join(', ')}` : '')
     + (supprimes ? `\n${supprimes} fichier${supprimes > 1 ? 's' : ''} de la tablette retiré${supprimes > 1 ? 's' : ''} de la clé (contenu gardé dans le carnet)` : '')
     + (ignores.length ? `\n⚠ Laissé de côté (autre mot de passe) : ${ignores.map(c => c.nom).join(', ')}` : ''), ignores.length ? 'erreur' : 'ok');
@@ -1688,11 +1860,12 @@ async function exporterTablette({ secours = false } = {}) {
   $('[data-partager]', d).addEventListener('click', () => {
     Cle.enregistrerSurCle(texte).then(fait => {
       if (!fait) return; // fenêtre fermée sans enregistrer : on peut réessayer
-      Donnees.marquerEnvoi();
+      const envoye = texteChangements(Donnees.marquerEnvoi());
       d.fermer();
-      toast(Cle.modeTablette !== 'telecharger' ? 'Fichier enregistré sur la clé ✔'
+      toast((Cle.modeTablette !== 'telecharger' ? 'Fichier enregistré sur la clé ✔'
         : secours ? 'Copie dans Téléchargements ✔ — pense à la déplacer sur ta clé avec « Mes fichiers ».'
-          : 'Fichier dans Téléchargements ✔ — déplace-le sur la clé, à côté de carnet-eps.json (sans remplacer).', 'ok');
+          : 'Fichier dans Téléchargements ✔ — déplace-le sur la clé, à côté de carnet-eps.json (sans remplacer).')
+        + (envoye ? '\n⬆ Envoyé : ' + envoye : ''), 'ok');
     }).catch(signalerErreur);
   });
 }
@@ -1708,9 +1881,10 @@ function ouvrirMenuCle(ouvrir) {
   if (ouvrir) {
     const m = Donnees.meta();
     const etat = $('#menu-cle-etat');
+    const attente = texteChangements(Donnees.enAttente()), dernier = m.dernierBilan && texteChangements(m.dernierBilan.envoye);
     etat.textContent = !m.dernierEnvoi ? 'Ce carnet n’a encore jamais été enregistré sur une clé.'
-      : aEnregistrer() ? '🟠 Des modifications ne sont pas encore sur la clé.'
-        : `✅ Tout est sur la clé (${dateHeure(m.dernierEnvoi)})`;
+      : aEnregistrer() ? `🟠 Pas encore sur la clé${attente ? ' : ' + attente : ' : des modifications.'}`
+        : `✅ Tout est sur la clé (${dateHeure(m.dernierEnvoi)})${dernier ? `\nDernier envoi : ${dernier}` : ''}`;
     etat.className = 'menu-cle-etat ' + (m.dernierEnvoi && !aEnregistrer() ? 'ok' : 'attente');
     // Ordinateur : le bouton lit le dossier de la clé ; tablette : il ouvre directement le choix du fichier.
     $('[data-menu-cle="recuperer"]', menu).hidden = !Cle.accesDirect;
@@ -1961,6 +2135,81 @@ function basculerMenu(ouvrir) {
   $('#voile').hidden = !ouvert;
 }
 
+/* ---------- 🔍 Recherche d'un élève dans toutes les classes ----------
+   Champ en haut de la liste des classes (raccourci : « / » ou Ctrl+K). Un choix ouvre sa classe, dans l'onglet en cours
+   (Élèves, Notes ou Leçons ; sinon Élèves), fait défiler jusqu'à l'élève et le met en surbrillance quelques secondes. */
+
+function trouverEleves(texte) {
+  const mots = sansAccent(texte).split(/\s+/).filter(Boolean);
+  if (!mots.length) return [];
+  const classes = new Map(Donnees.liste('classes').map(c => [c.id, c]));
+  return Donnees.liste('eleves', el => classes.has(el.classeId))
+    .filter(el => { const n = sansAccent(`${el.nom} ${el.prenom}`); return mots.every(m => n.includes(m)); })
+    .map(el => ({ el, c: classes.get(el.classeId) }))
+    .sort((a, b) => collator.compare(a.el.nom, b.el.nom) || collator.compare(a.el.prenom, b.el.prenom) || collator.compare(a.c.nom, b.c.nom))
+    .slice(0, 15);
+}
+
+let choixRecherche = 0;
+function majRecherche() {
+  const champ = $('#recherche-eleve'), liste = $('#resultats-recherche');
+  const trouves = trouverEleves(champ.value);
+  choixRecherche = Math.min(choixRecherche, Math.max(0, trouves.length - 1));
+  liste.hidden = !champ.value.trim();
+  liste.innerHTML = trouves.length ? trouves.map(({ el, c }, k) => `<li><button type="button" class="resultat-recherche${k === choixRecherche ? ' choisi' : ''}"
+      data-trouver-eleve="${el.id}" role="option" aria-selected="${k === choixRecherche}">${Trombi.mini(el)}<b>${esc(el.nom)}</b> ${esc(el.prenom)}<span class="classe-recherche">${esc(c.nom)}</span></button></li>`).join('')
+    : '<li class="aide aucun-resultat">Aucun élève trouvé.</li>';
+}
+
+function allerAEleve(id) {
+  const el = Donnees.get('eleves', id);
+  if (!el) return;
+  ui.classeId = el.classeId;
+  if (!['eleves', 'notes', 'entrainement'].includes(ui.vue)) ui.vue = 'eleves';
+  memoriserUi();
+  $('#recherche-eleve').value = '';
+  $('#resultats-recherche').hidden = true;
+  basculerMenu(false);
+  rendre();
+  // Ligne de l'élève : tableau des élèves, ou grille des notes / leçons.
+  const ligne = $(`#vue tr[data-eleve="${CSS.escape(id)}"]`) || $(`#vue [data-nom-eleve="${CSS.escape(id)}"]`)?.closest('tr');
+  if (!ligne) return toast(`${el.prenom} ${el.nom} — ${Donnees.get('classes', el.classeId)?.nom || ''}`);
+  ligne.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  ligne.classList.remove('surbrillance');
+  void ligne.offsetWidth; // (relance l'animation si on recherche deux fois le même élève)
+  ligne.classList.add('surbrillance');
+  setTimeout(() => ligne.classList.remove('surbrillance'), 4000);
+}
+
+$('#recherche-eleve').addEventListener('input', () => { choixRecherche = 0; majRecherche(); });
+$('#recherche-eleve').addEventListener('keydown', e => {
+  const n = $('#resultats-recherche').querySelectorAll('[data-trouver-eleve]').length;
+  if (e.key === 'ArrowDown' && n) { e.preventDefault(); choixRecherche = (choixRecherche + 1) % n; majRecherche(); }
+  else if (e.key === 'ArrowUp' && n) { e.preventDefault(); choixRecherche = (choixRecherche - 1 + n) % n; majRecherche(); }
+  else if (e.key === 'Enter') { e.preventDefault(); const b = $('#resultats-recherche .choisi'); if (b) allerAEleve(b.dataset.trouverEleve); }
+  else if (e.key === 'Escape') { e.target.value = ''; majRecherche(); e.target.blur(); }
+});
+$('#resultats-recherche').addEventListener('click', e => {
+  const b = e.target.closest('[data-trouver-eleve]');
+  if (b) allerAEleve(b.dataset.trouverEleve);
+});
+// Clic ailleurs : la liste se referme (le texte reste).
+document.addEventListener('pointerdown', e => {
+  if (!e.target.closest?.('.recherche-eleve')) $('#resultats-recherche').hidden = true;
+});
+$('#recherche-eleve').addEventListener('focus', () => { if ($('#recherche-eleve').value.trim()) majRecherche(); });
+// Raccourcis : « / » ou Ctrl+K (hors d'un champ de saisie).
+document.addEventListener('keydown', e => {
+  const dansChamp = e.target.matches?.('input, textarea, select, [contenteditable]');
+  if ((e.key === '/' && !dansChamp) || (e.key.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey))) {
+    if (document.querySelector('dialog[open]') || document.body.classList.contains('mode-eleve')) return;
+    e.preventDefault();
+    if (matchMedia('(max-width: 860px)').matches) basculerMenu(true);
+    $('#recherche-eleve').focus();
+    $('#recherche-eleve').select();
+  }
+});
+
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-action],[data-classe],[data-modif-classe],[data-eval-entete],[data-supprimer-eleve],button[data-vue],[data-editer-dispense],[data-replier-dispense],[data-editer-adaptation],[data-editer-besoin],[data-voir-besoin],[data-monter],[data-descendre],[data-seance-entete],[data-contacts]');
   if (!t || t.closest('dialog')) return;
@@ -2000,6 +2249,7 @@ document.addEventListener('click', e => {
     case 'ajout-eleve': return lancer(ajouterEleve);
     case 'coller-liste': return lancer(collerListe);
     case 'import-ed': return ListeClasse.choisirFichier(classeActive());
+    case 'trombi': return lancer(() => Trombi.voir(classeActive()));
     case 'vue-eleves': ui.vue = 'eleves'; memoriserUi(); return rendre();  }
 });
 
@@ -2155,6 +2405,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) rapp
   const demarrage = reglage('onglets').demarrage; // onglet choisi pour le lancement (⚙ Réglages → Onglets)
   if (demarrage) ui.vue = demarrage;
   rendre();
+  if (typeof verifierVerrouDemarrage === 'function') verifierVerrouDemarrage(); // 🔒 fermée depuis longtemps : verrouillée
   rappelerCle();
   // Premier lancement sur cet appareil : quelques réglages pour démarrer, puis le principe de la clé.
   if (!enModeEleve()) lancer(async () => { await premierLancement(); if (!ui.guideVu) await afficherGuide(); });

@@ -200,7 +200,7 @@ function analyserAppr(el, periode, eleves) {
       if (!v) continue;
       if (ind.type === 'texte') { observations.push(v); continue; }
       // (Réponses de liste lues aussi pour les mots-clés : ex. « Non rendu » pour le travail rendu en SVT.)
-      if (ind.type === 'choix') observations.push(v);
+      if (ind.type === 'choix' && !ind.medaille) observations.push(v);
       const k = cleIndic(ind);
       if (!parIndic.has(k)) parIndic.set(k, { ind, valeurs: [] });
       parIndic.get(k).valeurs.push(v);
@@ -215,8 +215,13 @@ function analyserAppr(el, periode, eleves) {
       degres.competences.push(der);
       if (der < 3) faibles.push({ texte: ind.etape ? texteIndic(ind) : ind.nom, cat, v: der, indic: !ind.etape });
     }
+    // Médaille (dernière obtenue) : bronze → degré 2, argent → 3, or → 4, côté motricité.
+    if (ind.medaille) {
+      const k = MEDAILLES.indexOf(valeurs.at(-1));
+      if (k >= 0) degres.moteur.push(k + 2);
+    }
     const sens = sensProgres(ind);
-    if (sens && valeurs.length > 1 && ind.type !== 'choix') {
+    if (sens && valeurs.length > 1 && (ind.type !== 'choix' || ind.medaille)) {
       const a = valeurComparable(ind, valeurs[0]), b = valeurComparable(ind, valeurs.at(-1));
       if (a !== null && b !== null && a !== b) { if ((b - a) * sens > 0) mieux++; else pire++; }
     }

@@ -32,6 +32,7 @@
       <button data-vue="outils">Outils</button>
       <button data-vue="agenda">Agenda</button>
     </nav>
+    <button class="icone btn-verrou" id="btn-verrou" title="Verrouiller le carnet maintenant" aria-label="Verrouiller le carnet" hidden>🔒</button>
     <div class="groupe-sauvegarde">
       <!-- Un seul bouton pour tout ce qui touche à la clé : sa couleur donne l'état, il ouvre le menu de la clé. -->
       <button class="sauver" id="btn-sauver" data-action="cle" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-cle">
@@ -61,6 +62,11 @@
 
   <div class="corps">
     <aside class="classes" id="classes">
+      <div class="recherche-eleve">
+        <input id="recherche-eleve" type="search" placeholder="🔍 Rechercher un élève" autocomplete="off" spellcheck="false"
+          aria-label="Rechercher un élève dans toutes les classes" aria-controls="resultats-recherche" title="Raccourci : / ou Ctrl+K">
+        <ul id="resultats-recherche" class="resultats-recherche" role="listbox" hidden></ul>
+      </div>
       <div class="classes-titre">Classes</div>
       <ul id="liste-classes"></ul>
       <p class="aide astuce-classes" id="astuce-classes" hidden>Appui long sur une classe pour la déplacer.</p>
@@ -99,12 +105,17 @@
   <script src="outils.js"></script>
   <script src="combine.js"></script>
   <script src="natation.js"></script>
+  <script src="asns.js"></script>
+  <script src="videodelay.js"></script>
+  <script src="tableau.js"></script>
   <script src="boxe.js"></script>
   <script src="ece.js"></script>
   <script src="edtpdf.js"></script>
+  <script src="trombi.js"></script>
   <script src="agenda.js"></script>
   <script src="fichenotes.js"></script>
   <script src="appreciations.js"></script>
+  <script src="verrou.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -158,13 +158,13 @@ function htmlAgenda() {
       <button class="primaire" data-ag="nouvelle-sequence">+ Séquence</button>
       <button data-ag="nouveau-conseil">+ Conseils de classe</button>
       <button data-ag="nouvel-evenement">+ Événement</button>
-      <button data-ag="edt" title="Jours et heures de cours de chaque classe (import du PDF École Directe possible)">🕒 Emploi du temps</button>
+      <button data-ag="edt" title="Jours et heures de cours de chaque classe (import du PDF École Directe / Pronote possible)">🕒 Emploi du temps</button>
       <button data-ag="reglages" title="Dates de l’année, vacances, types d’événements, affichage">⚙ Année et vacances</button>
     </div>
     <div class="afficher-agenda"><span class="aide">Afficher :</span>
       ${Object.entries(AFFICHAGES_AGENDA).map(([k, nom]) => `<button class="pastille-ag${r.afficher[k] ? ' actif' : ''}" data-ag="afficher" data-arg="${k}" aria-pressed="${!!r.afficher[k]}">${nom}</button>`).join('')}
     </div>
-    ${rien ? `<p class="aide astuce-agenda">Pour commencer : <b>🕒 Emploi du temps</b> (tu peux importer le PDF d’École Directe), puis <b>⚙ Année et vacances</b>,
+    ${rien ? `<p class="aide astuce-agenda">Pour commencer : <b>🕒 Emploi du temps</b> (tu peux importer le PDF d’École Directe ou de Pronote), puis <b>⚙ Année et vacances</b>,
       et ajoute tes séquences. Un toucher sur une ligne de la frise crée une séquence à cette date.</p>` : ''}
     ${vue === 'frise' ? htmlFrise(r) : vue === 'mois' ? htmlMoisAg(r) : htmlSemaineAg(r)}
     ${htmlLegendeAg(r)}`;
@@ -648,9 +648,8 @@ async function editerEmploiDuTemps() {
   let fichier = null;
   const { d, resultat } = ouvrirModale('Emploi du temps — semaine type', `
     <div class="bloc-excel">
-      <h3>📄 Importer depuis École Directe</h3>
-      <p class="aide">Enregistre en PDF ton emploi du temps d’une semaine normale (sans vacances ni jour férié), puis choisis le fichier.
-        L’appli lit le PDF sur cet appareil et te montre ce qu’elle a trouvé avant d’enregistrer.</p>
+      <h3>📄 Importer depuis École Directe / Pronote</h3>
+      ${htmlGuideImport('edt')}
       <label class="bouton primaire">Choisir le PDF…<input type="file" accept=".pdf,application/pdf" data-fichier-edt hidden></label>
     </div>
     <p class="aide">Ou saisis les créneaux à la main : ils servent à compter les leçons prévues de chaque séquence et à placer les cours dans le calendrier du mois.

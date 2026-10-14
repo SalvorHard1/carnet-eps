@@ -41,6 +41,8 @@ const etatOutilsDefaut = () => ({
   natation: {}, // classeId → natation : réglages, course en cours, essais (natation.js)
   boxe: {}, // classeId → boxe française : règles, assaut en cours, assauts enregistrés (boxe.js)
   ece: {}, // classeId → ECE de SVT : chrono, candidats, aides, critères (ece.js)
+  asns: {}, // classeId → ASNS : étape, barèmes, résultats et médailles (asns.js)
+  tableau: {}, // classeId → tableau blanc : fond, traits, têtes et pions (tableau.js)
 });
 
 const etatOutils = (() => {
@@ -150,7 +152,9 @@ function minuteursActifs() {
     || Object.values(e.combine || {}).some(x => x.vagues?.course?.depart && !x.vagues.course.fin)
     || Object.values(e.natation || {}).some(x => x.course?.depart && !x.course.fin)
     || Object.values(e.boxe || {}).some(x => (x.assaut?.phase === 'combat' && x.assaut.debut) || x.assaut?.phase === 'repos')
-    || Object.values(e.ece || {}).some(x => !!x.debut);
+    || Object.values(e.ece || {}).some(x => !!x.debut)
+    || Object.values(e.asns || {}).some(x => Object.keys(x.enCours || {}).length)
+    || (typeof vd === 'object' && !!(vd.flux || vd.pause)); // vidéo-delay : bandeau en direct (videodelay.js)
 }
 
 let tic = null;
@@ -228,6 +232,7 @@ function outilEnCours(id) {
     natation: Object.values(e.natation || {}).some(x => x.course?.depart && !x.course.fin),
     boxe: Object.values(e.boxe || {}).some(x => x.assaut && x.assaut.phase !== 'fini'),
     ece: Object.values(e.ece || {}).some(x => !!x.debut),
+    asns: Object.values(e.asns || {}).some(x => Object.keys(x.enCours || {}).length),
   }[id];
 }
 
@@ -237,7 +242,8 @@ function htmlOutils(c) {
   if (!o) {
     // Accueil : des bulles rangées par famille ; la grille s'adapte à la largeur de l'écran.
     // En mode élève : seulement les outils autorisés, et le bouton pour en sortir (avec le code).
-    const visibles = OUTILS.filter(x => outilDeLaDiscipline(x) && (!enModeEleve() || modeEleve.outils.includes(x.id)));
+    // (eleve: false : outil réservé au professeur, jamais proposé en mode élève — ex. vidéo.)
+    const visibles = OUTILS.filter(x => outilDeLaDiscipline(x) && (!enModeEleve() || (x.eleve !== false && modeEleve.outils.includes(x.id))));
     return `
       ${enModeEleve() ? `<div class="outils bandeau-eleve"><h2>🎓 Mode élève</h2><span class="aide">${c ? 'Classe : <b>' + esc(c.nom) + '</b>' : 'Classe introuvable'}</span>
           <span class="espace-outil"></span><button data-o="eleve-quitter">🔒 Quitter le mode élève</button></div>`
@@ -1007,7 +1013,10 @@ function actionOutil(action, arg, c, bouton) {
   switch (action) {
     case 'eleve-entrer': return lancer(() => entrerModeEleve(c));
     case 'eleve-quitter': return lancer(quitterModeEleve);
-    case 'ouvrir': ui.outil = arg; memoriserUi(); return rendreOutil();
+    case 'ouvrir':
+      ui.outil = arg; memoriserUi();
+      if (arg === 'asns') reglagesAsnsOuverts = false; // (réglages du professeur repliés à chaque ouverture de l'outil)
+      return rendreOutil();
     case 'accueil': ui.outil = null; memoriserUi(); return rendreOutil();
     case 'plein-ecran': {
       // (Le plein écran porte sur la zone de la page, qui reste en place quand l'outil se redessine.)
@@ -1296,7 +1305,7 @@ async function envoyerVersLecon(c, outilId) {
   const { d, resultat } = ouvrirModale(`Envoyer vers une ${L} — ${c.nom}`, `
     <fieldset class="choix-import"><legend>Données à envoyer</legend>
       ${donnees.colonnes.map((col, k) => `<label class="case"><input type="checkbox" name="col" value="${k}" checked>
-        <span><b>${esc(col.nom)}</b> <span class="aide">${esc(TYPES_INDIC[col.type])}${col.unite ? ' (' + esc(col.unite) + ')' : ''} · ${nb(col)} élève${nb(col) > 1 ? 's' : ''}</span></span></label>`).join('')}
+        <span><b>${esc(col.nom)}</b> <span class="aide">${esc(TYPES_INDIC[typeAffiche(col)])}${col.unite ? ' (' + esc(col.unite) + ')' : ''} · ${nb(col)} élève${nb(col) > 1 ? 's' : ''}</span></span></label>`).join('')}
       ${absents.length ? `<label class="case"><input type="checkbox" name="absents" checked>
         <span>Noter <b>ABS</b> ${absents.length > 1 ? `les ${absents.length} élèves absents` : 'l’élève absent'} aujourd’hui</span></label>` : ''}
     </fieldset>
@@ -1314,7 +1323,8 @@ async function envoyerVersLecon(c, outilId) {
   const choisies = r.fd.getAll('col').map(k => donnees.colonnes[+k]);
   if (!choisies.length) return toast('Aucune donnée choisie.', 'erreur');
   const nouvelId = () => 'i' + Donnees.nouvelId().slice(0, 8);
-  const indicDe = col => ({ nom: col.nom, type: col.type, ...(col.unite ? { unite: col.unite } : {}), ...(col.type === 'choix' ? { options: [...col.options] } : {}) });
+  const indicDe = col => (col.medaille ? indMedaille({ nom: col.nom })
+    : { nom: col.nom, type: col.type, ...(col.unite ? { unite: col.unite } : {}), ...(col.type === 'choix' ? { options: [...col.options] } : {}) });
 
   let seanceId;
   if (r.data.vers === 'existante') {
@@ -1322,7 +1332,7 @@ async function envoyerVersLecon(c, outilId) {
     const s = Donnees.get('seances', r.data.seance);
     const indicateurs = structuredClone(s.indicateurs);
     for (const col of choisies) {
-      let ind = indicateurs.find(i => sansAccent(i.nom) === sansAccent(col.nom) && i.type === col.type);
+      let ind = indicateurs.find(i => sansAccent(i.nom) === sansAccent(col.nom) && i.type === col.type && !i.medaille === !col.medaille);
       if (!ind) { ind = { id: nouvelId(), ...indicDe(col) }; indicateurs.push(ind); }
       col.indId = ind.id;
     }
@@ -1389,7 +1399,7 @@ async function reinitialiserOutil(c) {
 
 async function entrerModeEleve(c) {
   if (!c || !elevesDe(c.id).length) throw new Error('Choisis d’abord une classe avec des élèves.');
-  const choix = etatOutils.choixModeEleve || OUTILS.filter(outilDeLaDiscipline).map(o => o.id); // (dernier choix gardé sur cet appareil)
+  const choix = etatOutils.choixModeEleve || OUTILS.filter(o => outilDeLaDiscipline(o) && o.eleve !== false).map(o => o.id); // (dernier choix gardé sur cet appareil)
   const exemple = elevesDe(c.id)[0];
   const { resultat } = ouvrirModale(`🎓 Mode élève — ${c.nom}`, `
     <p>La tablette n’affichera plus que <b>les outils cochés</b>, pour la classe <b>${esc(c.nom)}</b>.
@@ -1397,7 +1407,7 @@ async function entrerModeEleve(c) {
     <p class="aide">Les élèves apparaissent avec l’initiale du nom et le prénom (ex. « ${esc(nomCourtEleve(exemple))} »).
       Les niveaux ne sont pas affichés dans les équipes, et rien ne part vers une ${motMin('lecon')} : tu le feras en sortant du mode élève.</p>
     <fieldset class="choix-import"><legend>Outils autorisés</legend>
-      <div class="cases-mode-eleve">${OUTILS.filter(outilDeLaDiscipline).map(o => `<label class="case"><input type="checkbox" name="outil" value="${o.id}" ${choix.includes(o.id) ? 'checked' : ''}>
+      <div class="cases-mode-eleve">${OUTILS.filter(o => outilDeLaDiscipline(o) && o.eleve !== false).map(o => `<label class="case"><input type="checkbox" name="outil" value="${o.id}" ${choix.includes(o.id) ? 'checked' : ''}>
         <span>${o.icone} ${esc(o.nom)}</span></label>`).join('')}</div>
     </fieldset>
     <div class="ligne">

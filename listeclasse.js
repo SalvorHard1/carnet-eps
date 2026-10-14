@@ -1,5 +1,5 @@
 'use strict';
-// Liste de classe exportée d'École Directe (classeur .xlsx) → fiches élèves.
+// Liste de classe exportée d'École Directe (classeur .xlsx) ou de Pronote (.csv ou .xlsx) → fiches élèves.
 // Le fichier est lu ici, dans le navigateur : il ne quitte jamais l'appareil.
 //
 // Attendu : quelques lignes d'informations (« Classe : 6ème A », « Effectif : 34 élèves »…), puis une ligne
@@ -52,25 +52,62 @@ const ListeClasse = (() => {
       if (resp && /^(tel|telephone|portable|mobile)/.test(t)) { if (resp.tel === undefined) resp.tel = k; return; }
       if (resp && /^(e-?mail|courriel|mail)/.test(t)) { if (resp.email === undefined) resp.email = k; return; }
       if (resp && /^adresse/.test(t)) { if (resp.adresse === undefined) resp.adresse = k; return; }
-      if (t === 'nom' || t === 'eleve' || t === 'nom prenom' || t === 'nom et prenom') res.nom ??= k;
-      else if (t === 'prenom') res.prenom ??= k;
-      else if (t.includes('naissance')) res.naissance ??= k;
+      if (estColNom(t)) res.nom ??= k;
+      else if (t === 'prenom' || t === 'prenoms') res.prenom ??= k;
+      else if (t.includes('naissance') || /^ne(\s*\(e\)|e)?\s+le/.test(t)) res.naissance ??= k; // (Pronote : « Né(e) le »)
       else if (t === 'sexe' || t === 'genre') res.sexe ??= k;
       else if (t.startsWith('regime')) res.regime ??= k;
-      else if (t.startsWith('dispositif')) res.dispositifs ??= k;
+      else if (t.startsWith('dispositif') || t.startsWith('projet')) res.dispositifs ??= k; // (Pronote : « Projets d'accompagnement »)
       else if (t === 'classe') res.classe ??= k;
     });
     return res;
   }
 
+  const estColNom = t => ['nom', 'noms', 'eleve', 'eleves', 'nom prenom', 'nom et prenom', 'nom - prenom', 'nom, prenom', 'nom prenom eleve'].includes(t);
+  // Ligne de titres : une colonne « Nom » (ou « Élève ») et au moins une autre colonne connue.
+  const estTitres = l => l?.some(c => estColNom(sansAccent(c)))
+    && l.some(c => /naissance|^ne(\s*\(e\)|e)?\s+le|^sexe$|^genre$|^prenoms?$|^classe$|^regime/.test(sansAccent(c)));
+
+  // Texte CSV (Pronote) → lignes de cases. Séparateur deviné (; tabulation ,), guillemets gérés.
+  function lireCsv(texte) {
+    const debut = texte.split(/\r?\n/).slice(0, 10).join('\n');
+    const sep = [';', '\t', ','].map(s => [s, debut.split(s).length]).sort((a, b) => b[1] - a[1])[0][0];
+    const lignes = [];
+    let ligne = [], champ = '', guillemets = false;
+    for (let i = 0; i < texte.length; i++) {
+      const x = texte[i];
+      if (guillemets) {
+        if (x === '"' && texte[i + 1] === '"') { champ += '"'; i++; } else if (x === '"') guillemets = false; else champ += x;
+      } else if (x === '"') guillemets = true;
+      else if (x === sep) { ligne.push(champ.trim()); champ = ''; }
+      else if (x === '\n' || x === '\r') {
+        if (x === '\r' && texte[i + 1] === '\n') i++;
+        ligne.push(champ.trim()); lignes.push(ligne); ligne = []; champ = '';
+      } else champ += x;
+    }
+    if (champ || ligne.length) { ligne.push(champ.trim()); lignes.push(ligne); }
+    return lignes.filter(l => l.some(Boolean));
+  }
+
+  // Fichier → feuilles [{ nom, lignes }] : classeur .xlsx (École Directe, Pronote) ou .csv (export Pronote).
+  async function feuillesDe(fichier) {
+    if (/\.xlsx$/i.test(fichier.name)) return Tableur.lire(fichier);
+    if (/\.(csv|txt)$/i.test(fichier.name)) {
+      const octets = new Uint8Array(await fichier.arrayBuffer());
+      let texte = new TextDecoder('utf-8').decode(octets);
+      if (texte.includes('�')) texte = new TextDecoder('windows-1252').decode(octets); // (export Windows « ANSI »)
+      return [{ nom: fichier.name, lignes: lireCsv(texte.replace(/^﻿/, '')) }];
+    }
+    throw new Error('Il faut la liste de classe exportée en .xlsx (École Directe, Pronote) ou en .csv (Pronote).');
+  }
+
   // Classeur → { classe, effectif, eleves: [...], titres } ; erreur claire si le format n'est pas reconnu
   // (on n'y cite que des titres de colonnes, jamais le contenu des lignes).
   async function lire(fichier) {
-    if (!/\.xlsx$/i.test(fichier.name)) throw new Error('Il faut le fichier .xlsx exporté d’École Directe.');
-    const feuilles = await Tableur.lire(fichier);
+    const feuilles = await feuillesDe(fichier);
     for (const f of feuilles) {
       const L = f.lignes;
-      const h = L.findIndex(l => l?.some(c => sansAccent(c) === 'nom') && l.some(c => /naissance|sexe/.test(sansAccent(c))));
+      const h = L.findIndex(estTitres);
       if (h < 0) continue;
       const col = colonnes(L[h]);
       // (Chaque information est dans sa propre case : « Classe : 6ème A », « Effectif : 34 élèves (…) ».)
@@ -93,7 +130,7 @@ const ListeClasse = (() => {
       classe ||= eleves.find(e => e.classe)?.classe || '';
       return { classe, effectif, eleves, titres: L[h].filter(Boolean) };
     }
-    throw new Error('Liste de classe non reconnue : il faut une ligne de titres avec « Nom » et « Date de naissance » (ou « Sexe »). '
+    throw new Error('Liste de classe non reconnue : il faut une ligne de titres avec « Nom » (ou « Élève ») et « Prénom », « Date de naissance » ou « Sexe ». '
       + `Onglets trouvés : ${feuilles.map(f => `« ${f.nom} »`).join(', ')}.`);
   }
 
@@ -146,7 +183,7 @@ const ListeClasse = (() => {
     const nomsCourts = l => l.slice(0, 10).map(e => esc(`${e.nom} ${e.prenom}`)).join(', ') + (l.length > 10 ? '…' : '');
     const autreClasse = c && lu.classe && sansAccent(nomEtNiveau(lu.classe).nom) !== sansAccent(c.nom.replace(/\s+/g, ''));
 
-    const { resultat } = ouvrirModale(c ? `Mettre à jour ${c.nom} depuis École Directe` : 'Nouvelle classe depuis École Directe', `
+    const { resultat } = ouvrirModale(c ? `Mettre à jour ${c.nom} depuis la liste de classe` : 'Nouvelle classe depuis la liste de classe', `
       <p><b>${esc(fichier.name)}</b>${lu.classe ? ` — classe « ${esc(lu.classe)} »` : ''}</p>
       <ul class="bilan-import">
         <li>${lu.eleves.length} élève${lu.eleves.length > 1 ? 's' : ''} lu${lu.eleves.length > 1 ? 's' : ''} (${filles} fille${filles > 1 ? 's' : ''}, ${garcons} garçon${garcons > 1 ? 's' : ''})
@@ -214,7 +251,7 @@ const ListeClasse = (() => {
         ${r.email ? `<p>✉ <a href="mailto:${esc(r.email)}">${esc(r.email)}</a></p>` : ''}
         ${r.adresse ? `<p class="aide">${esc(r.adresse)}</p>` : ''}
       </div>`).join('')}
-      ${!lignes.length && !el.responsables?.length ? '<p class="aide">Aucune information : Élèves › « École Directe » pour les reprendre du fichier de la classe.</p>' : ''}`,
+      ${!lignes.length && !el.responsables?.length ? '<p class="aide">Aucune information : Élèves › « École Directe / Pronote » pour les reprendre du fichier de la classe.</p>' : ''}`,
     `${el.responsables?.length ? '<button value="effacer" class="danger">Effacer les coordonnées</button>' : ''}<span class="espace"></span><button type="button" data-fermer class="primaire">Fermer</button>`);
     if ((await resultat).action !== 'effacer') return;
     if (!(await confirmer(`Effacer les coordonnées des responsables de ${el.nom} ${el.prenom} ?`, 'Effacer'))) return;
@@ -234,13 +271,9 @@ const ListeClasse = (() => {
     return n;
   }
 
-  // Bouton « École Directe » : choisir le fichier, puis importer (c = null : nouvelle classe).
+  // Bouton « École Directe » : les consignes, le choix du fichier, puis l'import (c = null : nouvelle classe).
   function choisirFichier(c) {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    input.addEventListener('change', () => { if (input.files[0]) lancer(() => importer(input.files[0], c)); });
-    input.click();
+    guideImport('liste', f => importer(f, c));
   }
 
   return { importer, choisirFichier, voir, aDesInfos, age, effacerCoordonnees, separerNom, nomEtNiveau, lire };

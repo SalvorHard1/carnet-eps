@@ -272,6 +272,11 @@ main { flex: 1; min-width: 0; overflow: auto; padding: 16px; padding-bottom: cal
 .niveau.n4 { background: var(--n4); border: 0; }
 /* Degré pré-rempli d'après la note : contour pointillé, un peu plus clair */
 .niveau.auto { border: 2px dashed rgba(255, 255, 255, .75); opacity: .82; }
+/* Médailles (leçons, outil ASNS) : bronze, argent, or */
+.niveau.medaille { font-size: 20px; }
+.niveau.m-bronze, .medaille-asns.m-bronze { background: #e9c3a0; border: 0; }
+.niveau.m-argent, .medaille-asns.m-argent { background: #dfe3e8; border: 0; }
+.niveau.m-or, .medaille-asns.m-or { background: #f7dc6f; border: 0; }
 
 /* Seuils de pré-remplissage dans la fiche de l'évaluation */
 .modale label.case input[name="preremplir"] { accent-color: var(--accent); }
@@ -398,15 +403,20 @@ button.badge-pai:hover, button.badge-bep:hover { filter: brightness(1.15); }
 
 /* Liste des élèves */
 .tableau-eleves { width: 100%; border-collapse: collapse; }
-.tableau-eleves th { text-align: left; font-size: 12px; color: var(--texte2); padding: 10px 8px; background: var(--surface2); }
-.tableau-eleves td { border-top: 1px solid var(--bord); padding: 4px; }
+.tableau-eleves th { text-align: left; font-size: 12px; color: var(--texte2); padding: 6px; background: var(--surface2); position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+.tableau-eleves td { border-top: 1px solid var(--bord); padding: 2px 3px; }
+.tableau-eleves tbody tr:nth-child(even) td { background: var(--surface2); } /* une ligne sur deux, pour suivre la ligne de l'œil */
+.tableau-eleves tbody tr:hover td { background: var(--accent-doux); }
 .tableau-eleves input, .tableau-eleves select {
-  width: 100%; min-height: 40px; border: 1px solid transparent; border-radius: 8px; background: transparent; padding: 0 8px; font-size: 16px;
+  width: 100%; min-height: 34px; border: 1px solid transparent; border-radius: 6px; background: transparent; padding: 0 6px; font-size: 15px;
 }
 .tableau-eleves input:focus, .tableau-eleves select:focus { border-color: var(--accent); outline: none; background: var(--surface); }
-.tableau-eleves .c-sexe { width: 80px; }
-.tableau-eleves .c-suppr { width: 52px; }
-.tableau-eleves .c-num { width: 44px; text-align: center; font-weight: 700; color: var(--texte2); font-variant-numeric: tabular-nums; }
+.tableau-eleves .c-sexe { width: 54px; }
+.tableau-eleves .c-sexe select { appearance: none; -webkit-appearance: none; text-align: center; text-align-last: center; padding: 0 2px; font-weight: 700; cursor: pointer; }
+.tableau-eleves .c-suppr { width: 1%; white-space: nowrap; text-align: right; }
+.tableau-eleves .c-suppr .icone-petit { opacity: .55; }
+.tableau-eleves tr:hover .c-suppr .icone-petit, .tableau-eleves .c-suppr .icone-petit:focus { opacity: 1; }
+.tableau-eleves .c-num { width: 34px; text-align: center; font-weight: 700; font-size: 13px; color: var(--texte2); font-variant-numeric: tabular-nums; }
 .majuscules { text-transform: uppercase; }
 
 /* Carnet d'entraînement */
@@ -456,13 +466,16 @@ body[data-onglet="entrainement"] .saisie .notes-seul { display: none; }
   font-size: 12px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums;
 }
 @media (max-width: 700px) { .grille .num-eleve { min-width: 16px; margin-right: 4px; font-size: 11px; } }
-.tableau-eleves .case-pai, .tableau-eleves .case-bep { width: 56px; text-align: center; }
+.tableau-eleves .case-pai, .tableau-eleves .case-bep { width: 46px; text-align: center; }
 .modale label.case input[name="bep"] { accent-color: #8e3fb5; }
-.tableau-eleves .case-disp { min-width: 190px; }
-.tableau-eleves .c-nom, .tableau-eleves .c-prenom { min-width: 130px; }
-.tableau-eleves .c-rem { min-width: 200px; }
+.tableau-eleves .case-disp { min-width: 150px; }
+.tableau-eleves .c-nom { width: 22%; min-width: 110px; font-weight: 700; }
+.tableau-eleves .c-prenom { width: 18%; min-width: 96px; }
+.tableau-eleves .c-nom input { font-weight: 700; }
+.tableau-eleves .c-rem { min-width: 150px; }
+.tableau-eleves .c-rem input { font-size: 14px; }
 .ligne-disp { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
-.tableau-eleves select.choix-amenagement { width: auto; min-width: 112px; font-weight: 600; border: 1px solid var(--bord); }
+.tableau-eleves select.choix-amenagement { width: auto; min-width: 96px; min-height: 30px; font-size: 14px; font-weight: 600; border: 1px solid var(--bord); }
 .tableau-eleves select.choix-amenagement.dispense { border-color: #2a6fdb; color: #2a6fdb; }
 .tableau-eleves select.choix-amenagement.adapte { border-color: #0f8b8d; color: #0f8b8d; }
 
@@ -535,7 +548,7 @@ button.badge-disp:hover { filter: brightness(1.1); }
   background: var(--surface); border: 1px solid var(--bord); border-radius: 14px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, .22); animation: apparait .15s ease-out;
 }
-.menu-cle-etat { margin: 0; padding: 8px 10px; border-radius: 10px; font-size: 13px; font-weight: 600; }
+.menu-cle-etat { margin: 0; padding: 8px 10px; border-radius: 10px; font-size: 13px; font-weight: 600; white-space: pre-line; }
 .menu-cle-etat.ok { background: var(--accent-doux); }
 .menu-cle-etat.attente { background: #fdecc8; color: #5c3b00; }
 .choix-cle { width: 100%; min-height: 60px; justify-content: flex-start; gap: 12px; padding: 10px 14px; border-radius: 12px; text-align: left; }
@@ -736,6 +749,8 @@ button.badge-disp:hover { filter: brightness(1.1); }
     border-top: 1px solid var(--bord);
   }
   .tableau-eleves tr:first-child { border-top: 0; }
+  .tableau-eleves tbody tr:nth-child(even) td, .tableau-eleves tbody tr:hover td { background: none; }
+  .tableau-eleves th { position: static; }
   .tableau-eleves td { display: block; border: 0; padding: 0; min-width: 0 !important; width: auto !important; }
   .tableau-eleves td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; font-weight: 700; color: var(--texte2); margin: 0 0 2px 2px; }
   .tableau-eleves .c-num { grid-area: num; text-align: left; align-self: center; }
@@ -1339,3 +1354,253 @@ button.gros { min-height: 52px; padding: 10px 22px; font-size: 18px; font-weight
 .import-edt { align-items: center; padding: 6px; border: 1px solid var(--bord); border-radius: 10px; }
 .import-edt input[type=checkbox] { width: 22px; height: 22px; flex: none; min-height: 0; }
 .import-edt .texte-edt { flex: 1 1 100%; font-size: 12px; }
+
+/* ASNS — médailles (asns.js) */
+.tableau-asns td { vertical-align: middle; }
+.tableau-asns .val-asns { width: 8em; min-height: 38px; padding: 4px 8px; font-size: 15px; font-variant-numeric: tabular-nums; }
+.reussite-asns { min-width: 44px; min-height: 38px; font-weight: 800; }
+.reussite-asns.oui { background: var(--n4); color: #fff; border-color: transparent; }
+.reussite-asns.non { background: var(--n1); color: #fff; border-color: transparent; }
+.medaille-asns { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; font-size: 22px; color: var(--texte2); border: 2px dashed var(--bord); }
+.tableau-asns tr.absent-asns td:first-child { opacity: .6; }
+.bilan-asns { margin: 10px 0; font-size: 17px; }
+.bareme-asns { margin: 8px 0; }
+.tete-asns { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 4px 0 8px; }
+.titre-asns { font-size: 20px; font-weight: 800; flex: 1 1 260px; }
+.podium-asns { display: flex; gap: 8px; flex-wrap: wrap; }
+.palier-asns { border-radius: 999px; padding: 6px 12px; font-size: 17px; color: #222; }
+.palier-asns.m-or { background: #f7dc6f; } .palier-asns.m-argent { background: #dfe3e8; } .palier-asns.m-bronze { background: #e9c3a0; }
+.consigne-asns { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 17px; margin: 6px 0 12px; }
+.cartes-asns { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.carte-asns { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 150px; padding: 12px 8px;
+  border-radius: 18px; border: 3px solid var(--bord); background: var(--surface); color: var(--texte); touch-action: manipulation; user-select: none; text-align: center; }
+.carte-asns .nom-asns { font-size: 21px; font-weight: 800; line-height: 1.15; }
+.carte-asns .medaille-carte { font-size: 46px; line-height: 1; }
+.carte-asns .medaille-carte.vide { font-size: 34px; opacity: .7; }
+.carte-asns .temps-asns { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.carte-asns .etat-asns { font-size: 14px; color: var(--texte2); }
+.carte-asns.suivant { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-doux); }
+.carte-asns.fini.m-or { background: #fbecb0; border-color: #e5c040; color: #222; }
+.carte-asns.fini.m-argent { background: #eef1f4; border-color: #b9c1ca; color: #222; }
+.carte-asns.fini.m-bronze { background: #f4dcc6; border-color: #cf9a6c; color: #222; }
+.carte-asns.fini.m-or .etat-asns, .carte-asns.fini.m-argent .etat-asns, .carte-asns.fini.m-bronze .etat-asns { color: #444; }
+.carte-asns.en-course { grid-column: 1 / -1; min-height: 220px; background: var(--accent); color: var(--accent-texte); border-color: var(--accent); animation: pulse-asns 1.2s ease-in-out infinite; }
+.carte-asns.en-course .nom-asns { font-size: 30px; }
+.carte-asns.en-course .temps-asns { font-size: 64px; }
+.carte-asns.en-course .etat-asns { color: inherit; font-size: 20px; font-weight: 700; }
+.carte-asns.attend { opacity: .35; }
+@keyframes pulse-asns { 50% { box-shadow: 0 0 0 10px var(--accent-doux); } }
+@media (prefers-reduced-motion: reduce) { .carte-asns.en-course { animation: none; } }
+.reglages-asns { margin: 4px 0 12px; padding: 8px 12px; border: 1px solid var(--bord); border-radius: 10px; }
+.reglages-asns:not([open]) { padding-block: 6px; }
+.reglages-asns > summary { cursor: pointer; font-weight: 700; }
+.reglages-asns h4 { margin: 14px 0 6px; }
+.grand-champ-asns { font-size: 28px !important; min-height: 56px; text-align: center; }
+/* Pas de médaille : applaudissements */
+.medaille-asns.m-bravo { background: #d6e9f8; border: 0; }
+.carte-asns.fini.m-bravo { background: #e3f0fa; border-color: #7aa7cc; color: #222; }
+.carte-asns.fini.m-bravo .etat-asns { color: #444; }
+/* Natation : écran simplifié (① qui nage, ② départ, ③ couloirs) */
+.reglages-nat { margin: 4px 0 10px; padding: 8px 12px; border: 1px solid var(--bord); border-radius: 12px; background: var(--surface); }
+.reglages-nat > summary { cursor: pointer; font-size: 16px; }
+.etape-nat { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 14px 0 8px; font-size: 18px; }
+.num-etape { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-texte); font-weight: 800; }
+.num-couloir { display: inline-grid; place-items: center; min-width: 34px; height: 34px; border-radius: 9px; background: #2a7fb8; color: #fff; font-weight: 800; font-size: 18px; flex: none; }
+.couloir-nat.prepa { flex-direction: row; align-items: center; min-height: 60px; }
+.couloir-nat.prepa .nom-couloir { flex: 1; font-size: 18px; }
+.nom-couloir { font-size: 19px; }
+.tete-couloir { align-items: center; }
+.tete-couloir .nom-couloir { flex: 1; }
+.chips-nageurs { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.chip-nageur { min-height: 48px; padding: 6px 14px; border-radius: 999px; font-size: 16px; font-weight: 600; touch-action: manipulation; }
+.chip-nageur.a-nage { opacity: .6; }
+.chip-nageur.place { opacity: .3; }
+button.tres-gros { min-height: 72px; min-width: 260px; font-size: 24px; font-weight: 800; border-radius: 16px; }
+.consigne-nat { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 16px; margin: 4px 0 10px; }
+.couloirs-nat.en-course { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.couloirs-nat.en-course .gros-plus { min-height: 170px; }
+.couloirs-nat.en-course .gros-plus .compteur-nat { font-size: 64px; }
+.boutons-couloir { display: flex; gap: 8px; }
+.bouton-virage { flex: 1; min-height: 70px; font-size: 22px; font-weight: 800; border-radius: 14px; touch-action: manipulation; }
+.bouton-virage.primaire { background: #2a7fb8; border-color: #2a7fb8; color: #fff; }
+.bouton-annuler { min-width: 64px; min-height: 70px; font-size: 22px; border-radius: 14px; }
+.progression-nat { display: flex; gap: 4px; }
+.progression-nat span { flex: 1; text-align: center; font-size: 12px; font-weight: 700; padding: 3px 0; border-radius: 6px; background: var(--bord); color: var(--texte2); }
+.progression-nat span.faite { background: var(--accent); color: var(--accent-texte); }
+.progression-nat span.en-cours { outline: 2px solid var(--accent); }
+.resultats-nat { margin-top: 18px; border-top: 1px solid var(--bord); padding-top: 10px; }
+.resultats-nat > summary { cursor: pointer; font-size: 16px; }
+/* Liste des élèves épurée : ce qui est vide reste discret, et réapparaît au survol de la ligne ou au toucher */
+.tableau-eleves .chip-besoin:not(.actif) { opacity: .3; border-color: transparent; }
+.tableau-eleves tr:hover .chip-besoin:not(.actif), .tableau-eleves .chip-besoin:focus { opacity: .8; }
+.tableau-eleves select.choix-amenagement:not(.dispense):not(.adapte) { border-color: transparent; color: var(--texte2); opacity: .5; }
+.tableau-eleves tr:hover select.choix-amenagement, .tableau-eleves select.choix-amenagement:focus { opacity: 1; border-color: var(--bord); }
+.tableau-eleves .c-rem input::placeholder { color: transparent; }
+.tableau-eleves tr:hover .c-rem input::placeholder, .tableau-eleves .c-rem input:focus::placeholder { color: var(--texte2); }
+@media (max-width: 860px) {
+  .tableau-eleves .chip-besoin:not(.actif), .tableau-eleves select.choix-amenagement:not(.dispense):not(.adapte) { opacity: .7; }
+  .tableau-eleves .c-rem input::placeholder { color: var(--texte2); }
+  .tableau-eleves tr { gap: 4px 8px; padding: 8px; }
+}
+/* Tablette / téléphone : fiche élève compacte en 3 lignes (n°, nom, prénom, sexe · PAI, BEP, dispense · remarques) */
+@media (max-width: 860px) {
+  .tableau-eleves tr {
+    grid-template-columns: 34px 1.2fr 1fr 52px 34px;
+    grid-template-areas: "num nom prenom sexe suppr" "pai bep disp disp disp" "rem rem rem rem rem";
+    align-items: center; gap: 4px 6px; padding: 6px 8px;
+  }
+  .tableau-eleves td[data-label]::before { content: none; }
+  .tableau-eleves .c-num::before { content: none; }
+  .tableau-eleves .c-num { text-align: center; }
+  .tableau-eleves .case-pai, .tableau-eleves .case-bep { text-align: left; }
+  .tableau-eleves .c-suppr { align-self: center; }
+  .tableau-eleves .c-rem input { min-height: 30px; }
+  .tableau-eleves .c-rem input:placeholder-shown { border-style: dashed; }
+}
+.bouton-cycles { min-height: 44px; font-weight: 700; }
+.grand-champ-nat { font-size: 24px !important; min-height: 50px; text-align: center; }
+/* Carnet de leçons : une couleur par activité (entrainement.js, classeAct) */
+.act-0 { --act: #2e86ab; } .act-1 { --act: #e4572e; } .act-2 { --act: #3bb273; } .act-3 { --act: #8e44ad; }
+.act-4 { --act: #f2a541; } .act-5 { --act: #d81159; } .act-6 { --act: #1b998b; } .act-7 { --act: #7d5a50; }
+.grille-ent col.col-act[class*="act-"] { background: color-mix(in srgb, var(--act) 7%, transparent); }
+.grille-ent thead .col-eval[class*="act-"] { border-top: 6px solid var(--act); background: color-mix(in srgb, var(--act) 20%, var(--surface2)); }
+.grille-ent thead .col-eval[class*="act-"]:hover { background: color-mix(in srgb, var(--act) 32%, var(--surface2)) !important; }
+.grille-ent thead .col-eval[class*="act-"] .eval-titre { color: color-mix(in srgb, var(--act) 75%, var(--texte)); font-weight: 800; }
+.grille-ent .entete-comp th[class*="act-"].sous-comp { background: color-mix(in srgb, var(--act) 11%, var(--surface2)); }
+.grille-ent th[class*="act-"].col-eval, .grille-ent td.debut-eval[class*="act-"], .grille-ent th.sous-comp[class*="act-"]:first-child { border-left: 3px solid var(--act); }
+.grille-ent td.debut-eval[class*="act-"] { border-left: 3px solid var(--act); }
+.legende-act { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
+.chip-act { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 700;
+  background: color-mix(in srgb, var(--act) 18%, var(--surface)); border: 2px solid var(--act); }
+.chip-act small { font-weight: 600; opacity: .7; }
+.chip-ca[class*="ca-CA"] { background: var(--ca); }
+.act-8 { --act: #e0b500; } .act-9 { --act: #7f8c8d; } .act-10 { --act: #ff6fb5; } .act-11 { --act: #2c3e91; }
+/* Fiche de séance : choix de la couleur de l'activité */
+.choix-couleur-act { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.titre-couleur-act { font-size: 13px; font-weight: 600; color: var(--texte2); margin-right: 4px; }
+.modale label.pastille-act:not(.bouton) { flex: none; display: block; position: relative; cursor: pointer; }
+.pastille-act input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.pastille-act span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--act); border: 3px solid transparent; }
+.pastille-act.auto span { width: auto; padding: 0 10px; border-radius: 15px; background: var(--surface2); border-color: var(--bord); font-size: 12px; font-weight: 700; color: var(--texte); }
+.pastille-act input:checked + span { border-color: var(--texte); box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--act, var(--accent)); }
+.pastille-act input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Recherche d'un élève dans toutes les classes (haut de la liste des classes) */
+.recherche-eleve { position: relative; margin: 0 0 10px; }
+.recherche-eleve input { width: 100%; min-height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--bord); background: var(--surface); color: var(--texte); font-size: 14px; }
+.recherche-eleve input:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+.resultats-recherche { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 25; list-style: none; margin: 0; padding: 4px;
+  max-height: 60vh; overflow: auto; background: var(--surface); border: 1px solid var(--bord); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .25); }
+.resultat-recherche { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; width: 100%; min-height: 40px; padding: 6px 8px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--texte); text-align: left; font-size: 14px; cursor: pointer; }
+.resultat-recherche:hover, .resultat-recherche.choisi { background: var(--accent-doux); }
+.classe-recherche { margin-left: auto; padding: 1px 8px; border-radius: 999px; background: var(--surface2); color: var(--texte2); font-size: 12px; font-weight: 700; }
+.aucun-resultat { padding: 8px; }
+/* Élève trouvé : surbrillance qui s'estompe */
+@keyframes surbrillance-eleve { 0%, 60% { background: color-mix(in srgb, #ffd23f 55%, transparent); } 100% { background: transparent; } }
+tr.surbrillance > td, tr.surbrillance > th { animation: surbrillance-eleve 4s ease-out; }
+tr.surbrillance { outline: 3px solid #ffb627; outline-offset: -3px; }
+@media (prefers-reduced-motion: reduce) { tr.surbrillance > td, tr.surbrillance > th { animation: none; background: color-mix(in srgb, #ffd23f 45%, transparent); } }
+/* 🔒 Écran verrouillé (verrou.js) : il masque tout, y compris les fenêtres ouvertes */
+/* (inset : 0 plutôt que 100vw, qui compte la barre de défilement du PC et décale la carte ;
+   la hauteur et le haut suivent la partie visible quand le clavier de la tablette est ouvert, voir verrou.js) */
+dialog.ecran-verrou { position: fixed; inset: 0; margin: 0; border: 0; padding: 16px; box-sizing: border-box; background: transparent;
+  max-width: none; max-height: none; width: auto; height: auto; overflow: auto; }
+dialog.ecran-verrou[open] { display: grid; place-items: center; }
+dialog.ecran-verrou::backdrop { background: var(--fond); }
+.carte-verrou { display: flex; flex-direction: column; align-items: center; gap: 12px; width: min(360px, calc(100vw - 32px)); padding: 28px 24px;
+  background: var(--surface); color: var(--texte); border: 1px solid var(--bord); border-radius: 18px; box-shadow: 0 20px 60px rgba(0, 0, 0, .3); text-align: center; }
+.carte-verrou h2 { margin: 0; }
+.carte-verrou p { margin: 0; }
+.icone-verrou { font-size: 54px; line-height: 1; }
+.carte-verrou input { width: 100%; min-height: 48px; padding: 0 12px; font-size: 18px; text-align: center; border: 1px solid var(--bord); border-radius: 10px; background: var(--fond); color: var(--texte); }
+.carte-verrou button { width: 100%; }
+.erreur-verrou { color: #d64545; font-weight: 700; }
+body.mode-eleve .btn-verrou { display: none; }
+/* 🎥 Vidéo-delay (videodelay.js) */
+.acces-video { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 380px; margin: 20px auto; text-align: center; }
+.acces-video input { width: 100%; min-height: 48px; font-size: 18px; text-align: center; }
+.ecran-video { position: relative; width: 100%; max-width: 1100px; margin: 0 auto; background: #000; border-radius: 12px; overflow: hidden; line-height: 0; }
+.ecran-video.en-pause { outline: 4px solid #ffb627; }
+.image-video { width: 100%; height: auto; display: block; aspect-ratio: 16 / 9; object-fit: contain; }
+.image-video.miroir { transform: scaleX(-1); }
+.traces-video { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; touch-action: none; }
+.traces-video.actif { pointer-events: auto; cursor: crosshair; }
+.bandeau-video { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; flex-wrap: wrap; gap: 6px; line-height: 1.3; pointer-events: none; }
+.bandeau-video span { padding: 3px 9px; border-radius: 999px; background: rgba(0, 0, 0, .6); color: #fff; font-size: 13px; font-weight: 600; }
+.bandeau-video .etat-video.direct { background: #c0392b; }
+.bandeau-video .etat-video.pause { background: #d68910; }
+.commandes-video, .outils-trace { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.commandes-video button { min-height: 52px; min-width: 64px; font-size: 18px; }
+.outils-trace button { min-height: 44px; }
+.reglages-video { align-items: flex-end; }
+.barre-temps-video { display: flex; align-items: center; gap: 8px; max-width: 1100px; width: 100%; margin: 0 auto; }
+.barre-temps-video input[type=range] { flex: 1; height: 36px; accent-color: #ffb627; cursor: pointer; }
+.barre-temps-video button { min-height: 44px; min-width: 48px; }
+.position-video { min-width: 64px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.traces-video.actif.deplacer { cursor: grab; }
+
+/* ---------- Trombinoscope (trombi.js) ---------- */
+.nom-photo { display: flex; align-items: center; gap: 6px; }
+.nom-photo input { flex: 1; min-width: 0; }
+.photo-eleve { padding: 0; border: 0; background: none; border-radius: 50%; flex: none; line-height: 0; cursor: zoom-in; }
+.mini-photo { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex: none; }
+.resultat-recherche .mini-photo { width: 28px; height: 28px; align-self: center; }
+.grille-trombi { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; margin: 10px 0; }
+.vignette-trombi { position: relative; margin: 0; padding: 6px; border: 2px solid var(--bord, #ccd); border-radius: 10px; text-align: center; background: var(--fond-carte, transparent); }
+.vignette-trombi img, .vignette-trombi .sans-photo { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 6px; }
+.vignette-trombi .sans-photo { display: grid; place-items: center; font-size: 1.8rem; font-weight: 700; color: #889; background: color-mix(in srgb, #889 15%, transparent); }
+.vignette-trombi figcaption { margin-top: 4px; font-size: .85rem; line-height: 1.2; overflow-wrap: anywhere; }
+.vignette-trombi select { width: 100%; margin-top: 4px; font-size: .8rem; }
+.vignette-trombi .lu-trombi { display: block; color: #778; font-size: .72rem; }
+.vignette-trombi.doute { border-color: #f0a020; }
+.vignette-trombi.inconnu { border-style: dashed; opacity: .6; }
+.vignette-trombi.surbrillance { outline: 3px solid #ffb627; }
+.actions-trombi { position: absolute; top: 8px; right: 8px; display: flex; gap: 2px; }
+.actions-trombi .icone-petit { background: rgba(255, 255, 255, .85); border-radius: 6px; }
+.doute-trombi { color: #b86e00; font-weight: 700; }
+/* ---------- Tableau blanc (tableau.js) ---------- */
+.barre-tableau { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 8px; }
+.barre-tableau label { display: inline-flex; align-items: center; gap: 6px; }
+.groupe-tb { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.pastille-tb { width: 32px; height: 32px; min-width: 32px; padding: 0; border-radius: 50%; border: 2px solid #8893a0; }
+.pastille-tb.choisie { outline: 3px solid var(--accent, #1f6f5c); outline-offset: 2px; }
+.ct-0 { background: #1d2430; } .ct-1 { background: #e53935; } .ct-2 { background: #1e6fd9; }
+.ct-3 { background: #ffd60a; } .ct-4 { background: #ffffff; } .ct-5 { background: #2e9d4a; }
+.figer-tb.fige { background: #ffb627; color: #1d2430; border-color: #e09a10; font-weight: 700; }
+.aide-tableau { margin: 0 0 6px; }
+.planche-tb { position: relative; margin: 0 auto; border-radius: 8px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; box-shadow: 0 2px 10px rgba(0, 0, 0, .25); }
+.planche-tb.fige { touch-action: auto; }
+.planche-tb canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.planche-tb.mode-crayon .dessin-tb, .planche-tb.mode-fleche .dessin-tb { cursor: crosshair; }
+.planche-tb.mode-gomme { cursor: cell; }
+.pions-tb { position: absolute; inset: 0; pointer-events: none; }
+.pion-tb { position: absolute; display: grid; place-items: center; border-radius: 50%; pointer-events: auto; cursor: grab; touch-action: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .45); font-weight: 800; color: #fff; line-height: 1; }
+.planche-tb.fige .pion-tb { cursor: default; touch-action: auto; }
+.pion-tb.tenu { cursor: grabbing; transform: scale(1.15); z-index: 2; }
+.pion-eleve { border: 3px solid #ffffff; background: #5b6770; }
+.pion-eleve img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; pointer-events: none; }
+.initiales-tb { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; background: #5b6770; color: #fff; font-weight: 800; }
+.mini-photo.initiales-tb { display: inline-grid; width: 32px; height: 32px; font-size: .8rem; }
+.nom-pion-tb { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 2px; padding: 1px 5px; border-radius: 6px;
+  background: rgba(20, 24, 32, .78); color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; pointer-events: none; }
+.eq-tb-0 { border-color: #e53935; } .eq-tb-1 { border-color: #1e6fd9; } .eq-tb-2 { border-color: #2e9d4a; } .eq-tb-3 { border-color: #ffd60a; }
+.eq-tb-4 { border-color: #fb8c00; } .eq-tb-5 { border-color: #8e24aa; } .eq-tb-6 { border-color: #ffffff; } .eq-tb-7 { border-color: #1d2430; }
+.eq-tb-8 { border-color: #ec407a; } .eq-tb-9 { border-color: #9e9e9e; }
+.pion-eleve[class*="eq-tb-"] { border-width: 5px; }
+.pion-rouge { background: #e53935; border: 2px solid #fff; }
+.pion-bleu { background: #1e6fd9; border: 2px solid #fff; }
+.pion-ballon { background: #fff; color: #000; }
+.pion-plot { background: none; box-shadow: none; border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); background-color: #ff8c1a; }
+.ligne-boutons-tb { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.liste-eleves-tb { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px 10px; max-height: 50vh; overflow: auto; }
+.eleve-tb { align-items: center; }
+.eleve-tb .mini-photo { margin: 0 4px; }
+.absent-tb { opacity: .6; }
+/* ---------- Guides d'import (École Directe) ---------- */
+.etapes-guide { margin: 4px 0 10px; padding-left: 0; list-style: none; counter-reset: etape; display: grid; gap: 8px; }
+.etapes-guide li { counter-increment: etape; display: grid; grid-template-columns: 30px 1fr; gap: 8px; align-items: start; line-height: 1.4; }
+.etapes-guide li::before { content: counter(etape); display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-texte, #fff); font-weight: 800; }
+.attendu-guide { margin: 6px 0; padding: 8px 10px; border-radius: 8px; background: var(--accent-doux); }
+.choix-logiciel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }

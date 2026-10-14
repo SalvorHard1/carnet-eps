@@ -197,7 +197,27 @@ const Donnees = (() => {
     return res;
   }
 
+  // Ce qui a changé sur cet appareil depuis le dernier envoi sur la clé (pour l'afficher en enregistrant) :
+  // meta.enAttente = { collection: { id: 'n' (nouveau) | 'm' (modifié) | 's' (supprimé) } }.
+  function noterAttente(col, obj) {
+    const a = ((db.meta.enAttente ??= {})[col] ??= {}), avant = a[obj.id];
+    const existait = !!db[col][obj.id] && !db[col][obj.id].supprime;
+    if (obj.supprime) { if (avant === 'n') delete a[obj.id]; else if (existait || avant) a[obj.id] = 's'; }
+    else a[obj.id] = avant === 'n' || (!existait && avant !== 'm' && avant !== 's') ? 'n' : 'm';
+  }
+  // { collection: { n, m, s } } (nouveaux, modifiés, supprimés)
+  function enAttente() {
+    const res = {};
+    for (const [col, ids] of Object.entries(db?.meta.enAttente || {})) {
+      const r = { n: 0, m: 0, s: 0 };
+      for (const etat of Object.values(ids)) r[etat]++;
+      if (r.n + r.m + r.s) res[col] = r;
+    }
+    return res;
+  }
+
   function ecrire(col, obj) {
+    noterAttente(col, obj);
     const t = horodatage();
     if (PAR_CHAMP.has(col) && !obj.supprime) daterChamps(obj, db[col][obj.id], t);
     obj.maj = t;
@@ -270,15 +290,20 @@ const Donnees = (() => {
     enregistrer();
   }
 
+  // Renvoie ce qui vient de partir sur la clé (voir enAttente), gardé aussi comme « dernier envoi ».
   function marquerEnvoi() {
+    const envoye = enAttente();
     db.meta.dernierEnvoi = Math.max(Date.now(), db.meta.modifieLe);
+    db.meta.enAttente = {};
+    if (Object.keys(envoye).length) db.meta.dernierBilan = { date: db.meta.dernierEnvoi, envoye };
     enregistrer();
     notifier();
+    return envoye;
   }
 
   return {
     CLE_STOCKAGE, charger, nouvelId, ecrire, supprimer, get, liste, note, noteComplete, ecrireNote,
-    fusionner, exporter, marquerEnvoi, reglerMeta, fusionnerFiche, // (fusionnerFiche : exposée pour les tests)
+    fusionner, exporter, marquerEnvoi, reglerMeta, enAttente, fusionnerFiche, // (fusionnerFiche : exposée pour les tests)
     meta: () => db?.meta ?? vide().meta,
     surChangement: f => auditeurs.push(f),
     surAutreOnglet: f => canal?.addEventListener('message', f),

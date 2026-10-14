@@ -9,7 +9,24 @@
 // (Fichier chargé avant app.js : il n'utilise les outils d'app.js qu'au moment des appels.)
 
 const TYPES_INDIC = {
-  temps: 'Temps', distance: 'Distance', nombre: 'Nombre', echelle: 'Échelle 1 à 4', choix: 'Choix dans une liste', texte: 'Texte / observation',
+  temps: 'Temps', distance: 'Distance', nombre: 'Nombre', echelle: 'Échelle 1 à 4', medaille: 'Médailles (bronze, argent, or)',
+  choix: 'Choix dans une liste', texte: 'Texte / observation',
+};
+// Médailles : se saisissent d'un toucher, comme les degrés (vide → bronze → argent → or → vide).
+// Rangées comme une liste ordonnée (type 'choix', `suivi`) marquée `medaille` : répartition, meilleure perf,
+// évolution, Excel… les traitent comme les autres listes ordonnées ; seuls la saisie et l'affichage changent.
+const MEDAILLES = ['Bronze', 'Argent', 'Or'];
+const ICONES_MEDAILLE = { Bronze: '🥉', Argent: '🥈', Or: '🥇' };
+const indMedaille = (extra = {}) => ({ ...extra, type: 'choix', options: [...MEDAILLES], suivi: true, medaille: true });
+const typeAffiche = ind => (ind.medaille ? 'medaille' : ind.type);
+// « or », « Médaille d'argent », « 🥉 », « 1 » (bronze) à « 3 » (or) → nom de la médaille (ou null).
+const medailleLue = brut => {
+  const t = String(brut || '').trim();
+  if (/^[1-3]$/.test(t)) return MEDAILLES[+t - 1];
+  const icone = Object.entries(ICONES_MEDAILLE).find(([, i]) => t.includes(i));
+  if (icone) return icone[0];
+  const mot = sansAccent(t).replace(/^medaille\s*(d'|de\s+|en\s+)?/, '');
+  return MEDAILLES.find(m => sansAccent(m) === mot) || null;
 };
 const TYPES_NUMERIQUES = ['temps', 'distance', 'nombre'];
 // « Autre » : par ex. élève pris en charge par un autre prof (natation des 6e).
@@ -116,7 +133,7 @@ const estSavoirNager = apsa => (apsa || '').trim().toLocaleLowerCase('fr').repla
 const indicEtape = e => ({ id: e.id, nom: e.code, type: 'echelle', etape: true, texte: e.texte });
 // (Étapes du savoir-nager : texte toujours à jour, même pour les séances enregistrées avec l'ancien parcours en 15 m.)
 const texteIndic = ind => (ind.etape && ETAPES_SN.find(e => e.id === ind.id)?.texte) || ind.texte;
-const titreIndic = ind => (texteIndic(ind) ? `${ind.nom} : ${texteIndic(ind)}` : nomCourtIndic(ind) + ' — ' + TYPES_INDIC[ind.type]);
+const titreIndic = ind => (texteIndic(ind) ? `${ind.nom} : ${texteIndic(ind)}` : nomCourtIndic(ind) + ' — ' + TYPES_INDIC[typeAffiche(ind)]);
 
 // Champ d'apprentissage « habituel » d'une APSA (sans tenir compte du niveau de classe).
 function caBrut(apsa) {
@@ -203,11 +220,46 @@ function avertirStatutCase(portee, code) {
 }
 
 // Texte tapé à la place d'un statut de case → valeur (ou null si illisible).
-const valeurTapee = (ind, brut) => (ind.type === 'choix' ? (ind.options || []).find(o => sansAccent(o) === sansAccent(brut)) || null
+const valeurTapee = (ind, brut) => (ind.medaille ? medailleLue(brut) : ind.type === 'choix' ? (ind.options || []).find(o => sansAccent(o) === sansAccent(brut)) || null
   : ind.type === 'echelle' ? (/^[1-4]$/.test(brut) ? brut : null) : convertir(ind, brut));
 const nomCourtIndic = ind => ind.nom + (ind.unite ? ` (${ind.unite})` : '');
 
 /* ---------- Grille ---------- */
+
+/* ---------- Une couleur par activité ----------
+   Dans la grille, chaque activité (APSA, thème… ; à défaut, le nom de la séance) a sa couleur : bandeau en tête de colonne,
+   colonnes légèrement teintées, légende au-dessus. Couleurs attribuées dans l'ordre où les activités apparaissent dans
+   la classe : elles ne changent pas quand on filtre un exercice. */
+// La couleur peut aussi être choisie dans la fiche de séance, pour cette séance seulement (séance.couleur : n° de couleur),
+// ou pour toutes les séances de l'activité (case à cocher). Palette fixe (classes .act-0 à .act-11) : pas de style écrit
+// dans la page. (classe.couleursAct : couleur par activité de la v0.70.1, encore lue.)
+const COULEURS_ACT = ['Bleu', 'Rouge', 'Vert', 'Violet', 'Orange', 'Framboise', 'Turquoise', 'Marron', 'Jaune', 'Gris', 'Rose', 'Bleu nuit'];
+const cleActivite = s => sansAccent((s.apsa || s.titre || '').trim());
+let couleursAct = new Map();
+function couleursActivites(seances, classe) {
+  const choisies = classe?.couleursAct || {}, m = new Map();
+  for (const s of seances) {
+    const a = cleActivite(s);
+    if (!m.has(a)) m.set(a, { k: Number.isInteger(choisies[a]) ? choisies[a] : null, nom: (s.apsa || s.titre || '').trim(), n: 0 });
+    m.get(a).n++;
+  }
+  // Les autres activités prennent, dans l'ordre, les couleurs que personne n'a choisies.
+  const prises = new Set([...m.values()].map(x => x.k).filter(k => k !== null));
+  let libre = 0;
+  for (const x of m.values()) {
+    if (x.k !== null) continue;
+    while (prises.has(libre % COULEURS_ACT.length) && prises.size < COULEURS_ACT.length) libre++;
+    x.k = libre % COULEURS_ACT.length;
+    prises.add(x.k);
+    libre++;
+  }
+  return m;
+}
+const classeAct = s => {
+  if (Number.isInteger(s.couleur)) return ' act-' + s.couleur; // couleur choisie pour cette séance
+  const x = couleursAct.get(cleActivite(s));
+  return x ? ' act-' + x.k : '';
+};
 
 function htmlEntrainement(c) {
   const eleves = elevesDe(c.id);
@@ -221,6 +273,9 @@ function htmlEntrainement(c) {
   if (!exercices.includes(filtre)) filtre = '';
   const seances = filtre ? toutes.filter(s => s.titre === filtre) : toutes;
   const suivi = !!filtre && !!principal(seances);
+  couleursAct = couleursActivites(toutes, c);
+  const legende = couleursAct.size > 1 ? `<div class="legende-act">${[...couleursAct.values()].map(x =>
+    `<span class="chip-act act-${x.k}">${esc(x.nom || 'Sans nom')} <small>${x.n}</small></span>`).join('')}</div>` : '';
   return `
     <div class="outils">
       <h2>${esc(c.nom)}</h2>
@@ -233,15 +288,17 @@ function htmlEntrainement(c) {
         </select></label>` : ''}
       <span class="aide aide-saisie">Temps : 3:45 ou 12,5 · ${aideCodes(true)} — toute la ${esc(motMin('lecon'))}, ou seulement la case si l’élève a déjà des résultats</span>
     </div>
+    ${legende}
     ${toutes.length ? (filtre ? '' : '<p class="aide">Choisis un exercice pour voir la meilleure performance et l’évolution de chaque élève.</p>')
     : `<p class="aide">${esc(mot('aideLecons'))} Rien ici ne compte dans les moyennes.</p>`}
     <div class="grille-scroll">
       <table class="grille grille-ent">
+        <colgroup><col>${seances.map(s => `<col span="${s.indicateurs.length}" class="col-act${classeAct(s)}">`).join('')}${suivi ? '<col span="2">' : ''}</colgroup>
         <thead><tr>
           <th class="col-nom" rowspan="2">Élève</th>
           ${seances.map(s => `
-            <th class="col-eval${classeCa(s)}" data-seance-entete="${s.id}" colspan="${s.indicateurs.length}" title="Modifier la séance">
-              ${s.ca ? `<span class="chip-ca">${s.ca}</span>` : ''}
+            <th class="col-eval${classeAct(s)}" data-seance-entete="${s.id}" colspan="${s.indicateurs.length}" title="Modifier la séance">
+              ${s.ca ? `<span class="chip-ca ca-${s.ca}">${s.ca}</span>` : ''}
               <div class="eval-titre">${esc(s.titre)}</div>
               <div class="eval-info">${dateCourte(s.date)}${s.apsa && s.apsa !== s.titre ? ' · ' + esc(s.apsa) : ''}</div>
               ${docsDe(s).length ? `<button class="chip-docs" data-docs-seance="${s.id}" title="Documents joints (barème…)">📎 ${docsDe(s).length}</button>` : ''}
@@ -250,7 +307,7 @@ function htmlEntrainement(c) {
             <th class="col-moy" rowspan="2">Évolution<div class="eval-info">1re → dernière</div></th>` : ''}
         </tr>
         <tr class="entete-comp">
-          ${seances.map(s => s.indicateurs.map(ind => `<th class="sous-comp${classeCa(s)}" title="${esc(titreIndic(ind))}">${esc(nomCourtIndic(ind))}</th>`).join('')).join('')}
+          ${seances.map(s => s.indicateurs.map(ind => `<th class="sous-comp${classeAct(s)}" title="${esc(titreIndic(ind))}">${esc(nomCourtIndic(ind))}</th>`).join('')).join('')}
         </tr></thead>
         <tbody>
           ${eleves.map((el, i) => {
@@ -267,7 +324,7 @@ function htmlEntrainement(c) {
           ${seances.some(s => s.indicateurs.some(ind => ind.type !== 'texte')) ? `
           <tr class="ligne-repartition">
             <th class="col-nom">Répartition</th>
-            ${seances.map(s => s.indicateurs.map((ind, k) => `<td class="bilan-comp${k === 0 ? ' debut-eval' + classeCa(s) : ''}" data-rep-indic="${s.id}|${ind.id}"></td>`).join('')).join('')}
+            ${seances.map(s => s.indicateurs.map((ind, k) => `<td class="bilan-comp${k === 0 ? ' debut-eval' + classeAct(s) : ''}" data-rep-indic="${s.id}|${ind.id}"></td>`).join('')).join('')}
             ${suivi ? '<td class="col-moy"></td><td class="col-moy"></td>' : ''}
           </tr>` : ''}
         </tbody>
@@ -283,7 +340,7 @@ function htmlEntrainement(c) {
 function celluleIndic(s, ind, el, i, col, statut, premiere) {
   const attrs = `data-seance="${s.id}" data-eleve="${el.id}" data-indic="${ind.id}" data-ligne="${i}" data-col="${col}"`;
   const libelle = esc(`${el.nom} ${el.prenom} — ${s.titre} — ${ind.nom}`);
-  const debut = premiere ? ` class="debut-eval${classeCa(s)}"` : '';
+  const debut = premiere ? ` class="debut-eval${classeAct(s)}"` : '';
   if (statut) {
     // Élève absent / dispensé / blessé / malade : toute la séance est marquée ; on peut retaper dessus pour changer.
     return `<td${debut}><input class="cellule code-${statut}" value="${STATUTS_ENT[statut]}" ${attrs} autocomplete="off" aria-label="${libelle}"></td>`;
@@ -297,6 +354,10 @@ function celluleIndic(s, ind, el, i, col, statut, premiere) {
   if (ind.type === 'echelle') {
     return `<td${debut ? debut.replace('class="', 'class="td-niveau ') : ' class="td-niveau"'}><button class="niveau${v ? ' n' + v : ''}" data-niveau-ent ${attrs}
       title="${esc(ind.texte ? titreIndic(ind) : ind.nom)}" aria-label="${libelle}">${v}</button></td>`;
+  }
+  if (ind.medaille) {
+    return `<td${debut ? debut.replace('class="', 'class="td-niveau ') : ' class="td-niveau"'}><button ${attrsMedaille(v)} data-niveau-ent data-medaille ${attrs}
+      aria-label="${libelle}">${ICONES_MEDAILLE[v] || ''}</button></td>`;
   }
   if (ind.type === 'choix') {
     return `<td${debut}><select class="cellule-choix" ${attrs} aria-label="${libelle}">
@@ -375,13 +436,28 @@ function appliquerStatutEnt(cible, code) {
   rafraichirEnt();
 }
 
+// Classe et infobulle d'une case médaille (vide ou bronze / argent / or).
+const attrsMedaille = v => `class="niveau medaille${v ? ' m-' + sansAccent(v) : ''}" title="${v ? 'Médaille : ' + v.toLocaleLowerCase('fr') : 'Toucher : bronze → argent → or'}"`;
+
 function changerEchelleEnt(bouton, valeur) {
   const { seance, eleve, indic } = bouton.dataset;
   const avant = Donnees.note(seance, eleve, indic);
-  if (valeur === undefined) valeur = avant === '4' ? '' : String(+avant + 1); // vide → 1 → 2 → 3 → 4 → vide
+  const medaille = bouton.dataset.medaille !== undefined;
+  if (valeur === undefined) {
+    valeur = medaille ? (MEDAILLES[MEDAILLES.indexOf(avant) + 1] || '') // vide → bronze → argent → or → vide
+      : avant === '4' ? '' : String(+avant + 1); // vide → 1 → 2 → 3 → 4 → vide
+  }
   if (valeur !== avant) Donnees.ecrireNote(seance, eleve, valeur, indic);
-  bouton.className = 'niveau' + (valeur ? ' n' + valeur : '');
-  bouton.textContent = valeur;
+  if (medaille) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = `<button ${attrsMedaille(valeur)}></button>`;
+    bouton.className = tmp.firstChild.className;
+    bouton.title = tmp.firstChild.title;
+    bouton.textContent = ICONES_MEDAILLE[valeur] || '';
+  } else {
+    bouton.className = 'niveau' + (valeur ? ' n' + valeur : '');
+    bouton.textContent = valeur;
+  }
   majStatsEnt();
 }
 
@@ -521,7 +597,8 @@ function majStatsEnt() {
     tdE.title = '';
     if (!perfs.length) { tdM.textContent = '–'; tdE.textContent = '–'; continue; }
     const meilleure = perfs.reduce((a, b) => (mieux(b, a) ? b : a));
-    tdM.textContent = ref.type === 'choix' ? ref.options[meilleure] : afficherValeur(ref, String(meilleure));
+    tdM.textContent = ref.type === 'choix' ? (ref.medaille ? (ICONES_MEDAILLE[ref.options[meilleure]] || '') + ' ' : '') + ref.options[meilleure]
+      : afficherValeur(ref, String(meilleure));
     if (perfs.length < 2) { tdE.textContent = '–'; continue; }
     const ecart = perfs.at(-1) - perfs[0];
     const progres = ecart !== 0 && mieux(perfs.at(-1), perfs[0]);
@@ -605,12 +682,12 @@ document.addEventListener('click', e => {
 /* ---------- Fiche de séance ---------- */
 
 function ligneIndic(ind) {
-  const param = ind.type === 'choix' ? (ind.options || []).join(' / ') : ind.unite || '';
+  const param = ind.type === 'choix' && !ind.medaille ? (ind.options || []).join(' / ') : ind.unite || '';
   return `<div class="ligne-indic">
     <input type="hidden" name="ind-id" value="${esc(ind.id || '')}">
     <input type="hidden" name="ind-suivi" value="${ind.suivi ? '1' : ''}">
     <input name="ind-nom" required value="${esc(ind.nom || '')}" placeholder="Nom de la donnée" aria-label="Nom de la donnée">
-    <select name="ind-type" aria-label="Type">${Object.entries(TYPES_INDIC).map(([k, n]) => `<option value="${k}" ${ind.type === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    <select name="ind-type" aria-label="Type">${Object.entries(TYPES_INDIC).map(([k, n]) => `<option value="${k}" ${typeAffiche(ind) === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
     <input name="ind-param" value="${esc(param)}" aria-label="Unité ou options">
     <button type="button" class="icone-petit" data-suppr-indic title="Retirer cette donnée" aria-label="Retirer cette donnée">✕</button>
   </div>`;
@@ -638,6 +715,12 @@ async function editerSeance(id, preset = null) {
     <label>Nom de la séance / exercice<input name="titre" required list="liste-exercices" value="${esc(s.titre)}" placeholder="${esc(mot('titreSeanceExemple'))}"></label>
     <datalist id="liste-exercices">${exercices.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
     <p class="aide">Garde le même nom d’une séance à l’autre pour suivre les progrès (meilleure performance, évolution).</p>
+    <div class="choix-couleur-act" role="radiogroup" aria-label="Couleur de l’activité">
+      <span class="titre-couleur-act">Couleur</span>
+      <label class="pastille-act auto" title="Automatique : la couleur de l’activité"><input type="radio" name="couleurAct" value="" ${Number.isInteger(s.couleur) ? '' : 'checked'}><span>Auto</span></label>
+      ${COULEURS_ACT.map((nom, k) => `<label class="pastille-act act-${k}" title="${nom}"><input type="radio" name="couleurAct" value="${k}" aria-label="${nom}" ${s.couleur === k ? 'checked' : ''}><span></span></label>`).join('')}
+    </div>
+    <label class="case"><input type="checkbox" name="couleurToutes"><span>Aussi pour toutes les ${esc(motMin('lecons'))} de cette activité</span></label>
     <fieldset class="competences" data-zone-etapes ${estSavoirNager(s.apsa) ? '' : 'hidden'}>
       <legend>Étapes travaillées — savoir-nager (ASNS)</legend>
       <p class="aide">Chaque étape cochée devient une colonne : degré de maîtrise de 1 à 4 pour chaque élève.
@@ -659,6 +742,7 @@ async function editerSeance(id, preset = null) {
         <button type="button" data-modele-indic>${esc(mot('modeleActivite'))}</button>
       </div>
       <p class="aide">Temps : 3:45 · Distance / nombre : avec unité (m, kg, bpm…) · Échelle 1 à 4 : couleurs des degrés ·
+        Médailles : un toucher = 🥉 → 🥈 → 🥇 (ou touches 1, 2, 3) ·
         Choix : options séparées par « / » · Texte : observation libre.</p>
     </fieldset>
     <fieldset class="competences">
@@ -761,6 +845,7 @@ async function editerSeance(id, preset = null) {
       const type = types[k], param = (params[k] || '').trim();
       let idInd = ids[k] && !pris.has(ids[k]) ? ids[k] : 'i' + Donnees.nouvelId().slice(0, 8);
       pris.add(idInd);
+      if (type === 'medaille') return indMedaille({ id: idInd, nom: nom.trim() });
       const ind = { id: idInd, nom: nom.trim(), type };
       if (type === 'choix') {
         ind.options = param.split('/').map(o => o.trim()).filter(Boolean);
@@ -779,12 +864,23 @@ async function editerSeance(id, preset = null) {
       const { nouveau, ...fiche } = doc;
       Donnees.ecrire('documents', { ...fiche, ajouteLe: Date.now() });
     }
+    // Couleur : pour cette séance seulement (« Auto » : la couleur de l'activité), ou pour toutes celles de l'activité.
+    const choix = r.data.couleurAct ?? '', voulue = choix === '' ? null : +choix;
+    const avecCouleur = x => { const y = { ...x }; if (voulue === null) delete y.couleur; else y.couleur = voulue; return y; };
     const avant = s.documents || [];
-    enregistree = Donnees.ecrire('seances', {
+    enregistree = Donnees.ecrire('seances', avecCouleur({
       ...s, id: s.id || Donnees.nouvelId(), classeId: c.id, cree: s.cree || Date.now(),
       titre: r.data.titre.trim(), apsa: r.data.apsa.trim(), ca: caBrut(r.data.apsa), date: r.data.date, indicateurs,
       documents: docs.map(x => x.id),
-    });
+    }));
+    if (r.data.couleurToutes === 'on') {
+      const cleAct = cleActivite(enregistree);
+      for (const autre of seancesDe(c.id)) {
+        if (autre.id !== enregistree.id && cleActivite(autre) === cleAct && (autre.couleur ?? null) !== voulue) Donnees.ecrire('seances', avecCouleur(autre));
+      }
+      // (Ancienne couleur par activité, gardée dans la classe : remplacée par celle des séances.)
+      if (c.couleursAct && cleAct in c.couleursAct) { const couleurs = { ...c.couleursAct }; delete couleurs[cleAct]; Donnees.ecrire('classes', { ...c, couleursAct: couleurs }); }
+    }
     supprimerDocumentsInutilises(avant.filter(x => !docs.some(y => y.id === x))); // retirés de cette séance
     const total = Donnees.liste('documents').reduce((t, x) => t + (x.taille || 0), 0);
     if (docs.some(x => x.nouveau) && total > ALERTE_TOTAL_DOCS) {
@@ -838,7 +934,8 @@ function fleche(ind, a, b) {
     : `<span class="tendance ${mieux ? 'progres' : 'regres'}">${mieux ? '↗' : '↘'}</span>`;
 }
 
-const afficherV = (ind, v) => (ind.type === 'echelle' ? pastilleDegre(v) : esc(afficherValeur(ind, v)));
+const afficherV = (ind, v) => (ind.type === 'echelle' ? pastilleDegre(v)
+  : ind.medaille && ICONES_MEDAILLE[v] ? `${ICONES_MEDAILLE[v]} ${esc(v)}` : esc(afficherValeur(ind, v)));
 
 function htmlFiche(el, apsa, seances) {
   const { donnees, statuts, presences } = parcoursEleve(el.id, seances);
@@ -1002,6 +1099,7 @@ const STATUTS_PAR_NOM = Object.fromEntries(Object.entries(STATUTS_ENT_BASE).map(
 const dateFr = d => (d ? d.split('-').reverse().join('/') : '');
 
 function typeEnTexte(ind) {
+  if (ind.medaille) return 'Médailles : ' + MEDAILLES.join(' / ');
   if (ind.type === 'choix') return `${ind.suivi ? 'Choix ordonné' : 'Choix'} : ${(ind.options || []).join(' / ')}`;
   return LIB_TYPES[ind.type] + (ind.unite ? ` (${ind.unite})` : '') + (ind.etape ? ' — ' + texteIndic(ind) : '');
 }
@@ -1011,6 +1109,7 @@ function texteEnType(texte) {
   const i = t.indexOf(':');
   const genre = i < 0 ? t : t.slice(0, i), suite = i < 0 ? '' : t.slice(i + 1);
   const mot = sansAccent(genre), unite = genre.match(/\(([^)]*)\)/)?.[1]?.trim();
+  if (mot.startsWith('medaille')) return indMedaille();
   if (mot.startsWith('choix')) {
     return { type: 'choix', options: suite.split('/').map(o => o.trim()).filter(Boolean), ...(mot.includes('ordonn') ? { suivi: true } : {}) };
   }
@@ -1039,6 +1138,7 @@ function valeurDepuisExcel(ind, brut) {
     const n = +brut.replace(',', '.');
     return Number.isInteger(n) && n >= 1 && n <= 4 ? { v: String(n) } : { erreur: true };
   }
+  if (ind.medaille) { const m = medailleLue(brut); return m ? { v: m } : { erreur: true }; }
   if (ind.type === 'choix' || ind.type === 'texte') return { v: brut };
   const v = convertir(ind, brut);
   return v === null ? { erreur: true } : { v };
@@ -1204,7 +1304,7 @@ function fusionnerIndicateurs(x, cible) {
     const etape = sn && col.type === 'echelle' ? ETAPES_SN.find(e => e.id === col.id || e.code === col.nom.trim().toUpperCase()) : null;
     const neuf = etape ? indicEtape(etape)
       : { id: col.id, nom: col.nom.trim(), type: col.type, ...(col.unite ? { unite: col.unite } : {}),
-        ...(col.type === 'choix' ? { options: col.options } : {}), ...(col.suivi ? { suivi: true } : {}) };
+        ...(col.type === 'choix' ? { options: col.options } : {}), ...(col.suivi ? { suivi: true } : {}), ...(col.medaille ? { medaille: true } : {}) };
     const deja = avant.find(a => !pris.has(a.id) && (a.id === neuf.id || cleIndic(a) === cleIndic(neuf)));
     let ind = deja ? { ...deja } : neuf;
     if (deja && ind.type === 'choix') ind.options = [...new Set([...(deja.options || []), ...(neuf.options || [])])];
@@ -1380,7 +1480,9 @@ document.addEventListener('keydown', e => {
   if (t.matches?.('[data-niveau-ent]')) {
     const fleches = { ArrowDown: [1, 0], ArrowUp: [-1, 0], ArrowRight: [0, 1], ArrowLeft: [0, -1] };
     const code = CODES_ENT[e.key.toUpperCase()];
-    if (/^[1-4]$/.test(e.key)) { changerEchelleEnt(t, e.key); deplacer(t, 1, 0); }
+    const medaille = t.dataset.medaille !== undefined;
+    if (medaille && /^[1-3]$/.test(e.key)) { changerEchelleEnt(t, MEDAILLES[+e.key - 1]); deplacer(t, 1, 0); } // 1 bronze, 2 argent, 3 or
+    else if (!medaille && /^[1-4]$/.test(e.key)) { changerEchelleEnt(t, e.key); deplacer(t, 1, 0); }
     else if (['0', 'Delete', 'Backspace'].includes(e.key)) { changerEchelleEnt(t, ''); deplacer(t, 1, 0); }
     else if (code) { appliquerStatutEnt(t, code); deplacer(t, 1, 0); }
     else if (fleches[e.key]) deplacer(t, ...fleches[e.key]);
