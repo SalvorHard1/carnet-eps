@@ -1610,3 +1610,19 @@ body.mode-eleve .btn-verrou { display: none; }
   background: var(--accent); color: var(--accent-texte, #fff); font-weight: 800; }
 .attendu-guide { margin: 6px 0; padding: 8px 10px; border-radius: 8px; background: var(--accent-doux); }
 .choix-logiciel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+/* Photo de l'élève dans le titre de sa fiche bilan (notes, leçons) */
+.modale h2:has(.photo-fiche) { display: flex; align-items: center; gap: 12px; }
+.photo-fiche { width: 64px; height: 80px; flex: none; border-radius: 10px; object-fit: cover; box-shadow: 0 2px 8px rgba(0, 0, 0, .25); }
+@media (max-width: 700px) { .photo-fiche { width: 48px; height: 60px; } }
+/* Tableau blanc : grand écran (le terrain seul, les outils en barre en bas) */
+.presentation-tb { position: fixed; inset: 0; z-index: 60; zoom: calc(1 / var(--zoom)); display: flex; flex-direction: column; gap: 8px;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); background: #10161b; }
+.scene-tb { flex: 1; min-height: 0; display: grid; place-items: center; }
+.presentation-tb .planche-tb { margin: 0; }
+.barre-bas-tb { flex: none; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; padding: 6px 8px;
+  border-radius: 12px; background: var(--surface); scrollbar-width: thin; }
+.barre-bas-tb > *, .barre-bas-tb .groupe-tb { flex: none; }
+.barre-bas-tb button { min-height: 40px; }
+.barre-bas-tb label { display: inline-flex; align-items: center; gap: 4px; }
+.barre-bas-tb select { max-width: 170px; }
+.quitter-presentation-tb { font-weight: 700; }

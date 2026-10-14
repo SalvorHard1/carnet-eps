@@ -1016,6 +1016,7 @@ function actionOutil(action, arg, c, bouton) {
     case 'ouvrir':
       ui.outil = arg; memoriserUi();
       if (arg === 'asns') reglagesAsnsOuverts = false; // (réglages du professeur repliés à chaque ouverture de l'outil)
+      if (arg === 'tableau') presentationTb = false; // (le tableau blanc s'ouvre en vue normale)
       return rendreOutil();
     case 'accueil': ui.outil = null; memoriserUi(); return rendreOutil();
     case 'plein-ecran': {

@@ -207,7 +207,10 @@ const Trombi = (() => {
   const mini = (el, classe = 'mini-photo') => (el.photo && !(typeof enModeEleve === 'function' && enModeEleve())
     ? `<img class="${classe}" src="${el.photo}" alt="">` : '');
 
-  return { voir, importer, mini, lirePdf, score };
+  // Titre d'une fiche élève : sa photo (s'il en a une), puis le texte.
+  const titre = (el, texte) => `${mini(el, 'photo-fiche')}<span>${esc(texte)}</span>`;
+
+  return { voir, importer, mini, titre, lirePdf, score };
 })();
 
 // Vignette de la liste des élèves : ouvre le trombinoscope sur cet élève.

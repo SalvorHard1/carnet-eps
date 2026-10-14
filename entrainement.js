@@ -1070,7 +1070,7 @@ async function ficheEleve(eleveId) {
   };
   const dessiner = () => {
     const el = eleves[idx];
-    $('h2', d).textContent = `${el.nom} ${el.prenom} — ${c.nom}`;
+    $('h2', d).innerHTML = Trombi.titre(el, `${el.nom} ${el.prenom} — ${c.nom}`); // (avec sa photo, pour le reconnaître)
     $('[data-fiche-onglets]', d).innerHTML = apsas.map(a =>
       `<button type="button" class="${a === apsa ? 'actif' : ''}" data-fiche-apsa="${esc(a)}">${esc(a)}</button>`).join('');
     $('[data-fiche]', d).innerHTML = htmlFiche(el, apsa, toutes.filter(s => apsaDe(s) === apsa));

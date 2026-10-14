@@ -217,7 +217,7 @@ async function ficheNotes(eleveId) {
   };
   const dessiner = () => {
     const el = eleves[idx];
-    $('h2', d).textContent = `${el.nom} ${el.prenom} — ${c.nom}`;
+    $('h2', d).innerHTML = Trombi.titre(el, `${el.nom} ${el.prenom} — ${c.nom}`); // (avec sa photo, pour le reconnaître)
     $('[data-fiche-onglets]', d).innerHTML = [['annee', 'Toute l’année'], ...periodesAnnee().map(p => [p.id, p.code])]
       .map(([v, nom]) => `<button type="button" class="${v === periode ? 'actif' : ''}" data-fiche-periode="${v}">${nom}</button>`).join('');
     $('[data-fiche]', d).innerHTML = htmlFicheNotes(el, periode, eleves);

@@ -211,40 +211,68 @@ const MODES_TB = [['deplacer', '✋ Déplacer'], ['crayon', '✏️ Crayon'], ['
 
 /* ---------- Affichage ---------- */
 
+// 🖥 Grand écran : seul le terrain est affiché, aussi grand que possible (plein écran de l'appareil si possible),
+// et les outils se rangent dans une barre en bas. (Propre à cette page : on en sort par « ✕ » ou Échap.)
+let presentationTb = false;
+
 function htmlTableau(c) {
   const cfg = cfgTableau(c), t = terrainTb(cfg.terrain);
   queueMicrotask(majTableau); // (une fois la page en place : taille, terrain, dessin, pions)
-  return `
-    <div class="barre-tableau">
-      <label>Fond<select data-tb-champ="terrain">${TERRAINS_TB.map(x => `<option value="${x.id}" ${x.id === t.id ? 'selected' : ''}>${esc(x.nom)}</option>`).join('')}</select></label>
-      <button class="primaire" data-tb="eleves" title="Choisir les élèves à placer sur le tableau">👥 Élèves</button>
-      <span class="groupe-tb" role="group" aria-label="Ajouter un pion">
+  const fond = `<label>${presentationTb ? '' : 'Fond'}<select data-tb-champ="terrain" aria-label="Fond">${TERRAINS_TB.map(x => `<option value="${x.id}" ${x.id === t.id ? 'selected' : ''}>${esc(x.nom)}</option>`).join('')}</select></label>`;
+  const eleves = `<button class="primaire" data-tb="eleves" title="Choisir les élèves à placer sur le tableau">👥${presentationTb ? '' : ' Élèves'}</button>`;
+  const pions = `<span class="groupe-tb" role="group" aria-label="Ajouter un pion">
         <button data-tb="pion" data-arg="rouge" title="Pion rouge (numéroté)">+ 🔴</button>
         <button data-tb="pion" data-arg="bleu" title="Pion bleu (numéroté)">+ 🔵</button>
         <button data-tb="pion" data-arg="ballon" title="Ballon">+ ⚽</button>
         <button data-tb="pion" data-arg="plot" title="Plot">+ 🔶</button>
-      </span>
-      <label>Têtes<select data-tb-champ="taille">${Object.entries(TAILLES_TB).map(([k, [, n]]) => `<option value="${k}" ${cfg.taille === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-      <label class="case"><input type="checkbox" data-tb-champ="noms" ${cfg.noms ? 'checked' : ''}><span>Prénoms</span></label>
-    </div>
-    <div class="barre-tableau">
-      <button data-tb="figer" class="figer-tb${cfg.fige ? ' fige' : ''}" aria-pressed="${!!cfg.fige}"
-        title="${cfg.fige ? 'Tableau figé : toucher pour pouvoir de nouveau dessiner et déplacer' : 'Figer le tableau : le doigt ne déplace plus rien et ne dessine plus'}">${cfg.fige ? '🔒 Figé' : '🔓 Figer'}</button>
-      <span class="groupe-tb" role="group" aria-label="Outil">${MODES_TB.map(([k, n]) => `<button data-tb="mode" data-arg="${k}" class="${cfg.mode === k ? 'primaire' : ''}" aria-pressed="${cfg.mode === k}">${n}</button>`).join('')}</span>
-      <span class="groupe-tb couleurs-tb" role="group" aria-label="Couleur du crayon">${COULEURS_TB.map(([n], k) => `<button data-tb="couleur" data-arg="${k}" class="pastille-tb ct-${k}${cfg.couleur === k ? ' choisie' : ''}" title="${n}" aria-label="${n}" aria-pressed="${cfg.couleur === k}"></button>`).join('')}</span>
-      <button data-tb="annuler" title="Annuler le dernier trait" ${cfg.traits.length ? '' : 'disabled'}>↶ Annuler</button>
-      <button data-tb="effacer-traits" title="Effacer tous les traits (les pions restent)" ${cfg.traits.length ? '' : 'disabled'}>🧹 Effacer le dessin</button>
-      <button data-tb="retirer-pions" title="Enlever toutes les têtes et tous les pions" ${cfg.pions.length ? '' : 'disabled'}>Retirer les pions</button>
-    </div>
-    <p class="aide aide-tableau">${cfg.fige ? '🔒 Tableau figé : rien ne bouge au doigt. « 🔒 Figé » pour le débloquer.'
-    : cfg.mode === 'gomme' ? 'Gomme : touche un trait ou un pion pour l’effacer.'
-    : 'Fais glisser les têtes et les pions au doigt ; un toucher sur une tête change la couleur de son équipe.'}</p>
-    <div class="planche-tb mode-${cfg.mode}${cfg.fige ? ' fige' : ''}" data-tb-planche>
+      </span>`;
+  const reglages = `<label>${presentationTb ? '' : 'Têtes'}<select data-tb-champ="taille" aria-label="Taille des têtes">${Object.entries(TAILLES_TB).map(([k, [, n]]) => `<option value="${k}" ${cfg.taille === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label class="case"><input type="checkbox" data-tb-champ="noms" ${cfg.noms ? 'checked' : ''}><span>Prénoms</span></label>`;
+  const figer = `<button data-tb="figer" class="figer-tb${cfg.fige ? ' fige' : ''}" aria-pressed="${!!cfg.fige}"
+        title="${cfg.fige ? 'Tableau figé : toucher pour pouvoir de nouveau dessiner et déplacer' : 'Figer le tableau : le doigt ne déplace plus rien et ne dessine plus'}">${cfg.fige ? '🔒 Figé' : '🔓 Figer'}</button>`;
+  const modes = `<span class="groupe-tb" role="group" aria-label="Outil">${MODES_TB.map(([k, n]) => `<button data-tb="mode" data-arg="${k}" class="${cfg.mode === k ? 'primaire' : ''}" aria-pressed="${cfg.mode === k}" title="${n}">${presentationTb ? n.split(' ')[0] : n}</button>`).join('')}</span>`;
+  const couleurs = `<span class="groupe-tb couleurs-tb" role="group" aria-label="Couleur du crayon">${COULEURS_TB.map(([n], k) => `<button data-tb="couleur" data-arg="${k}" class="pastille-tb ct-${k}${cfg.couleur === k ? ' choisie' : ''}" title="${n}" aria-label="${n}" aria-pressed="${cfg.couleur === k}"></button>`).join('')}</span>`;
+  const effacer = `<button data-tb="annuler" title="Annuler le dernier trait" ${cfg.traits.length ? '' : 'disabled'}>↶${presentationTb ? '' : ' Annuler'}</button>
+      <button data-tb="effacer-traits" title="Effacer tous les traits (les pions restent)" ${cfg.traits.length ? '' : 'disabled'}>🧹${presentationTb ? '' : ' Effacer le dessin'}</button>`;
+  const retirer = `<button data-tb="retirer-pions" title="Enlever toutes les têtes et tous les pions" ${cfg.pions.length ? '' : 'disabled'}>Retirer les pions</button>`;
+  const planche = `<div class="planche-tb mode-${cfg.mode}${cfg.fige ? ' fige' : ''}" data-tb-planche>
       <canvas class="fond-tb" data-tb-fond></canvas>
       <canvas class="dessin-tb" data-tb-dessin></canvas>
       <div class="pions-tb" data-tb-pions>${cfg.pions.map(htmlPionTb).join('')}</div>
     </div>`;
+  if (presentationTb) {
+    return `<div class="presentation-tb" data-tb-presentation>
+      <div class="scene-tb">${planche}</div>
+      <div class="barre-bas-tb" role="toolbar" aria-label="Outils du tableau">
+        <button data-tb="presentation" class="quitter-presentation-tb" title="Quitter le grand écran (Échap)">✕ Quitter</button>
+        ${figer}${modes}${couleurs}${effacer}${eleves}${pions}${fond}${reglages}
+      </div>
+    </div>`;
+  }
+  return `
+    <div class="barre-tableau">
+      ${fond}${eleves}${pions}${reglages}
+      <button data-tb="presentation" title="Afficher seulement le terrain, en grand (pour les élèves) ; les outils passent dans une barre en bas">🖥 Grand écran</button>
+    </div>
+    <div class="barre-tableau">${figer}${modes}${couleurs}${effacer}${retirer}</div>
+    <p class="aide aide-tableau">${cfg.fige ? '🔒 Tableau figé : rien ne bouge au doigt. « 🔒 Figé » pour le débloquer.'
+    : cfg.mode === 'gomme' ? 'Gomme : touche un trait ou un pion pour l’effacer.'
+    : 'Fais glisser les têtes et les pions au doigt ; un toucher sur une tête change la couleur de son équipe.'}</p>
+    ${planche}`;
 }
+
+// Entrer en grand écran / en sortir (le plein écran de l'appareil suit, s'il est possible).
+function basculerPresentationTb(oui = !presentationTb) {
+  presentationTb = oui;
+  const vue = $('#vue');
+  if (oui && !document.fullscreenElement) vue?.requestFullscreen?.().catch(() => { /* pas de plein écran : la page couvre quand même tout */ });
+  if (!oui && document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  rendreOutil();
+}
+// Plein écran quitté par le navigateur (Échap, geste) : on quitte aussi le grand écran.
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && presentationTb) basculerPresentationTb(false); });
+// Échap sans plein écran (ex. iPad) : on quitte le grand écran, sauf si une fenêtre est ouverte.
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && presentationTb && !document.querySelector('dialog[open]')) basculerPresentationTb(false); });
 
 function htmlPionTb(p) {
   if (p.type !== 'eleve') {
@@ -270,7 +298,10 @@ function majTableau() {
   if (!c) return;
   const cfg = cfgTableau(c), t = defTerrainTb(cfg.terrain), ratio = ratioTb(t);
   const zone = planche.parentElement, dispoL = zone.clientWidth;
-  const dispoH = Math.max(240, window.innerHeight - planche.getBoundingClientRect().top - 12);
+  // (Grand écran : toute la hauteur, moins la barre d'outils du bas.)
+  const barreBas = presentationTb ? $('#vue .barre-bas-tb')?.offsetHeight || 0 : 0;
+  const dispoH = presentationTb ? Math.max(200, zone.clientHeight || window.innerHeight - barreBas - 16)
+    : Math.max(240, window.innerHeight - planche.getBoundingClientRect().top - 12);
   const W = Math.max(200, Math.floor(Math.min(dispoL, dispoH * ratio))), H = Math.round(W / ratio);
   planche.style.width = W + 'px';
   planche.style.height = H + 'px';
@@ -515,6 +546,7 @@ function actionTableau(action, arg, c) {
   const cfg = cfgTableau(c);
   switch (action) {
     case 'figer': cfg.fige = !cfg.fige; return rendreOutil();
+    case 'presentation': return basculerPresentationTb();
     case 'mode': cfg.mode = arg; cfg.fige = false; return rendreOutil();
     case 'couleur': cfg.couleur = +arg; if (cfg.mode !== 'crayon' && cfg.mode !== 'fleche') cfg.mode = 'crayon'; return rendreOutil();
     case 'annuler': cfg.traits.pop(); return rendreOutil();
