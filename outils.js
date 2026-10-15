@@ -451,7 +451,18 @@ function criteresNiveau(c) {
       ['degres:' + e.id, `${e.titre} — toutes ses compétences`],
       ...competencesEval(e).map(a => [`comp:${e.id}|${a.id}`, `${e.titre} — ${a.code} ${resumeTexte(a.texte, 50)}`]),
     ]) },
+    { groupe: `Résultat d’une ${motMin('lecon')}`, liste: criteresLecons(c) },
   ].filter(g => g.liste.length);
+}
+
+// Données des leçons qui permettent de classer les élèves (temps, distance, nombre, échelle, médaille, liste ordonnée),
+// renseignées pour au moins un élève ; les plus récentes d'abord.
+const indicClassable = ind => TYPES_NUMERIQUES.includes(ind.type) || ind.type === 'echelle' || (ind.type === 'choix' && ind.suivi);
+function criteresLecons(c) {
+  const els = elevesDe(c.id);
+  return seancesDe(c.id).reverse().flatMap(s => (s.indicateurs || [])
+    .filter(ind => indicClassable(ind) && els.some(el => valeurSuivie(ind, valeurCase(s.id, el.id, ind.id)) !== null))
+    .map(ind => [`lecon:${s.id}|${ind.id}`, `${s.titre || s.apsa || mot('lecon')} (${dateCourte(s.date)}) — ${ind.nom}${ind.type === 'nombre' ? ' (plus = mieux)' : ''}`]));
 }
 
 // Niveau d'un élève selon le critère : { val (pour comparer), texte (pour afficher) }, ou null s'il n'a rien.
@@ -474,6 +485,21 @@ function niveauOutil(c, critere) {
   if (type === 'comp') {
     const [evalId, att] = arg.split(/\|(.*)/s), e = Donnees.get('evals', evalId);
     return id => enDegre(e ? degre(e, id, att) : null);
+  }
+  if (type === 'lecon') {
+    // val : plus haut = plus fort (un temps compte en négatif) ; absents, dispensés… : sans valeur.
+    const [seanceId, indId] = arg.split(/\|(.*)/s), s = Donnees.get('seances', seanceId);
+    const ind = s?.indicateurs?.find(i => i.id === indId);
+    if (!ind) return () => null;
+    const signe = ind.type === 'temps' ? -1 : 1;
+    const texte = v => (ind.type === 'choix' ? ind.options[Math.round(v)] || '' : ind.type === 'echelle' ? 'deg. ' + fmt(Math.round(v * 10) / 10)
+      : afficherValeur(ind, String(Math.round(v * 10) / 10)));
+    const f = id => {
+      const v = statutEnt(s.id, id) ? null : valeurSuivie(ind, valeurCase(s.id, id, ind.id));
+      return v === null ? null : { val: signe * v, texte: texte(v) };
+    };
+    f.moyenne = moy => texte(signe * moy); // niveau moyen d'une équipe, dans l'unité de la donnée
+    return f;
   }
   return () => null;
 }
@@ -550,7 +576,7 @@ function faireEquipes(c) {
   const avecNiveau = cfg.composition !== 'aleatoire';
   const brut = avecNiveau ? niveauOutil(c, cfg.critere) : () => null;
   const connus = els.map(el => brut(el.id)?.val).filter(x => x !== undefined && x !== null);
-  if (avecNiveau && !connus.length) throw new Error('Aucun élève présent n’a de note ou de degré pour ce critère : choisis-en un autre.');
+  if (avecNiveau && !connus.length) throw new Error('Aucun élève présent n’a de résultat pour ce critère : choisis-en un autre.');
   const moyenne = connus.length ? connus.reduce((a, b) => a + b, 0) / connus.length : 0;
   const val = id => brut(id)?.val ?? moyenne; // (sans note ni degré : compté au niveau moyen)
   let listes;
@@ -603,7 +629,7 @@ function htmlEquipes(c) {
     ? `<optgroup label="${esc(g.groupe)}">${g.liste.map(([v, nom]) => `<option value="${esc(v)}" ${cfg.critere === v ? 'selected' : ''}>${esc(nom)}</option>`).join('')}</optgroup>`
     : g.liste.map(([v, nom]) => `<option value="${esc(v)}" ${cfg.critere === v ? 'selected' : ''}>${esc(nom)}</option>`).join(''))).join('')}</select></label>` : ''}
     </div>
-    ${avecNiveau ? `<p class="aide">Le niveau est lu dans ton carnet (notes et degrés de maîtrise). Un élève sans note ni degré compte au niveau moyen.
+    ${avecNiveau ? `<p class="aide">Le niveau est lu dans ton carnet (notes, degrés de maîtrise ou résultats d’une ${motMin('lecon')}). Un élève sans résultat compte au niveau moyen.
       ${cfg.composition === 'homogene' && cfg.mixite === 'mixte' ? ' En homogène, le niveau passe avant la mixité.' : ''}</p>` : ''}
     <details class="separer"><summary>Élèves à séparer${cfg.separer.length ? ` (${cfg.separer.length})` : ''}</summary>
       <ul class="liste-separer">${cfg.separer.map(([a, b], k) => `<li>${esc(nomOutil(a))} ✕ ${esc(nomOutil(b))}
@@ -625,9 +651,9 @@ function htmlEquipes(c) {
     const niv = montrerNiveau ? membres.map(niveau).filter(Boolean) : [], moy = niv.length ? niv.reduce((s, x) => s + x.val, 0) / niv.length : null;
     const unite = niv[0]?.texte.startsWith('deg.') ? 'deg. ' : '';
     return `<div class="carte-equipe equipe-c${eq.couleur}">
-          <h3>Équipe ${COULEURS_EQUIPES[eq.couleur]} <span class="aide">${membres.length} · ${f} F · ${g} G${moy !== null ? ` · niveau ${unite}${fmt(Math.round(moy * 10) / 10)}` : ''}</span></h3>
+          <h3>Équipe ${COULEURS_EQUIPES[eq.couleur]} <span class="aide">${membres.length} · ${f} F · ${g} G${moy !== null ? ` · niveau ${niveau.moyenne ? esc(niveau.moyenne(moy)) : unite + fmt(Math.round(moy * 10) / 10)}` : ''}</span></h3>
           ${membres.map(id => `<button class="membre${cfg.selection === id ? ' choisi' : ''}" data-o="equipes-choisir" data-arg="${k}|${id}">
-            <span>${esc(nomOutil(id))}</span>${montrerNiveau ? `<span class="niveau-membre">${niveau(id)?.texte || '?'}</span>` : ''}</button>`).join('')}
+            <span>${esc(nomOutil(id))}</span>${montrerNiveau ? `<span class="niveau-membre">${esc(niveau(id)?.texte || '?')}</span>` : ''}</button>`).join('')}
         </div>`;
   }).join('')}</div>` : ''}`;
 }
