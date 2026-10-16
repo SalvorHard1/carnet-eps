@@ -21,7 +21,7 @@ const PALETTES_DEGRES = {
 };
 const COULEURS_CA = { CA1: '#d64545', CA2: '#2e9e5b', CA3: '#8e5bd0', CA4: '#2f78d6', CA5: '#e8891a' };
 // (L'onglet des séances porte le nom que lui donne la discipline : « Leçons » en EPS.)
-const NOMS_ONGLETS = { eleves: 'Élèves', appel: 'Appel', notes: 'Notes', get entrainement() { return mot('lecons'); }, outils: 'Outils', agenda: 'Agenda' };
+const NOMS_ONGLETS = { eleves: 'Élèves', appel: 'Appel', notes: 'Notes', get entrainement() { return mot('lecons'); }, outils: 'Outils', agenda: 'Agenda', baremes: 'Barèmes' };
 // Codes de la barre de saisie rapide (ceux des notes, puis ceux des leçons).
 const CODES_SAISIE = { ABS: 'Absent', DISP: 'Dispensé', NE: 'Non noté', BLE: 'Blessé', MAL: 'Malade', AUT: 'Autre', NR: 'Non rendu' };
 const TAILLES_TEXTE = { petite: ['Petite', 0.9], normale: ['Normale', 1], grande: ['Grande', 1.12], 'tres-grande': ['Très grande', 1.25] };
@@ -32,7 +32,8 @@ const REGLAGES_DEFAUT = {
     theme: 'vert', couleurLibre: '#1f6f5c', mode: 'auto', palette: 'classique', degres: PALETTES_DEGRES.classique.couleurs,
     ca: COULEURS_CA, etablissement: 'S-A', prof: '',
   },
-  notes: { max: 20, coef: 1, seuils: [10, 14, 18], codesMasques: [], codesAjoutes: [], libelles: {}, alerte: true, alerteOrange: 2, alerteRouge: 3 },
+  notes: { max: 20, coef: 1, seuils: [10, 14, 18], codesMasques: [], codesAjoutes: [], libelles: {}, alerte: true, alerteOrange: 2, alerteRouge: 3,
+    alerteTenue: true, tenueOrange: 2, tenueRouge: 3 },
   competences: {
     niveaux: ['Maîtrise insuffisante', 'Maîtrise fragile', 'Maîtrise satisfaisante', 'Très bonne maîtrise'],
     masques: [], refsMasques: [], ajouts: [], refsPerso: [],
@@ -153,6 +154,7 @@ function appliquerReglages(forcer = false) {
 
   const n = reglage('notes');
   Object.assign(SEUILS_ALERTE, { actif: n.alerte, orange: n.alerteOrange, rouge: n.alerteRouge });
+  Object.assign(SEUILS_TENUE, { actif: n.alerteTenue, orange: n.tenueOrange, rouge: n.tenueRouge });
   for (const [code, defaut] of Object.entries(CODES_SAISIE)) {
     const b = document.querySelector(`#saisie [data-code="${code}"]`);
     const nom = (n.libelles[code] || '').trim() || defaut;
@@ -242,6 +244,13 @@ function htmlReglageNotes(n) {
       <label class="etroit">Orange dès<input type="number" name="alerteOrange" min="1" max="60" step="1" required value="${n.alerteOrange}"></label>
       <label class="etroit">Rouge dès<input type="number" name="alerteRouge" min="1" max="60" step="1" required value="${n.alerteRouge}"></label>
       <span class="aide">jours sur la période</span>
+    </div>
+    <h4>Alerte oublis de tenue</h4>
+    <label class="case"><input type="checkbox" name="alerteTenue" ${n.alerteTenue ? 'checked' : ''}> Signaler les élèves qui oublient souvent leur tenue (badge 👕)</label>
+    <div class="ligne">
+      <label class="etroit">Orange dès<input type="number" name="tenueOrange" min="1" max="60" step="1" required value="${n.tenueOrange}"></label>
+      <label class="etroit">Rouge dès<input type="number" name="tenueRouge" min="1" max="60" step="1" required value="${n.tenueRouge}"></label>
+      <span class="aide">oublis sur la période</span>
     </div>`;
 }
 
@@ -296,7 +305,7 @@ async function ouvrirReglages(rubrique = 'apparence') {
         <p class="aide">${AIDE_DISCIPLINE} Le choix est gardé dans ton carnet (il te suit sur la clé) ;
           il n’est jamais transmis avec les réglages partagés avec un collègue.</p>
       </div></details>
-    <details ${ouvert('notes')}><summary>📝 Notes <small>barème, codes, alerte absences</small></summary>
+    <details ${ouvert('notes')}><summary>📝 Notes <small>barème, codes, alertes absences et tenue</small></summary>
       <div class="rubrique">${htmlReglageNotes(n)}</div></details>
     <details ${ouvert('competences')}><summary>🎯 Compétences <small>degrés, référentiels</small></summary>
       <div class="rubrique">
@@ -359,7 +368,7 @@ async function ouvrirReglages(rubrique = 'apparence') {
   const v = r.data;
   const visibles = Object.keys(NOMS_ONGLETS).filter(x => v['onglet-' + x] === 'on');
   if (!visibles.length) { toast('Garde au moins un onglet affiché.', 'erreur'); appliquerReglages(true); return ouvrirReglages('onglets'); }
-  if (+v.alerteRouge < +v.alerteOrange) { toast('L’alerte rouge doit venir après (ou en même temps que) l’orange.', 'erreur'); appliquerReglages(true); return ouvrirReglages('notes'); }
+  if (+v.alerteRouge < +v.alerteOrange || +v.tenueRouge < +v.tenueOrange) { toast('L’alerte rouge doit venir après (ou en même temps que) l’orange.', 'erreur'); appliquerReglages(true); return ouvrirReglages('notes'); }
 
   ui.taille = lireAppareil(form).taille;
   ui.densite = lireAppareil(form).densite;
@@ -373,6 +382,7 @@ async function ouvrirReglages(rubrique = 'apparence') {
       ...Object.keys(CODES_SAISIE).filter(c => !codesDiscipline().includes(c) && v['code-' + c] === 'on')],
     libelles: Object.fromEntries(Object.keys(CODES_SAISIE).map(code => [code, v['lib-' + code].trim()]).filter(([, l]) => l)),
     alerte: v.alerte === 'on', alerteOrange: +v.alerteOrange, alerteRouge: +v.alerteRouge,
+    alerteTenue: v.alerteTenue === 'on', tenueOrange: +v.tenueOrange, tenueRouge: +v.tenueRouge,
   });
   ecrireReglage('competences', { niveaux: [1, 2, 3, 4].map(i => v['niv' + i].trim() || REGLAGES_DEFAUT.competences.niveaux[i - 1]) });
   ecrireReglage('onglets', {
@@ -587,7 +597,7 @@ function nettoyerReglage(nom, brut) {
     delete propre.prof;
   }
   if (nom === 'notes') {
-    for (const k of ['max', 'coef', 'alerteOrange', 'alerteRouge']) if (k in propre && !(Number.isFinite(propre[k]) && propre[k] >= 0)) delete propre[k];
+    for (const k of ['max', 'coef', 'alerteOrange', 'alerteRouge', 'tenueOrange', 'tenueRouge']) if (k in propre && !(Number.isFinite(propre[k]) && propre[k] >= 0)) delete propre[k];
     if (propre.seuils && (propre.seuils.length !== 3 || !propre.seuils.every(Number.isFinite))) delete propre.seuils;
     if (propre.codesMasques) propre.codesMasques = propre.codesMasques.filter(c => CODES_SAISIE[c]);
     if (propre.codesAjoutes) propre.codesAjoutes = propre.codesAjoutes.filter(c => CODES_SAISIE[c]);

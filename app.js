@@ -1,5 +1,5 @@
 ﻿'use strict';
-const VERSION_APP = '0.84.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.88.3'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -604,6 +604,7 @@ function rendreVue() {
   const c = classeActive();
   if (ui.vue === 'outils') { v.innerHTML = htmlOutils(c); return; } // (certains outils marchent sans classe)
   if (ui.vue === 'agenda') { v.innerHTML = htmlAgenda(); apresAgenda(); return; } // (toutes les classes : agenda.js)
+  if (ui.vue === 'baremes') { v.innerHTML = htmlBaremes(); return; } // (bibliothèque, sans classe : baremes.js)
   if (!c) {
     v.innerHTML = `
       <div class="vide">
@@ -668,25 +669,68 @@ async function voirAbsences(id) {
   '<span class="espace"></span><button type="button" data-fermer class="primaire">Fermer</button>');
 }
 
-// Le badge ⚠ ouvre son détail, sans ouvrir la fiche d'entraînement ni l'infobulle du nom (capture : passe avant).
+/* ---------- Alerte oublis de tenue (Notes, Leçons, Appel) ----------
+   Leçons du trimestre où l'élève a oublié sa tenue (statut sur toute la leçon, ou sur une case) ; un jour ne compte
+   qu'une fois. Même trimestre suivi que l'alerte absences ; seuils à part (⚙ Réglages → Notes). */
+
+const SEUILS_TENUE = { actif: true, orange: 2, rouge: 3 };
+
+function oublisTenue(el) {
+  const p = periodeAlerte(), annee = anneeScolaire(aujourdhui());
+  const jours = new Map();
+  for (const s of seancesDe(el.classeId)) {
+    if (!s.date || anneeScolaire(s.date) !== annee || periodeDe(s.date) !== p) continue;
+    const enCase = (s.indicateurs || []).some(ind => statutCase(Donnees.note(s.id, el.id, ind.id) || '') === 'TEN');
+    if (statutEnt(s.id, el.id) !== 'TEN' && !enCase) continue;
+    if (!jours.has(s.date)) jours.set(s.date, []);
+    jours.get(s.date).push(s.titre);
+  }
+  const n = jours.size;
+  return {
+    n, periode: periodesAnnee().find(x => x.id === p),
+    niveau: !SEUILS_TENUE.actif ? '' : n >= SEUILS_TENUE.rouge ? 'rouge' : n >= SEUILS_TENUE.orange ? 'orange' : '',
+    jours: [...jours].sort(([a], [b]) => a.localeCompare(b)),
+  };
+}
+
+function badgeTenue(el, a) {
+  if (!a.niveau) return '';
+  return ` <button class="alerte-abs alerte-tenue ${a.niveau}" data-alerte-tenue="${el.id}"
+    title="${a.n} oublis de tenue au ${a.periode?.code || 'trimestre'} — toucher pour le détail">👕 ${a.n}</button>`;
+}
+
+async function voirOublisTenue(id) {
+  const el = Donnees.get('eleves', id), a = oublisTenue(el);
+  ouvrirModale(`Oublis de tenue — ${el.nom} ${el.prenom}`, `
+    <p><b>${a.n} oubli${a.n > 1 ? 's' : ''} de tenue</b> au <b>${esc(a.periode?.code || '')}</b>
+      <span class="aide">(${esc(a.periode?.texte || '')})</span></p>
+    <ul class="liste-absences">${a.jours.map(([date, l]) => `<li><b>${dateCourte(date)}</b>
+      <span class="aide">· ${esc([...new Set(l)].join(', '))}</span></li>`).join('')}</ul>
+    <p class="aide">Alerte orange dès ${SEUILS_TENUE.orange} oublis, rouge dès ${SEUILS_TENUE.rouge}, sur le trimestre
+      (${motMin('lecons')} et appel ; un jour ne compte qu’une fois). Réglable dans ⚙ Réglages → Notes.</p>`,
+  '<span class="espace"></span><button type="button" data-fermer class="primaire">Fermer</button>');
+}
+
+// Les badges ⚠ / 👕 ouvrent leur détail, sans ouvrir la fiche d'entraînement ni l'infobulle du nom (capture : passe avant).
 document.addEventListener('click', e => {
-  const b = e.target.closest('[data-alerte-abs]');
+  const b = e.target.closest('[data-alerte-abs],[data-alerte-tenue]');
   if (!b || b.closest('dialog')) return;
   e.stopPropagation();
-  lancer(() => voirAbsences(b.dataset.alerteAbs));
+  lancer(() => (b.dataset.alerteTenue ? voirOublisTenue(b.dataset.alerteTenue) : voirAbsences(b.dataset.alerteAbs)));
 }, true);
 
 function celluleNom(el, i) {
-  const alerte = absencesEleve(el);
+  const alerte = absencesEleve(el), tenue = oublisTenue(el);
   const infos = [
     alerte.niveau ? `⚠ ${alerte.n} jours absent, blessé ou malade au ${alerte.periode?.code}` : '',
+    tenue.niveau ? `👕 ${tenue.n} oublis de tenue au ${tenue.periode?.code}` : '',
     aPai(el) ? 'PAI' + (el.paiInfo ? ' : ' + el.paiInfo : '') : '',
     el.bep ? 'BEP' + (el.bepInfo ? ' : ' + el.bepInfo : '') : '',
     el.remarque, statutDispense(el)?.texte,
     el.adapte ? 'Pratique adaptée : ' + (el.adaptation || '(particularités non précisées)') : '',
   ].filter(Boolean).join('\n');
-  return `<th class="col-nom${alerte.niveau ? ' alerte-' + alerte.niveau : ''}" data-nom-eleve="${el.id}" title="${esc(infos)}"><span class="num-eleve">${i + 1}</span><span class="nom-eleve">${esc(el.nom)} ${esc(el.prenom)}</span>`
-    + badgeAlerte(el, alerte)
+  return `<th class="col-nom${alerte.niveau ? ' alerte-' + alerte.niveau : ''}" data-nom-eleve="${el.id}" title="${esc(infos)}"><span class="num-eleve">${i + 1}</span>${Trombi.mini(el, 'mini-photo photo-grille')}<span class="nom-eleve">${esc(el.nom)} ${esc(el.prenom)}</span>`
+    + badgeAlerte(el, alerte) + badgeTenue(el, tenue)
     + (aPai(el) ? ` <button class="badge-pai" data-voir-besoin="pai" data-id="${el.id}" title="Voir le PAI">PAI</button>` : '')
     + (el.bep ? ` <button class="badge-bep" data-voir-besoin="bep" data-id="${el.id}" title="Voir le BEP">BEP</button>` : '')
     + badgeDispenseGrille(el)
@@ -757,7 +801,7 @@ function htmlNotes(c) {
           <th class="col-nom" rowspan="2">Élève</th>
           ${evals.map(e => {
             const comp = resumeCompetences(e);
-            const nb = competencesEval(e).length;
+            const nb = nbSousColonnes(e);
             return `
             <th class="col-eval${classeCa(e)}" data-eval-entete="${e.id}" ${nb ? `colspan="${nb + 1}"` : 'rowspan="2"'}
               title="${esc(comp.detail ? comp.detail + '\n\n(cliquer pour modifier)' : 'Modifier l’évaluation')}">
@@ -770,8 +814,9 @@ function htmlNotes(c) {
           ${colsMoy.map(m => `<th class="col-moy${classeAnnee(m)}" rowspan="2">${m.titre}<div class="eval-info">${esc(m.info)}</div></th>`).join('')}
         </tr>
         <tr class="entete-comp">
-          ${evals.filter(e => competencesEval(e).length).map(e => `
-            <th class="sous-note${classeCa(e)}">Note</th>
+          ${evals.filter(e => nbSousColonnes(e)).map(e => `
+            ${partiesEval(e).map(p => `<th class="sous-comp sous-partie${classeCa(e)}" title="${esc(p.nom)} : sur ${fmt(p.max)} pts">${esc(resumeTexte(p.nom, 14))}<div class="eval-info">/${fmt(p.max)}</div></th>`).join('')}
+            <th class="sous-note${classeCa(e)}">${partiesEval(e).length ? `Total<div class="eval-info">/${fmt(e.max)}</div>` : 'Note'}</th>
             ${competencesEval(e).map(a => `<th class="sous-comp${classeCa(e)}" title="${esc(a.code + ' : ' + a.texte)}">${esc(a.code)}</th>`).join('')}`).join('')}
         </tr></thead>
         <tbody>
@@ -784,15 +829,19 @@ function htmlNotes(c) {
               const nomEleve = el.nom + ' ' + el.prenom;
               // Case vide un jour où l'élève était dispensé : on le suggère discrètement.
               const suggestion = !v && dispenseLe(el, e.date) ? ' placeholder="disp."' : '';
+              // Note décomposée : une case par partie, puis le total (calculé, pas saisi).
+              if (partiesEval(e).length) {
+                return partiesEval(e).map((p, k) => {
+                  const vp = valeurPartie(e, el.id, p);
+                  return `<td class="${k ? '' : 'debut-eval' + classeCa(e)}"><input class="cellule cellule-partie${classeCode(vp)}"${k ? '' : suggestion} value="${esc(affichage(vp))}" size="4"
+                    data-eval="${e.id}" data-eleve="${el.id}" data-partie="${esc(p.id)}" data-ligne="${i}" data-col="${col++}" inputmode="decimal" autocomplete="off" enterkeyhint="next"
+                    aria-label="${esc(nomEleve + ' — ' + e.titre + ' — ' + p.nom + ' (sur ' + fmt(p.max) + ')')}"></td>`;
+                }).join('') + `<td class="total-parties${classeCode(v)}" data-total-parties="${e.id}|${el.id}" title="Total des parties (sur ${fmt(e.max)})">${esc(affichage(v))}</td>`
+                + celluleDegres(e, el, i, () => col++);
+              }
               return `<td class="debut-eval${classeCa(e)}"><input class="cellule${classeCode(v)}"${suggestion} value="${esc(affichage(v))}" size="${taillesNotes.get(e.id)}" data-eval="${e.id}" data-eleve="${el.id}"
                 data-ligne="${i}" data-col="${col++}" inputmode="decimal" autocomplete="off" enterkeyhint="next" aria-label="${esc(nomEleve + ' — ' + e.titre)}"></td>
-                ${competencesEval(e).map(a => {
-                  const n = Donnees.note(e.id, el.id, a.id);
-                  const auto = n && Donnees.noteComplete(e.id, el.id, a.id)?.auto;
-                  return `<td class="td-niveau"><button class="niveau${n ? ' n' + n : ''}${auto ? ' auto' : ''}" data-niveau data-eval="${e.id}" data-eleve="${el.id}" data-attendu="${esc(a.id)}"
-                    data-ligne="${i}" data-col="${col++}" title="${esc(a.code + (n ? ' — ' + nomNiveau(n) + (auto ? ' (pré-rempli d’après la note)' : '') : ' — non évalué'))}"
-                    aria-label="${esc(nomEleve + ' — ' + a.code + ' — ' + (n ? nomNiveau(n) : 'non évalué'))}">${n}</button></td>`;
-                }).join('')}`;
+                ${celluleDegres(e, el, i, () => col++)}`;
             }).join('')}
             ${colsMoy.map(m => `<td class="col-moy${classeAnnee(m)}" data-moy-eleve="${el.id}" data-moy-col="${m.id}"></td>`).join('')}
           </tr>`;
@@ -800,19 +849,34 @@ function htmlNotes(c) {
           ${evals.some(e => competencesEval(e).length) ? `
           <tr class="ligne-repartition">
             <th class="col-nom">Répartition</th>
-            ${evals.map(e => `<td></td>
+            ${evals.map(e => `${partiesEval(e).map(() => '<td></td>').join('')}<td></td>
               ${competencesEval(e).map(a => `<td class="bilan-comp" data-bilan="${e.id}|${esc(a.id)}"></td>`).join('')}`).join('')}
             ${colsMoy.map(m => `<td class="col-moy${classeAnnee(m)}"></td>`).join('')}
           </tr>` : ''}
         </tbody>
         <tfoot><tr>
           <th class="col-nom">Moyenne de la classe</th>
-          ${evals.map(e => `<td data-moy-eval="${e.id}"></td>
+          ${evals.map(e => `${partiesEval(e).map(p => `<td class="moy-partie" data-moy-partie="${e.id}|${esc(p.id)}"></td>`).join('')}<td data-moy-eval="${e.id}"></td>
             ${competencesEval(e).map(a => `<td class="bilan-mini" data-bilan-barre="${e.id}|${esc(a.id)}"></td>`).join('')}`).join('')}
           ${colsMoy.map(m => `<td class="col-moy${classeAnnee(m)}" data-moy-classe="${m.id}"></td>`).join('')}
         </tr></tfoot>
       </table>
     </div>`;
+}
+
+// Colonnes sous l'en-tête d'une évaluation, en plus de la note : parties de la note, compétences.
+const nbSousColonnes = e => partiesEval(e).length + competencesEval(e).length;
+
+// Cases des degrés de maîtrise d'un élève sur une évaluation (col() : numéro de colonne suivant, pour le clavier).
+function celluleDegres(e, el, i, col) {
+  const nomEleve = el.nom + ' ' + el.prenom;
+  return competencesEval(e).map(a => {
+    const n = Donnees.note(e.id, el.id, a.id);
+    const auto = n && Donnees.noteComplete(e.id, el.id, a.id)?.auto;
+    return `<td class="td-niveau"><button class="niveau${n ? ' n' + n : ''}${auto ? ' auto' : ''}" data-niveau data-eval="${e.id}" data-eleve="${el.id}" data-attendu="${esc(a.id)}"
+      data-ligne="${i}" data-col="${col()}" title="${esc(a.code + (n ? ' — ' + nomNiveau(n) + (auto ? ' (pré-rempli d’après la note)' : '') : ' — non évalué'))}"
+      aria-label="${esc(nomEleve + ' — ' + a.code + ' — ' + (n ? nomNiveau(n) : 'non évalué'))}">${n}</button></td>`;
+  }).join('');
 }
 
 // Couleur du champ d'apprentissage (CA1 rouge, CA2 vert, CA3 violet, CA4 bleu, CA5 orange).
@@ -970,6 +1034,11 @@ function majMoyennes() {
   for (const e of evals) {
     const td = $(`[data-moy-eval="${e.id}"]`);
     if (td) td.textContent = fmt(moyenneEval(e, eleves));
+    for (const p of partiesEval(e)) {
+      const tdP = $(`[data-moy-partie="${e.id}|${CSS.escape(p.id)}"]`);
+      const notes = eleves.map(el => nombre(Donnees.note(e.id, el.id, clePartie(p)))).filter(n => n !== null);
+      if (tdP) { tdP.textContent = fmt(notes.length ? notes.reduce((a, b) => a + b, 0) / notes.length : null); tdP.title = `Moyenne de la classe : ${p.nom} (sur ${fmt(p.max)})`; }
+    }
   }
 }
 
@@ -1070,10 +1139,11 @@ function texteChangements(ch) {
     classes: ['classe', 'classes', 'f'], eleves: ['élève', 'élèves', 'm'], evals: ['évaluation', 'évaluations', 'f'],
     seances: [motMin('lecon'), motMin('lecons'), 'f'], documents: ['document joint', 'documents joints', 'm'],
     suivis: ['observation', 'observations', 'f'], agenda: ['élément d’agenda', 'éléments d’agenda', 'm'], reglages: ['réglage', 'réglages', 'm'],
+    baremes: ['barème', 'barèmes', 'm'],
   };
   const parts = [];
   let supprimes = 0;
-  for (const col of ['classes', 'eleves', 'notes', 'evals', 'seances', 'suivis', 'documents', 'agenda', 'reglages']) {
+  for (const col of ['classes', 'eleves', 'notes', 'evals', 'seances', 'suivis', 'documents', 'agenda', 'baremes', 'reglages']) {
     const r = ch?.[col];
     if (!r) continue;
     supprimes += r.s;
@@ -1179,7 +1249,7 @@ for (const fin of ['pointerup', 'pointercancel']) {
 const cellule = (ligne, col) => $(`.grille [data-ligne="${ligne}"][data-col="${col}"]`);
 
 // Une case de grille : note d'évaluation ou performance d'entraînement.
-const valider = input => (input.dataset.seance ? validerCelluleEnt(input) : validerCellule(input));
+const valider = input => (input.dataset.seance ? validerCelluleEnt(input) : input.dataset.partie ? validerPartie(input) : validerCellule(input));
 
 function validerCellule(input) {
   const ev = Donnees.get('evals', input.dataset.eval);
@@ -1198,6 +1268,66 @@ function validerCellule(input) {
   if (valeur !== avant) Donnees.ecrireNote(ev.id, eleveId, valeur);
   input.value = affichage(valeur);
   input.className = 'cellule' + classeCode(valeur);
+  preremplirDegres(ev, eleveId);
+  majMoyennes();
+  majBilans();
+}
+
+/* ---------- Note décomposée en parties (ex. 7 pts investissement + 3 pts exécution + 10 pts performance) ----------
+   e.parties : [{ id, nom, max }] ; « Noté sur » = total des parties. Note d'une partie → notes[éval|élève|part:id] ;
+   la note de l'évaluation (moyennes, degrés, Excel…) = somme des parties, recalculée à chaque saisie.
+   Un code (ABS, DISP…) tapé dans une partie s'applique à toute l'évaluation. */
+
+const partiesEval = e => e.parties || [];
+const clePartie = p => 'part:' + p.id;
+const arrondi2 = x => Math.round(x * 100) / 100;
+
+// Ligne d'une partie dans la fenêtre de l'évaluation.
+const lignePartie = p => `<div class="ligne ligne-partie"><input type="hidden" name="partieId" value="${esc(p.id)}">
+  <label>Intitulé<input name="partieNom" value="${esc(p.nom)}" maxlength="60" placeholder="ex. Investissement"></label>
+  <label class="etroit">Points<input type="number" name="partieMax" min="0.25" step="any" value="${p.max}" placeholder="ex. 7"></label>
+  <button type="button" class="icone-petit" data-suppr-partie aria-label="Retirer cette partie" title="Retirer cette partie">🗑</button></div>`;
+
+function totalParties(e, eleveId) {
+  const vals = partiesEval(e).map(p => nombre(Donnees.note(e.id, eleveId, clePartie(p))));
+  return vals.some(v => v !== null) ? String(arrondi2(vals.reduce((s, v) => s + (v || 0), 0))) : '';
+}
+
+// Valeur affichée dans la case d'une partie : sa note, ou le code de toute l'évaluation (ABS…).
+function valeurPartie(e, eleveId, p) {
+  const note = Donnees.note(e.id, eleveId);
+  return nombre(note) === null && note ? note : Donnees.note(e.id, eleveId, clePartie(p));
+}
+
+function majLigneParties(e, eleveId) {
+  for (const p of partiesEval(e)) {
+    const i = $(`.grille input[data-eval="${e.id}"][data-eleve="${eleveId}"][data-partie="${CSS.escape(p.id)}"]`);
+    if (i) { const v = valeurPartie(e, eleveId, p); i.value = affichage(v); i.className = 'cellule cellule-partie' + classeCode(v); }
+  }
+  const td = $(`[data-total-parties="${e.id}|${eleveId}"]`);
+  if (td) { const v = Donnees.note(e.id, eleveId); td.textContent = affichage(v); td.className = 'total-parties' + classeCode(v); }
+}
+
+function validerPartie(input) {
+  const ev = Donnees.get('evals', input.dataset.eval), p = partiesEval(ev).find(x => x.id === input.dataset.partie);
+  const eleveId = input.dataset.eleve;
+  if (!p) return;
+  const brut = input.value.trim().toUpperCase().replace(',', '.');
+  const note = Donnees.note(ev.id, eleveId);
+  if (RACCOURCIS[brut]) {
+    // Code : pour toute l'évaluation (les points des parties sont effacés).
+    for (const x of partiesEval(ev)) if (Donnees.note(ev.id, eleveId, clePartie(x))) Donnees.ecrireNote(ev.id, eleveId, '', clePartie(x));
+    if (note !== RACCOURCIS[brut]) Donnees.ecrireNote(ev.id, eleveId, RACCOURCIS[brut]);
+  } else if (brut === '' || (/^\d+(\.\d+)?$/.test(brut) && +brut <= p.max)) {
+    // (Un nombre, ou la case vidée, remplace un code posé sur l'évaluation.)
+    const valeur = brut === '' ? '' : String(+brut);
+    if (valeur !== Donnees.note(ev.id, eleveId, clePartie(p))) Donnees.ecrireNote(ev.id, eleveId, valeur, clePartie(p));
+    const total = totalParties(ev, eleveId);
+    if (total !== Donnees.note(ev.id, eleveId)) Donnees.ecrireNote(ev.id, eleveId, total);
+  } else {
+    toast(`« ${input.value} » : ${p.nom} est sur ${fmt(p.max)} pts — entre de 0 à ${fmt(p.max)}, ou un code : ${lettresCodes()}.`, 'erreur');
+  }
+  majLigneParties(ev, eleveId);
   preremplirDegres(ev, eleveId);
   majMoyennes();
   majBilans();
@@ -1291,6 +1421,14 @@ async function editerEval(id) {
       <label>Noté sur<input type="number" name="max" min="1" step="any" required value="${e.max}"></label>
       <label>Coefficient<input type="number" name="coef" min="0" step="any" required value="${e.coef}"></label>
     </div>
+    <fieldset class="parties-note">
+      <legend>Décomposition de la note <span class="aide">(facultatif)</span></legend>
+      <p class="aide">Ex. 7 pts sur l’investissement, 3 pts sur l’exécution, 10 pts sur la performance : une colonne par partie
+        dans la grille, le total se calcule tout seul (c’est lui qui compte dans les moyennes).</p>
+      <div class="liste-parties">${partiesEval(e).map(lignePartie).join('')}</div>
+      <div class="ligne"><button type="button" data-ajout-partie>+ Ajouter une partie</button>
+        <span class="total-parties-eval aide"></span></div>
+    </fieldset>
     <fieldset class="competences">
       <legend>Compétences travaillées</legend>
       <div class="ligne">
@@ -1361,6 +1499,28 @@ async function editerEval(id) {
   });
   majChamps(caInitial);
 
+  // Parties de la note : ajout / retrait de lignes ; « Noté sur » = total des points des parties.
+  const listeParties = $('.liste-parties', d), champMax = $('[name="max"]', d);
+  const majTotalParties = () => {
+    const points = [...listeParties.querySelectorAll('[name="partieMax"]')].map(x => +x.value).filter(x => x > 0);
+    const total = arrondi2(points.reduce((a, b) => a + b, 0));
+    champMax.readOnly = points.length > 0;
+    if (points.length) champMax.value = total;
+    $('.total-parties-eval', d).textContent = points.length ? `Total : ${fmt(total)} pts → l’évaluation est notée sur ${fmt(total)}.` : '';
+    champMax.dispatchEvent(new Event('input', { bubbles: true })); // (conversion des seuils)
+  };
+  d.addEventListener('click', ev => {
+    if (ev.target.closest('[data-ajout-partie]')) {
+      listeParties.insertAdjacentHTML('beforeend', lignePartie({ id: '', nom: '', max: '' }));
+      listeParties.lastElementChild.querySelector('[name="partieNom"]').focus();
+    } else if (ev.target.closest('[data-suppr-partie]')) {
+      ev.target.closest('.ligne-partie').remove();
+    } else return;
+    majTotalParties();
+  });
+  d.addEventListener('input', ev => { if (ev.target.name === 'partieMax') majTotalParties(); });
+  majTotalParties();
+
   // Conversion des seuils dans le barème de l'évaluation, mise à jour pendant la saisie.
   d.addEventListener('input', ev => {
     if (!['max', 's2', 's3', 's4'].includes(ev.target.name)) return;
@@ -1378,9 +1538,15 @@ async function editerEval(id) {
     // On ne garde que les attendus du référentiel et du champ retenus (compétences ajoutées dans les réglages comprises).
     const toutes = !!REFERENTIEL.refs[r.data.referentiel]?.toutes;
     const duChamp = x => { const a = REFERENTIEL.attendu(x); return a?.refId === r.data.referentiel && (toutes || a.ca === r.data.ca); };
+    // Parties de la note (lignes sans points ignorées ; sans intitulé : « Partie 1 »…).
+    const noms = r.fd.getAll('partieNom'), maxs = r.fd.getAll('partieMax'), ids = r.fd.getAll('partieId');
+    const parties = noms.map((nom, k) => ({ id: ids[k] || Donnees.nouvelId(), nom: nom.trim() || `Partie ${k + 1}`, max: +maxs[k] }))
+      .filter(p => p.max > 0);
+    const max = parties.length ? arrondi2(parties.reduce((s, p) => s + p.max, 0)) : +r.data.max;
     const enreg = Donnees.ecrire('evals', {
       ...e, id: e.id || Donnees.nouvelId(), classeId: c.id, cree: e.cree || Date.now(),
-      titre: r.data.titre.trim(), apsa: r.data.apsa.trim(), date: r.data.date, max: +r.data.max, coef: +r.data.coef,
+      parties: parties.length ? parties : undefined,
+      titre: r.data.titre.trim(), apsa: r.data.apsa.trim(), date: r.data.date, max, coef: +r.data.coef,
       referentiel: r.data.referentiel, ca: toutes ? '' : r.data.ca,
       competences: r.data.ca || toutes ? r.fd.getAll('competence').filter(duChamp) : [],
       competencesLibres: r.data.competencesLibres.trim(),
@@ -1388,6 +1554,19 @@ async function editerEval(id) {
       // Mêmes seuils que la classe : l'évaluation suit la classe (et ses futurs changements)
       seuils: (s => (memesSeuils(s, seuilsClasse(c)) ? undefined : s))([+r.data.s2, +r.data.s3, +r.data.s4].sort((x, y) => x - y)),
     });
+    // Parties retirées : leurs points sont effacés ; les totaux des élèves déjà notés par parties sont recalculés.
+    // (Plus aucune partie : les totaux restent, comme des notes ordinaires.)
+    const gardees = new Set(parties.map(clePartie));
+    const notesParties = n => n.evalId === enreg.id && n.attendu?.startsWith('part:');
+    const notesParEleve = new Set(Donnees.liste('notes', n => notesParties(n) && n.valeur !== '').map(n => n.eleveId));
+    supprimerNotes(n => notesParties(n) && !gardees.has(n.attendu));
+    if (parties.length) {
+      for (const el of elevesDe(c.id)) {
+        const note = Donnees.note(enreg.id, el.id), total = totalParties(enreg, el.id);
+        // Seulement les élèves notés par parties (une note entrée avant la décomposition reste telle quelle).
+        if (notesParEleve.has(el.id) && nombre(note) !== null && total !== note) Donnees.ecrireNote(enreg.id, el.id, total);
+      }
+    }
     // Notes déjà saisies (ou seuils modifiés) : on met à jour les degrés vides ou pré-remplis.
     for (const el of elevesDe(c.id)) preremplirDegres(enreg, el.id);
     // Date hors de la période affichée : l'évaluation disparaîtrait de la grille sans explication.
@@ -2353,6 +2532,9 @@ document.addEventListener('keydown', e => {
       const ind = Donnees.get('seances', t.dataset.seance)?.indicateurs.find(x => x.id === t.dataset.indic);
       const v = Donnees.note(t.dataset.seance, t.dataset.eleve, t.dataset.indic), sc = statutCase(v);
       t.value = statut ? STATUTS_ENT[statut] : sc ? STATUTS_ENT[sc] : afficherValeur(ind, v);
+    } else if (t.dataset.partie) {
+      const ev = Donnees.get('evals', t.dataset.eval), p = partiesEval(ev).find(x => x.id === t.dataset.partie);
+      t.value = p ? affichage(valeurPartie(ev, t.dataset.eleve, p)) : '';
     } else {
       t.value = affichage(Donnees.note(t.dataset.eval, t.dataset.eleve));
     }

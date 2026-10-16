@@ -342,8 +342,9 @@ function htmlEntrainement(c) {
 }
 
 // Largeur d'une colonne (en caractères) : la plus longue valeur saisie, avec un minimum selon le type
-// (une colonne vide garde la place d'un temps « 3:45,2 », d'une distance « 4,25 »…). Les textes libres restent larges.
-const LARGEUR_MIN_TYPE = { temps: 6, distance: 5, nombre: 4 };
+// (une colonne vide garde la place d'un temps « 3:45,2 », d'une distance « 4,25 »…). Un texte libre s'élargit
+// avec ce qui est écrit, sans dépasser 22 caractères (la suite se lit dans la case, et dans l'infobulle).
+const LARGEUR_MIN_TYPE = { temps: 6, distance: 5, nombre: 4, texte: 8 };
 function tailleColonne(s, ind, eleves) {
   let n = LARGEUR_MIN_TYPE[ind.type] || 4;
   for (const el of eleves) {
@@ -351,7 +352,7 @@ function tailleColonne(s, ind, eleves) {
     const t = st || sc ? STATUTS_ENT[st || sc] : afficherValeur(ind, v);
     n = Math.max(n, String(t || '').length);
   }
-  return Math.min(n + 1, 16);
+  return Math.min(n + 1, ind.type === 'texte' ? 22 : 16);
 }
 
 function celluleIndic(s, ind, el, i, col, statut, premiere, taille = 6) {
@@ -378,9 +379,11 @@ function celluleIndic(s, ind, el, i, col, statut, premiere, taille = 6) {
       aria-label="${libelle}">${ICONES_MEDAILLE[v] || ''}</button></td>`;
   }
   if (ind.id === 'presence') {
-    // Colonne « Présence » de l'appel (onglet Appel) : une case verte « Présent », qu'un toucher met ou enlève.
-    return `<td${debut ? debut.replace('class="', 'class="td-presence ') : ' class="td-presence"'}><button class="cellule-presence${v ? ' oui' : ''}" data-presence ${attrs}
-      aria-pressed="${!!v}" aria-label="${libelle}">${v ? '✔ Présent' : ''}</button></td>`;
+    // Colonne « Présence » de l'appel (onglet Appel) : case verte « Présent » ou orange « Retard » (présent, arrivé en retard) ;
+    // un toucher fait défiler vide → Présent → Retard → vide.
+    const retard = v === 'Retard';
+    return `<td${debut ? debut.replace('class="', 'class="td-presence ') : ' class="td-presence"'}><button class="cellule-presence${v ? (retard ? ' retard' : ' oui') : ''}" data-presence ${attrs}
+      aria-pressed="${!!v}" aria-label="${libelle}">${v ? (retard ? '⏰ Retard' : '✔ Présent') : ''}</button></td>`;
   }
   if (ind.type === 'choix') {
     return `<td${debut}><select class="cellule-choix" ${attrs} aria-label="${libelle}">
@@ -389,7 +392,7 @@ function celluleIndic(s, ind, el, i, col, statut, premiere, taille = 6) {
   }
   const suggestion = !v && premiere && dispenseLe(el, s.date) ? ' placeholder="disp."' : '';
   const clavier = ind.type === 'distance' || ind.type === 'nombre' ? 'decimal' : 'text';
-  return `<td${debut}><input class="cellule${ind.type === 'texte' ? ' cellule-texte' : ''}"${suggestion} value="${esc(afficherValeur(ind, v))}" ${attrs}${ind.type === 'texte' ? '' : sz}
+  return `<td${debut}><input class="cellule${ind.type === 'texte' ? ' cellule-texte' : ''}"${suggestion} value="${esc(afficherValeur(ind, v))}" ${attrs}${sz}${ind.type === 'texte' && v ? ` title="${esc(v)}"` : ''}
     inputmode="${clavier}" autocomplete="off" enterkeyhint="next" aria-label="${libelle}"></td>`;
 }
 
@@ -593,16 +596,20 @@ function majStatsEnt() {
         + `${valeurs.length} élève${valeurs.length > 1 ? 's' : ''} renseigné${valeurs.length > 1 ? 's' : ''} sur ${nbPresents} présent${nbPresents > 1 ? 's' : ''}\n${resumeStatuts}`
         + (codesCase.length ? `\nSur cette colonne seulement : ${resumer(codesCase)}` : '');
       // Ligne « Classe » (collée en bas) : l'essentiel, sur une ligne.
-      td.replaceChildren();
-      if (bilan.barre) td.append(bilan.barre.cloneNode(true));
-      td.append(bilan.court);
+      // (dans un bloc .bilan-ent : ces lignes suivent la largeur de la colonne sans l'élargir, voir style.css)
+      const bloc = () => Object.assign(document.createElement('div'), { className: 'bilan-ent' });
+      const b = bloc();
+      if (bilan.barre) b.append(bilan.barre.cloneNode(true));
+      b.append(bilan.court);
+      td.replaceChildren(b);
       td.title = titre;
       // Ligne « Répartition » : le détail (pourcentages par degré ou par réponse, moyenne / extrêmes…).
       const rep = $(`[data-rep-indic="${s.id}|${ind.id}"]`);
       if (rep) {
-        rep.replaceChildren();
-        if (bilan.barre) rep.append(bilan.barre);
-        if (bilan.lignes) rep.append(bilan.lignes); else rep.append(bilan.court);
+        const r = bloc();
+        if (bilan.barre) r.append(bilan.barre);
+        if (bilan.lignes) r.append(bilan.lignes); else r.append(bilan.court);
+        rep.replaceChildren(r);
         rep.title = titre;
       }
     }
@@ -1489,11 +1496,12 @@ function migrerSeances() {
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-niveau-ent]');
   if (b) changerEchelleEnt(b);
-  // Case « Présence » (appel) : un toucher met ou enlève « Présent ».
+  // Case « Présence » (appel) : un toucher fait défiler vide → Présent → Retard → vide.
   const p = e.target.closest('.grille-ent [data-presence]');
   if (p) {
     const { seance, eleve, indic } = p.dataset;
-    Donnees.ecrireNote(seance, eleve, Donnees.note(seance, eleve, indic) ? '' : 'Présent', indic);
+    const suivant = { '': 'Présent', 'Présent': 'Retard' }[Donnees.note(seance, eleve, indic)] || '';
+    Donnees.ecrireNote(seance, eleve, suivant, indic);
     rafraichirEnt();
   }
 });

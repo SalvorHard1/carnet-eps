@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 // Stockage local du carnet + fusion entre appareils.
 // Chaque élément porte un horodatage `maj` : lors d'une fusion, la version la plus récente gagne.
 // Une suppression laisse une « pierre tombale » { id, supprime: true } pour se propager aux autres appareils.
@@ -7,14 +7,14 @@ const Donnees = (() => {
   // `seances` (carnet d'entraînement) est arrivée en v0.13, `reglages` (périodes de l'année…) en v0.21 :
   // absentes des fichiers plus anciens.
   // `documents` (fichiers joints aux séances) en v0.30, `suivis` (observations du prof par élève et par APSA) en v0.33,
-  // `agenda` (séquences, conseils de classe, événements de l'année) en v0.49.
-  const COLLECTIONS = ['classes', 'eleves', 'evals', 'notes', 'seances', 'reglages', 'documents', 'suivis', 'agenda'];
+  // `agenda` (séquences, conseils de classe, événements de l'année) en v0.49, `baremes` (bibliothèque de barèmes) en v0.88.
+  const COLLECTIONS = ['classes', 'eleves', 'evals', 'notes', 'seances', 'reglages', 'documents', 'suivis', 'agenda', 'baremes'];
   const COLLECTIONS_OBLIGATOIRES = ['classes', 'eleves', 'evals', 'notes'];
   const auditeurs = [];
   let db;
 
   function vide() {
-    return { schema: 1, classes: {}, eleves: {}, evals: {}, notes: {}, seances: {}, reglages: {}, documents: {}, suivis: {}, agenda: {}, meta: { horloge: 0, modifieLe: 0, dernierEnvoi: 0 } };
+    return { schema: 1, classes: {}, eleves: {}, evals: {}, notes: {}, seances: {}, reglages: {}, documents: {}, suivis: {}, agenda: {}, baremes: {}, meta: { horloge: 0, modifieLe: 0, dernierEnvoi: 0 } };
   }
 
   // Stockage dans IndexedDB (pas de limite de 5 Mo comme localStorage).
@@ -134,7 +134,7 @@ const Donnees = (() => {
      Fiches des anciennes versions (sans `majChamps`) : tous leurs champs datent de `maj`, comme avant.
      Un champ absent et jamais daté (jamais rempli de ce côté) ne fait jamais disparaître le champ de l'autre côté. */
 
-  const PAR_CHAMP = new Set(['classes', 'eleves', 'evals', 'seances', 'reglages', 'suivis', 'agenda']);
+  const PAR_CHAMP = new Set(['classes', 'eleves', 'evals', 'seances', 'reglages', 'suivis', 'agenda', 'baremes']);
   const TECHNIQUES = new Set(['id', 'maj', 'majChamps', 'majChampsPour', 'supprime']);
   const memeValeur = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
   const present = (o, f) => Object.prototype.hasOwnProperty.call(o, f) && o[f] !== undefined;

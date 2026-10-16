@@ -1,6 +1,7 @@
 'use strict';
 // Outil « 🧑‍🏫 Tableau blanc » (Outils › Matchs) : une ardoise sur fond de terrain (basket, handball, football, volley,
-// badminton, rugby, tennis, ultimate, piste d'athlétisme, quadrillage ou fond blanc). On y dessine au doigt (crayon,
+// badminton, rugby, tennis, ultimate, tennis de table, piste d'athlétisme, gymnase complet, plusieurs terrains dans
+// le gymnase — 3 volleys, 10 tables… —, quadrillage ou fond blanc). On y dessine au doigt (crayon,
 // flèches, gomme) et on y pose les têtes des élèves de la classe — photos du trombinoscope, sinon initiales —
 // cochées dans une liste, puis déplacées au doigt. Un toucher sur une tête change la couleur de son équipe.
 // Pions en plus : rouges, bleus (numérotés), ballon, plot. Tout est gardé sur cet appareil, par classe (localStorage).
@@ -31,7 +32,70 @@ const TERRAINS_TB = [
   { id: 'relais', nom: 'Relais : 4 couloirs (100 m)', L: 110, l: 28, m: 3, sol: '#c4553b', hors: '#3f9b4a', special: relaisTb },
   { id: 'bassin4', nom: 'Natation : bassin 25 m (4 couloirs)', L: 25, l: 10, m: 2, sol: '#3aa0d8', hors: '#e6e0d2', special: d => bassinTb(d, 4) },
   { id: 'bassin6', nom: 'Natation : bassin 25 m (6 couloirs)', L: 25, l: 15, m: 2, sol: '#3aa0d8', hors: '#e6e0d2', special: d => bassinTb(d, 6) },
+  // Salle omnisports de 44 × 24 m : toutes les lignes, une couleur par sport (légende en bas).
+  { id: 'gymnase', nom: 'Gymnase complet (toutes les lignes)', L: 44, l: 24, m: 1.6, sol: '#dcb886', hors: '#7d8590', special: gymnaseTb },
+  // Même salle, parquet nu (sans aucune ligne) : pour tracer soi-même un parcours, des ateliers…
+  { id: 'gymnase-vide', nom: 'Gymnase vide (sans lignes)', L: 44, l: 24, m: 1.6, sol: '#dcb886', hors: '#7d8590' },
+  // (Table de 2,74 × 1,525 m, avec l'aire de jeu autour.)
+  { id: 'tt', nom: 'Tennis de table', L: 2.74, l: 1.525, m: 1.3, sol: '#1d5fa8', hors: '#b5523b', special: tableTt },
+  // Plusieurs terrains dans le gymnase : le terrain de base répété et numéroté (voir dispositionMultiTb).
+  ...[['volley', 'Volley-ball', [2, 3, 4]], ['badminton', 'Badminton', [2, 3, 4, 6, 7]], ['tt', 'Tennis de table', [4, 6, 8, 10, 12]],
+    ['basket-demi', 'Basket (demi-terrains)', [2, 4]], ['tennis', 'Tennis', [2, 3]]]
+    .flatMap(([base, nom, nombres]) => nombres.map(n => ({ id: `${base}-x${n}`, nom: `${nom} : ${n} ${base === 'tt' ? 'tables' : 'terrains'}`,
+      multi: { base, n }, sol: '#d9b98a', hors: '#d9b98a' }))),
 ];
+
+// Gymnase : terrains superposés comme dans une vraie salle — handball (noir), basket (rouge), volley (bleu),
+// 4 badmintons en travers (vert). Chaque terrain reprend son dessin (sans les zones colorées), à sa place dans la salle.
+const SPORTS_GYMNASE = [
+  ['hand', '#1d2430', 'Handball', [[2, 2, 0]]],
+  ['basket', '#d62828', 'Basket', [[8, 4.5, 0]]],
+  ['volley', '#1e6fd9', 'Volley-ball', [[13, 7.5, 0]]],
+  // (Badminton en travers : longueur 13,4 m dans la largeur de la salle ; [x du bord droit, y du haut, rotation].)
+  ['badminton', '#2e9d4a', 'Badminton', [0, 1, 2, 3].map(k => [6.05 + 6.1 + k * 8.6, 5.3, Math.PI / 2])],
+];
+function gymnaseTb(d) {
+  const g = d.g, lignes = { ...d, remplir: () => {} }; // (lignes seulement : pas de raquette ni de zone remplies)
+  for (const [id, couleur, , places] of SPORTS_GYMNASE) {
+    const t = terrainTb(id);
+    for (const [x0, y0, rot] of places) {
+      g.save();
+      g.translate(d.X(x0), d.Y(y0)); g.rotate(rot); g.translate(-d.X(0), -d.Y(0));
+      g.strokeStyle = couleur;
+      d.rect(0, 0, t.L, t.l);
+      d.ligne(t.L / 2, 0, t.L / 2, t.l, t.filet ? 2 : 1);
+      if (id === 'basket') d.cercle(t.L / 2, t.l / 2, 1.8, couleur);
+      t.moitie(lignes);
+      g.save(); g.translate(2 * d.X(t.L / 2), 0); g.scale(-1, 1); t.moitie(lignes); g.restore();
+      g.restore();
+    }
+  }
+  // Légende, dans la bande du bas (hors des terrains).
+  const legende = SPORTS_GYMNASE.map(([, c, nom]) => [c, nom]), pas = 44 / legende.length;
+  legende.forEach(([c, nom], k) => d.texte(pas * (k + 0.5), 24 + 0.8, '— ' + nom, 1.05, c));
+}
+
+// Table de tennis de table : bords blancs, ligne médiane (double), filet.
+function tableTt(d) {
+  d.rect(0, 0, 2.74, 1.525);
+  d.ligne(0, 0.7625, 2.74, 0.7625, 0.6);
+  d.g.save(); d.g.strokeStyle = '#1d2430'; d.ligne(1.37, -0.15, 1.37, 1.675, 2.2); d.g.restore();
+}
+
+// Plusieurs terrains : n copies du terrain de base (marges comprises), en colonnes × rangées choisies pour remplir
+// au mieux un écran large (rapport proche de 1,6) ; la dernière rangée, incomplète, est centrée. Dimensions en mètres.
+function dispositionMultiTb(t) {
+  const b = defTerrainTb(t.multi.base), n = t.multi.n;
+  const w = b.L + 2 * b.m, h = b.l + 2 * b.m, gap = Math.max(0.6, w * 0.06);
+  let mieux = null;
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols);
+    if (cols > 1 && Math.ceil(n / (cols - 1)) === rows) continue; // une colonne de trop (resterait vide)
+    const L = cols * w + (cols + 1) * gap, l = rows * h + (rows + 1) * gap, ecart = Math.abs(Math.log(L / l / 1.6));
+    if (!mieux || ecart < mieux.ecart) mieux = { cols, rows, L, l, ecart };
+  }
+  return { ...mieux, w, h, gap, base: b };
+}
 
 // Ligne droite du relais : départ à 4 m du bord, arrivée 100 m plus loin ; repères tous les 10 m ;
 // zone de transmission (40 → 60 m) au milieu. Couloirs numérotés.
@@ -78,6 +142,7 @@ const terrainTb = id => TERRAINS_TB.find(t => t.id === id) || TERRAINS_TB[0];
 // Définition complète (un demi-terrain reprend son terrain de base, coupé au milieu).
 function defTerrainTb(id) {
   const t = terrainTb(id);
+  if (t.multi) { const d = dispositionMultiTb(t); return { ...t, L: d.L, l: d.l, m: 0, dispo: d }; }
   if (!t.demi) return t;
   const b = terrainTb(t.base);
   return { ...b, ...t, L: b.L / 2 + b.m * 0.6, Lplein: b.L };
@@ -140,6 +205,24 @@ function dessinerTerrainTb(cv, id) {
   const X = x => ox + x * s, Y = y => oy + y * s, epais = Math.max(1.5, W / 450);
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.fillStyle = t.hors; g.fillRect(0, 0, W, H);
+  if (t.dispo) {
+    // Plusieurs terrains : chaque terrain de base est dessiné une fois (à sa taille à l'écran), puis recopié et numéroté.
+    const { cols, rows, w, h, gap } = t.dispo, n = t.multi.n;
+    const un = document.createElement('canvas');
+    un.width = Math.max(1, Math.round(w * s)); un.height = Math.max(1, Math.round(h * s));
+    dessinerTerrainTb(un, t.multi.base);
+    for (let k = 0; k < n; k++) {
+      const r = Math.floor(k / cols), c = k % cols, dansRangee = r === rows - 1 ? n - r * cols : cols;
+      const x = gap + c * (w + gap) + ((cols - dansRangee) * (w + gap)) / 2, y = gap + r * (h + gap);
+      g.drawImage(un, Math.round(X(x)), Math.round(Y(y)));
+      // Numéro du terrain (pastille dans le coin haut gauche).
+      const rayon = Math.max(9, Math.min(w, h) * s * 0.07);
+      g.fillStyle = 'rgba(29, 36, 48, .8)'; g.beginPath(); g.arc(X(x) + rayon * 1.3, Y(y) + rayon * 1.3, rayon, 0, 2 * Math.PI); g.fill();
+      g.fillStyle = '#ffffff'; g.font = `700 ${Math.round(rayon * 1.2)}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(String(k + 1), X(x) + rayon * 1.3, Y(y) + rayon * 1.35);
+    }
+    return;
+  }
   const Lp = t.Lplein || t.L;
   g.fillStyle = t.sol; g.fillRect(X(0), Y(0), Lp * s, t.l * s);
   if (t.bandes) { g.fillStyle = 'rgba(255,255,255,.06)'; for (let k = 0; k < 12; k += 2) g.fillRect(X((Lp / 12) * k), Y(0), (Lp / 12) * s, t.l * s); }
@@ -218,7 +301,9 @@ let presentationTb = false, menuOutilTb = false; // (menuOutilTb : panneau « Ou
 function htmlTableau(c) {
   const cfg = cfgTableau(c), t = terrainTb(cfg.terrain);
   queueMicrotask(majTableau); // (une fois la page en place : taille, terrain, dessin, pions)
-  const fond = `<label>${presentationTb ? '' : 'Fond'}<select data-tb-champ="terrain" aria-label="Fond">${TERRAINS_TB.map(x => `<option value="${x.id}" ${x.id === t.id ? 'selected' : ''}>${esc(x.nom)}</option>`).join('')}</select></label>`;
+  const option = x => `<option value="${x.id}" ${x.id === t.id ? 'selected' : ''}>${esc(x.nom)}</option>`;
+  const fond = `<label>${presentationTb ? '' : 'Fond'}<select data-tb-champ="terrain" aria-label="Fond">${TERRAINS_TB.filter(x => !x.multi).map(option).join('')}
+    <optgroup label="Plusieurs terrains dans le gymnase">${TERRAINS_TB.filter(x => x.multi).map(option).join('')}</optgroup></select></label>`;
   const eleves = `<button class="primaire" data-tb="eleves" title="Choisir les élèves à placer sur le tableau">👥${presentationTb ? '' : ' Élèves'}</button>`;
   const pions = `<span class="groupe-tb" role="group" aria-label="Ajouter un pion">
         <button data-tb="pion" data-arg="rouge" title="Pion rouge (numéroté)">+ 🔴</button>
@@ -230,13 +315,16 @@ function htmlTableau(c) {
       <label class="case"><input type="checkbox" data-tb-champ="noms" ${cfg.noms ? 'checked' : ''}><span>Prénoms</span></label>`;
   const figer = `<button data-tb="figer" class="figer-tb${cfg.fige ? ' fige' : ''}" aria-pressed="${!!cfg.fige}"
         title="${cfg.fige ? 'Tableau figé : toucher pour pouvoir de nouveau dessiner et déplacer' : 'Figer le tableau : le doigt ne déplace plus rien et ne dessine plus'}">${cfg.fige ? '🔒 Figé' : '🔓 Figer'}</button>`;
-  // Un seul bouton « Outil » : il ouvre le panneau déplacer / crayon / flèche / gomme, la couleur, annuler, effacer.
-  const modeCourant = MODES_TB.find(([k]) => k === cfg.mode) || MODES_TB[0];
+  // « ✋ Déplacer » : un bouton à part, toujours à portée de doigt. Le bouton « Outil » ouvre le panneau
+  // crayon / flèche / gomme, la couleur, annuler, effacer.
+  const modeCourant = MODES_TB.find(([k]) => k === cfg.mode && k !== 'deplacer');
   const dessine = cfg.mode === 'crayon' || cfg.mode === 'fleche';
-  const outil = `<details class="menu-outil-tb${presentationTb ? ' vers-haut' : ''}" data-tb-menu ${menuOutilTb ? 'open' : ''}>
-      <summary class="bouton${cfg.mode !== 'deplacer' ? ' primaire' : ''}" title="Déplacer, crayon, flèche, gomme, couleur">${modeCourant[1].split(' ')[0]}${dessine ? `<span class="pastille-tb mini ct-${cfg.couleur}"></span>` : ''} Outil ▾</summary>
+  const deplacer = `<button data-tb="mode" data-arg="deplacer" class="${cfg.mode === 'deplacer' ? 'primaire' : ''}" aria-pressed="${cfg.mode === 'deplacer'}"
+      title="Déplacer les têtes et les pions au doigt">✋${presentationTb ? '' : ' Déplacer'}</button>`;
+  const outil = `${deplacer}<details class="menu-outil-tb${presentationTb ? ' vers-haut' : ''}" data-tb-menu ${menuOutilTb ? 'open' : ''}>
+      <summary class="bouton${modeCourant ? ' primaire' : ''}" title="Crayon, flèche, gomme, couleur">${modeCourant ? modeCourant[1].split(' ')[0] : '✏️'}${dessine ? `<span class="pastille-tb mini ct-${cfg.couleur}"></span>` : ''} Outil ▾</summary>
       <div class="panneau-outil-tb">
-        <div class="groupe-tb" role="group" aria-label="Outil">${MODES_TB.map(([k, n]) => `<button data-tb="mode" data-arg="${k}" class="${cfg.mode === k ? 'primaire' : ''}" aria-pressed="${cfg.mode === k}">${n}</button>`).join('')}</div>
+        <div class="groupe-tb" role="group" aria-label="Outil">${MODES_TB.filter(([k]) => k !== 'deplacer').map(([k, n]) => `<button data-tb="mode" data-arg="${k}" class="${cfg.mode === k ? 'primaire' : ''}" aria-pressed="${cfg.mode === k}">${n}</button>`).join('')}</div>
         <div class="groupe-tb couleurs-tb" role="group" aria-label="Couleur du crayon">${COULEURS_TB.map(([n], k) => `<button data-tb="couleur" data-arg="${k}" class="pastille-tb ct-${k}${cfg.couleur === k ? ' choisie' : ''}" title="${n}" aria-label="${n}" aria-pressed="${cfg.couleur === k}"></button>`).join('')}</div>
         <div class="groupe-tb">
           <button data-tb="annuler" title="Annuler le dernier trait" ${cfg.traits.length ? '' : 'disabled'}>↶ Annuler</button>
