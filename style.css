@@ -649,6 +649,27 @@ button.badge-disp:hover { filter: brightness(1.1); }
 .liste-fiche li { margin-bottom: 6px; }
 .priorites .critere { color: var(--texte2); font-size: 13px; }
 .obs-fiche { width: 100%; }
+/* Fiche élève des leçons : bandeau, « À retenir », tableau séance par séance */
+.bandeau-fiche { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+.puce-fiche { padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; border: 1px solid var(--bord); background: var(--surface2); }
+.puce-fiche.bien { border-color: #2e9e5b; color: #2e9e5b; }
+.puce-fiche.alerte { border-color: #d64545; color: #d64545; }
+.retenir-fiche { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.bloc-retenir { border: 1px solid var(--bord); border-radius: 10px; padding: 4px 12px 8px; }
+.bloc-retenir.travailler { border-left: 4px solid #d64545; }
+.bloc-retenir.forts { border-left: 4px solid #2e9e5b; }
+.modale-fiche .modale-corps .bloc-retenir h3 { margin-top: 6px; color: var(--texte); }
+.defile-fiche { overflow-x: auto; }
+.seances-fiche th, .seances-fiche td { text-align: center; white-space: nowrap; padding: 6px 8px; width: auto; }
+.seances-fiche tbody th, .seances-fiche thead th:first-child { text-align: left; white-space: normal; min-width: 130px; width: 35%; position: sticky; left: 0; background: var(--surface); }
+.seances-fiche thead th { font-weight: 600; font-size: 13px; }
+.seances-fiche th.col-absent { opacity: .5; }
+.seances-fiche .vide-fiche { color: var(--texte2); opacity: .5; }
+.seances-fiche .bilan-fiche { text-align: left; white-space: normal; min-width: 120px; }
+.seances-fiche .bilan-fiche .tendance { margin-left: 0; display: block; }
+.ligne-presence td, .ligne-presence th { font-size: 13px; }
+.present-fiche { color: #2e9e5b; font-weight: 700; }
+.statut-fiche { display: inline-block; padding: 0 6px; border-radius: 6px; font-size: 12px; font-weight: 700; background: var(--bord); }
 
 /* Appréciations proposées par l'appli (appreciations.js) */
 .rubriques-appr { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -817,6 +838,8 @@ button.badge-disp:hover { filter: brightness(1.1); }
 
 /* Liste de classe École Directe : aperçu et fiche « contacts » */
 .alerte-import { color: var(--attention); font-weight: 700; }
+.separer-import { display: block; margin: .4em 0 .8em; padding: .5em .7em; border: 1px solid var(--accent); border-radius: 8px; }
+.groupe-import { margin: .1em 0 .3em; font-weight: 600; }
 .infos-eleve { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 12px; }
 .infos-eleve dt { font-weight: 700; }
 .infos-eleve dd { margin: 0; }
@@ -1409,6 +1432,8 @@ button.gros { min-height: 52px; padding: 10px 22px; font-size: 18px; font-weight
 .carte-asns .medaille-carte.vide { font-size: 34px; opacity: .7; }
 .carte-asns .temps-asns { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .carte-asns .etat-asns { font-size: 14px; color: var(--texte2); }
+.carte-asns .duo-asns { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--accent-doux); color: var(--texte); }
+.carte-asns.fini .duo-asns { background: rgba(0, 0, 0, .08); color: #333; }
 .carte-asns.suivant { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-doux); }
 .carte-asns.fini.m-or { background: #fbecb0; border-color: #e5c040; color: #222; }
 .carte-asns.fini.m-argent { background: #eef1f4; border-color: #b9c1ca; color: #222; }
@@ -1767,6 +1792,17 @@ body[data-densite="aeree"] .grille .cellule-presence { height: 56px; }
 .pile-blocs { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
 .bloc-bareme { border: 1px solid var(--bord); border-radius: 12px; background: var(--surface); overflow: hidden; }
 .bloc-bareme.inactif { opacity: .55; }
+/* Import d'un barème (PDF, Word…) : vérification des blocs reconnus */
+.blocs-import { display: flex; flex-direction: column; gap: 10px; margin: 8px 0; }
+.bloc-import { border: 1px solid var(--bord); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.bloc-import.ecarte { opacity: .5; }
+.bloc-import .reglage-import, .bloc-import > .aide, .bloc-import > .table-defile { margin: 6px 10px; }
+.bloc-import .reglage-import:empty { display: none; }
+.apercu-import { font-size: 13px; }
+.apercu-texte { white-space: pre-line; }
+.alerte-import { color: #d64545; }
+.total-import { font-size: 15px; }
+.texte-lu pre { white-space: pre-wrap; max-height: 220px; overflow: auto; font-size: 12px; background: var(--surface2); padding: 8px; border-radius: 8px; }
 .tete-bloc { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; background: var(--surface2); }
 .tete-bloc .type-bloc { font-size: 20px; }
 .tete-bloc .titre-bloc { flex: 1 1 240px; min-width: 0; font-weight: 700; }
@@ -1813,3 +1849,65 @@ body[data-densite="aeree"] .grille .cellule-presence { height: 56px; }
 .grille .photo-grille { width: 28px; height: 28px; vertical-align: middle; margin: -4px 6px -4px 0; }
 body[data-densite="compacte"] .grille .photo-grille { width: 22px; height: 22px; }
 @media (max-width: 700px) { .grille .photo-grille { width: 22px; height: 22px; margin-right: 4px; } }
+/* Évaluation liée à un barème : saisie (perf, degré, palier, case) et points en petit */
+.grille .td-bareme { position: relative; min-width: 64px; }
+.grille .td-bareme .pts-partie { position: absolute; right: 3px; bottom: 1px; font-size: 10px; font-weight: 700; color: var(--accent); pointer-events: none; line-height: 1; }
+.grille .td-bareme .cellule-perf { padding-bottom: 8px; }
+.grille .cellule-palier { display: block; width: 100%; min-width: 90px; max-width: 13em; height: 44px; border: 0; background: transparent; color: var(--texte); font-size: 13px; padding: 0 4px 8px; }
+.grille .cellule-palier:focus { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-doux); }
+.grille .case-bareme { width: 34px; height: 34px; min-height: 0; padding: 0; border-radius: 8px; font-size: 18px; font-weight: 800; }
+.grille .case-bareme.oui { background: #2e9d4a; border-color: #2e9d4a; color: #fff; }
+.grille .td-total-bareme .cellule-total { font-weight: 700; }
+.modale .lien-bareme select { max-width: 100%; }
+.modale .maj-bareme { margin-top: 6px; color: var(--texte); }
+/* Fiche bilan (onglet Notes) : synthèse en toile, appréciation ciblée, dépliables */
+.synthese-fiche { display: grid; grid-template-columns: minmax(240px, 340px) 1fr; gap: 12px 18px; align-items: center; margin-bottom: 6px; }
+@media (max-width: 640px) { .synthese-fiche { grid-template-columns: 1fr; } }
+.radar-bloc { text-align: center; }
+.radar-fiche { width: 100%; max-width: 340px; color: var(--texte); }
+.valeurs-synthese { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.valeur-axe { display: flex; flex-direction: column; gap: 1px; padding: 8px 12px; border-radius: 10px; background: var(--surface2); }
+.valeur-axe span { font-size: 12px; color: var(--texte2); }
+.valeur-axe b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.valeur-axe small { font-size: 12px; color: var(--texte2); }
+.signaux-fiche { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.signal-fiche { padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--attention) 15%, var(--surface)); font-size: 13px; font-weight: 600; }
+.cats-bilan { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 8px; }
+.cat-bilan { min-height: 32px; padding: 3px 12px; border-radius: 999px; font-size: 13px; }
+.cat-bilan.actif { background: var(--accent); border-color: var(--accent); color: var(--accent-texte); font-weight: 700; }
+.depli-fiche { border: 1px solid var(--bord); border-radius: 10px; margin: 8px 0; padding: 0 12px; }
+.depli-fiche > summary { cursor: pointer; padding: 10px 0; font-weight: 700; color: var(--accent); }
+.depli-fiche[open] { padding-bottom: 10px; }
+.deux-col-fiche { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 640px) { .deux-col-fiche { grid-template-columns: 1fr; } }
+.deux-col-fiche h4 { margin: 4px 0; font-size: 14px; }
+.anonyme-fiche { align-self: center; }
+@media print {
+  #zone-impression { --texte: #111; --texte2: #555; --bord: #bbb; --surface: #fff; --surface2: #f1f4f3; --accent: #1f6f5c; --accent-doux: #e3f1ec; --accent-texte: #fff; color: #111; }
+  #zone-impression .impression-fiche h3 { font-size: 13pt; margin: 10pt 0 4pt; color: #1f6f5c; }
+  #zone-impression .depli-fiche { border: 0; padding: 0; margin: 6pt 0; break-inside: avoid; }
+  #zone-impression .depli-fiche > summary { list-style: none; padding: 2pt 0; font-size: 12pt; }
+  #zone-impression .depli-fiche > summary::-webkit-details-marker { display: none; }
+  #zone-impression .radar-fiche { max-width: 75mm; color: #111; }
+  #zone-impression .synthese-fiche { grid-template-columns: 80mm 1fr; break-inside: avoid; }
+  #zone-impression .graphique-notes { max-width: 160mm; }
+  #zone-impression .texte-appr-fiche { background: #eef6f2; border-left: 4px solid #1f6f5c; padding: 6pt 8pt; }
+}
+/* Fiche bilan : ⚙ discret sous l'appréciation (réglages des appréciations) */
+.reglages-appr-fiche { margin: 4px 0 0; }
+.reglages-appr-fiche > summary { display: inline-block; cursor: pointer; font-size: 13px; color: var(--texte2); padding: 2px 6px; border-radius: 6px; list-style: none; }
+.reglages-appr-fiche > summary::-webkit-details-marker { display: none; }
+.reglages-appr-fiche > summary small { font-size: 12px; opacity: .8; }
+.reglages-appr-fiche > summary:hover { color: var(--accent); background: var(--surface2); }
+.reglages-appr-fiche[open] > div { border-top: 1px solid var(--bord); padding-top: 8px; margin-top: 6px; } /* (dans la carte : pas de cadre en plus) */
+.puce-appr.vigilance { outline: 2px dashed color-mix(in srgb, var(--attention) 70%, transparent); outline-offset: 1px; } /* point de vigilance ajouté par l'analyse */
+
+/* Classe exemple (exemple.js) : bandeau au-dessus des onglets de la classe */
+.bandeau-exemple { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 10px; padding: 8px 12px; border: 1px dashed var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent) 8%, var(--surface)); font-size: .92em; }
+.bandeau-exemple > span { flex: 1 1 240px; }
+@media print { .bandeau-exemple { display: none; } }
+/* Relecture des appréciations (appreciations.js) */
+.relecture-appr { font-size: .85em; margin-top: 2px; }
+.relu-appr { color: #b26a00; }
+.relu-appr.ok { color: var(--accent); }
+@media print { .relecture-appr { display: none; } }

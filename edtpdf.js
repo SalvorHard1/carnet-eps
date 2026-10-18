@@ -225,7 +225,11 @@ const PdfTexte = (() => {
   /* ---------- Polices : octets → texte ---------- */
 
   const WIN = { 128: '€', 130: '‚', 132: '„', 133: '…', 134: '†', 139: '‹', 140: 'Œ', 145: '‘', 146: '’', 147: '“', 148: '”', 149: '•', 150: '–', 151: '—', 153: '™', 155: '›', 156: 'œ', 159: 'Ÿ' };
+  const MAC = 'ÄÅÇÉÑÖÜáàâäãåçéèêëíìîïñóòôöõúùûü†°¢£§•¶ß®©™´¨≠ÆØ∞±≤≥¥µ∂∑∏π∫ªºΩæø¿¡¬√ƒ≈∆«»… ÀÃÕŒœ–—“”‘’÷◊ÿŸ⁄€‹›ﬁﬂ‡·‚„‰ÂÊÁËÈÍÎÏÌÓÔÒÚÛÙıˆ˜¯˘˙˚¸˝˛ˇ';
   const GLYPHES = {
+    quotedblleft: '“', quotedblright: '”', quoteleft: '‘', quotesingle: "'", guillemotleft: '«', guillemotright: '»', bullet: '•',
+    degree: '°', Ecircumflex: 'Ê', Ocircumflex: 'Ô', Icircumflex: 'Î', Ucircumflex: 'Û', Acircumflex: 'Â', Ugrave: 'Ù',
+    greaterequal: '≥', lessequal: '≤', plus: '+', percent: '%', ellipsis: '…', nbspace: ' ', uni00A0: ' ',
     space: ' ', hyphen: '-', period: '.', comma: ',', colon: ':', semicolon: ';', slash: '/', parenleft: '(', parenright: ')',
     eacute: 'é', egrave: 'è', ecircumflex: 'ê', edieresis: 'ë', agrave: 'à', acircumflex: 'â', ccedilla: 'ç', icircumflex: 'î',
     idieresis: 'ï', ocircumflex: 'ô', ugrave: 'ù', ucircumflex: 'û', udieresis: 'ü', Eacute: 'É', Egrave: 'È', Agrave: 'À',
@@ -255,7 +259,9 @@ const PdfTexte = (() => {
         return r;
       };
       const esp = /begincodespacerange([\s\S]*?)endcodespacerange/.exec(cmap);
-      if (esp) { const m = /<([0-9a-fA-F]+)>/.exec(esp[1]); if (m) octets = Math.max(1, m[1].length / 2); }
+      // (Seules les polices composites (Type0) ont des codes sur plusieurs octets ; une police simple — TrueType, Type1 —
+      // lit toujours un octet par lettre, même si sa table ToUnicode déclare des codes <0000>…<FFFF>.)
+      if (esp && type0) { const m = /<([0-9a-fA-F]+)>/.exec(esp[1]); if (m) octets = Math.max(1, m[1].length / 2); }
       for (const bloc of cmap.matchAll(/beginbfchar([\s\S]*?)endbfchar/g)) {
         for (const m of bloc[1].matchAll(/<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]*)>/g)) table.set(parseInt(m[1], 16), versTexte(m[2]));
       }
@@ -273,6 +279,9 @@ const PdfTexte = (() => {
     }
     // Encodage simple avec /Differences (noms de glyphes)
     const enc = doc.resoudre(f.Encoding), diff = new Map();
+    // Encodage Mac (anciens fichiers faits sur Mac) : codes 128 à 255 propres au Mac (« é » = 142, « ’ » = 213…).
+    const base = enc instanceof Nom ? enc.n : doc.resoudre(enc?.BaseEncoding)?.n;
+    if (base === 'MacRomanEncoding') [...MAC].forEach((ch, k) => diff.set(128 + k, ch));
     if (enc && !(enc instanceof Nom) && enc.Differences) {
       let code = 0;
       for (const x of doc.resoudre(enc.Differences)) {
@@ -427,6 +436,11 @@ const PdfTexte = (() => {
     const args = [];
     const polices = doc.resoudre(ressources.Font) || {}, objets = doc.resoudre(ressources.XObject) || {};
     const avancer = dx => { tm = mult([1, 0, 0, 1, dx, 0], tm); };
+    let depart = null, courant = null;
+    const trait = (p, q) => {
+      const dx = Math.abs(q[0] - p[0]), dy = Math.abs(q[1] - p[1]);
+      if ((dx < 1 && dy > 3) || (dy < 1 && dx > 3)) rects.push({ x: Math.min(p[0], q[0]), y: Math.min(p[1], q[1]), w: dx, h: dy, trait: true });
+    };
     // Un texte est posé à la position courante, qui avance de sa largeur. S'il commence là où finit le texte
     // précédent de la même ligne (morceaux d'un mot coupé pour l'approche des lettres), on les recolle.
     const ecrire = b => {
@@ -434,9 +448,21 @@ const PdfTexte = (() => {
       const t = fonte ? fonte.texte(b.b) : b.b;
       const m = mult(tm, ctm), [x, y] = point(m, 0, 0), echelle = Math.hypot(m[2], m[3]) || 1;
       avancer((fonte ? fonte.largeur(b.b) : b.b.length * 0.5) * taille);
-      const [fin] = point(mult(tm, ctm), 0, 0);
+      const [fin, finY] = point(mult(tm, ctm), 0, 0);
       if (!t) return;
       const corps = Math.abs(taille * echelle) || taille, prec = items.at(-1);
+      // Texte tourné d'un quart de tour (case écrite à la verticale) : vertical = 1 s'il se lit de bas en haut, -1 de haut en bas.
+      // Ses morceaux se recollent le long de la verticale.
+      if (Math.abs(m[1]) > Math.abs(m[0]) * 2) {
+        const vertical = m[1] > 0 ? 1 : -1;
+        if (prec?.vertical === vertical && Math.abs(prec.x - x) < corps * 0.3 && Math.abs(y - prec.finY) < corps * 0.6) {
+          prec.t += (Math.abs(y - prec.finY) > corps * 0.2 && !prec.t.endsWith(' ') ? ' ' : '') + t;
+          prec.finY = finY;
+          return;
+        }
+        items.push({ x, y, t, taille: corps, fin: x, vertical, finY });
+        return;
+      }
       if (prec && Math.abs(prec.y - y) < corps * 0.3 && x >= prec.x && Math.abs(x - prec.fin) < corps * 0.6) {
         prec.t += (x - prec.fin > corps * 0.2 && !prec.t.endsWith(' ') ? ' ' : '') + t;
         prec.fin = fin;
@@ -473,6 +499,10 @@ const PdfTexte = (() => {
           }
           break;
         }
+        // Traits droits (bordures de tableaux dessinées au trait) : gardés comme rectangles très fins, marqués « trait ».
+        case 'm': if (a.length >= 2) depart = courant = point(ctm, a.at(-2), a.at(-1)); break;
+        case 'l': if (a.length >= 2 && courant) { const p = point(ctm, a.at(-2), a.at(-1)); trait(courant, p); courant = p; } break;
+        case 'h': if (courant && depart) { trait(courant, depart); courant = depart; } break;
         case 're': {
           if (a.length < 4) break;
           const [x, y, w, h] = a.slice(-4), p1 = point(ctm, x, y), p2 = point(ctm, x + w, y + h);
@@ -551,7 +581,7 @@ const EdtPdf = (() => {
       const centres = entetes.map(i => i.x + largeurTexte(i) / 2);
       const pas = centres.length > 1 ? (centres.at(-1) - centres[0]) / (centres.length - 1) : 100;
       const colonnes = entetes.map((i, k) => {
-        const r = page.rects.filter(r => r.x <= centres[k] && r.x + r.w >= centres[k] && r.w < pas * 1.3 && r.w > pas * 0.5)
+        const r = page.rects.filter(r => !r.trait && r.x <= centres[k] && r.x + r.w >= centres[k] && r.w < pas * 1.3 && r.w > pas * 0.5)
           .sort((a, b) => b.h - a.h)[0];
         return { jour: jourDe(i.t), g: r ? r.x : centres[k] - pas / 2, d: r ? r.x + r.w : centres[k] + pas / 2 };
       });
@@ -580,7 +610,7 @@ const EdtPdf = (() => {
       const dansGrille = items.filter(i => i.y < yEntete - 1 && i.x >= gGrille - 2 && i.x <= dGrille && !(heureSeule(i.t) !== null && i.x < gGrille + 2));
       const colonneDe = x => colonnes.find(c => x >= c.g - 1 && x < c.d + 1);
       const blocs = [];
-      const candidats = page.rects.filter(r => r.h > 6 && r.w > 10 && r.w < pas * 1.15 && r.y + r.h <= yEntete + 2 && r.x >= gGrille - 2 && r.x + r.w <= dGrille + 2);
+      const candidats = page.rects.filter(r => !r.trait && r.h > 6 && r.w > 10 && r.w < pas * 1.15 && r.y + r.h <= yEntete + 2 && r.x >= gGrille - 2 && r.x + r.w <= dGrille + 2);
       const pris = new Set();
       // (du plus petit au plus grand : une case gagne sur la colonne entière qui la contient)
       for (const r of candidats.sort((a, b) => a.w * a.h - b.w * b.h)) {

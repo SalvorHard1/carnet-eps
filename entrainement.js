@@ -967,54 +967,33 @@ function fleche(ind, a, b) {
 const afficherV = (ind, v) => (ind.type === 'echelle' ? pastilleDegre(v)
   : ind.medaille && ICONES_MEDAILLE[v] ? `${ICONES_MEDAILLE[v]} ${esc(v)}` : esc(afficherValeur(ind, v)));
 
+// Évolution d'une donnée (première → dernière valeur) : 'progres', 'baisse', 'stable', ou '' (pas comparable).
+// Donnée « projet » (temps annoncé, objectif…) : ce n'est pas une performance, ni progrès ni baisse.
+const sensFiche = ind => (/annonc|projet|pr[ée]vu|objectif/i.test(ind.nom) ? 0 : sensProgres(ind));
+function evolutionDonnee(d) {
+  const sens = sensFiche(d.ind);
+  if (!sens || d.valeurs.length < 2) return '';
+  const a = valeurComparable(d.ind, d.valeurs[0].v), b = valeurComparable(d.ind, d.valeurs.at(-1).v);
+  if (a === null || b === null || a < 0 || b < 0) return '';
+  return a === b ? 'stable' : (b - a) * sens > 0 ? 'progres' : 'baisse';
+}
+const MOTS_EVOLUTION = { progres: '↗ en progrès', baisse: '↘ en baisse', stable: '= stable' };
+
+// Fiche pensée pour être lue en quelques secondes pendant la leçon :
+// 1. un bandeau (présence, progrès, points à travailler) ; 2. « À retenir » (à travailler, points forts) ;
+// 3. le tableau séance par séance (une colonne par séance, datée ; une ligne par donnée, avec son bilan) ;
+// 4. ce qui a été noté en séance ; 5. mon suivi (texte libre, enregistré tout seul).
 function htmlFiche(el, apsa, seances) {
   const { donnees, statuts, presences } = parcoursEleve(el.id, seances);
   const etapes = ETAPES_SN.map(e => ({ e, d: donnees.get(e.id) })).filter(x => x.d);
-  const autres = [...donnees.values()].filter(d => !d.ind.etape);
+  // (La donnée « Présence » de l'appel a sa propre ligne en tête du tableau.)
+  const autres = [...donnees.values()].filter(d => !d.ind.etape && d.ind.id !== 'presence');
   const derniere = d => d.valeurs.at(-1)?.v || '';
   const dateCourteS = x => dateCourte(x.s.date);
-
-  // Présence
-  const absences = Object.entries(statuts).map(([code, n]) => `${n} ${STATUTS_ENT[code]}`).join(' · ');
-  let html = `<p class="fiche-presence">Présence : ${presences} séance${presences > 1 ? 's' : ''} sur ${seances.length}${absences ? ' · ' + esc(absences) : ''}</p>`;
-
-  // Savoir-nager : le parcours en un coup d'œil
-  if (etapes.length) {
-    const parcours = ETAPES_SN.filter(e => e.code.startsWith('P'));
-    const acquises = parcours.filter(e => (derniere(donnees.get(e.id) || { valeurs: [] }) || '0') >= '3').length;
-    const attestation = autres.find(d => d.ind.type === 'choix' && /attestation/i.test(d.ind.nom));
-    html += `<h3>Parcours ASNS</h3>
-      <div class="parcours-fiche">${parcours.map(e => {
-        const d = donnees.get(e.id);
-        return `<div class="etape-fiche" title="${esc(e.code + ' : ' + e.texte)}"><span>${e.code}</span>${pastilleDegre(d ? derniere(d) : '')}</div>`;
-      }).join('')}</div>
-      <p class="aide"><b>${acquises} étape${acquises > 1 ? 's' : ''} sur ${parcours.length}</b> au degré 3 ou plus (dernière évaluation)${
-        attestation && derniere(attestation) ? ` · Attestation : <b>${esc(derniere(attestation))}</b>` : ''}.</p>`;
-  }
-
-  // Acquis et évolution, donnée par donnée
   const lignes = [...etapes.map(x => x.d), ...autres].filter(d => d.ind.type !== 'texte' && d.valeurs.length);
-  if (lignes.length) {
-    html += `<h3>Acquis et évolution</h3><table class="tableau-fiche"><tbody>${lignes.map(d => {
-      const { ind, valeurs } = d;
-      const nomInd = ind.etape ? `<b>${esc(ind.nom)}</b> ${esc(texteIndic(ind))}` : esc(nomCourtIndic(ind));
-      const suite = valeurs.map(x => `<span class="valeur-suite" title="${esc(dateCourteS(x))}">${afficherV(ind, x.v)}</span>`).join('<span class="sep-suite">→</span>');
-      let extra = '';
-      if (TYPES_NUMERIQUES.includes(ind.type) && sensProgres(ind)) {
-        const nums = valeurs.map(x => nombre(x.v)).filter(n => n !== null);
-        const meilleure = sensProgres(ind) < 0 ? Math.min(...nums) : Math.max(...nums);
-        extra = `<span class="aide"> · meilleure : ${esc(afficherValeur(ind, String(meilleure)))}</span>`;
-      }
-      return `<tr><th>${nomInd}</th><td>${suite}${valeurs.length > 1 ? ' ' + fleche(ind, valeurs[0].v, valeurs.at(-1).v) : ''}${extra}</td></tr>`;
-    }).join('')}</tbody></table>`;
-  }
-
-  // Observations notées pendant les séances (données de type texte)
-  const observations = autres.filter(d => d.ind.type === 'texte').flatMap(d => d.valeurs.map(x => ({ ...x, nom: d.ind.nom })));
-  if (observations.length) {
-    html += `<h3>Observations en séance</h3><ul class="liste-fiche">${observations
-      .map(x => `<li><span class="aide">${esc(dateCourteS(x))} · ${esc(x.nom)} :</span> ${esc(x.v)}</li>`).join('')}</ul>`;
-  }
+  const evolutions = lignes.map(evolutionDonnee);
+  const nb = k => evolutions.filter(x => x === k).length;
+  const retards = seances.filter(s => !statutEnt(s.id, el.id) && Donnees.note(s.id, el.id, 'presence') === 'Retard').length;
 
   // Priorités : règles simples, dans cet ordre (une seule ligne par donnée).
   const priorites = new Map(); // clé de la donnée → { texte, baisse }
@@ -1026,32 +1005,115 @@ function htmlFiche(el, apsa, seances) {
   // 2. Autres échelles sous le degré 3.
   for (const d of autres.filter(x => x.ind.type === 'echelle')) {
     const v = derniere(d);
-    if (v && v < '3') priorites.set(cleIndic(d.ind), { texte: `<b>${esc(d.ind.nom)}</b> — degré ${v} → viser le degré 3` });
+    if (v && v < '3') priorites.set(cleIndic(d.ind), { texte: `<b>${esc(d.ind.nom)}</b> : degré ${v} → viser le degré 3` });
   }
   // 3. En baisse par rapport à la séance précédente (échelles, temps, distances) : ajouté à la ligne existante, sinon nouvelle ligne.
   for (const d of [...etapes.map(x => x.d), ...autres]) {
-    const sens = sensProgres(d.ind);
+    const sens = sensFiche(d.ind);
     if (!sens || d.valeurs.length < 2 || d.ind.type === 'choix') continue;
     const a = valeurComparable(d.ind, d.valeurs.at(-2).v), b = valeurComparable(d.ind, d.valeurs.at(-1).v);
     if (a === null || b === null || (b - a) * sens >= 0) continue;
-    const baisse = `en baisse depuis la séance précédente (${afficherV(d.ind, d.valeurs.at(-2).v)} → ${afficherV(d.ind, d.valeurs.at(-1).v)})`;
+    const baisse = `en baisse à la dernière séance (${afficherV(d.ind, d.valeurs.at(-2).v)} → ${afficherV(d.ind, d.valeurs.at(-1).v)})`;
     const cle = cleIndic(d.ind);
     if (priorites.has(cle)) priorites.get(cle).baisse = baisse;
-    else priorites.set(cle, { texte: `<b>${esc(d.ind.nom)}</b> — ${baisse}` });
+    else priorites.set(cle, { texte: `<b>${esc(d.ind.nom)}</b> : ${baisse}` });
   }
+  // Points forts : degré 4 à la dernière évaluation, meilleure performance battue à la dernière séance.
+  const forts = [];
+  for (const d of lignes) {
+    const v = derniere(d);
+    if ((d.ind.type === 'echelle') && v === '4') forts.push(`<b>${esc(d.ind.etape ? d.ind.nom + ' ' + texteIndic(d.ind) : d.ind.nom)}</b> : degré 4`);
+    else if (TYPES_NUMERIQUES.includes(d.ind.type) && sensFiche(d.ind) && d.valeurs.length > 1) {
+      const nums = d.valeurs.map(x => nombre(x.v));
+      const avant = nums.slice(0, -1).filter(n => n !== null), der = nums.at(-1);
+      if (der !== null && avant.length && avant.every(n => (der - n) * sensFiche(d.ind) > 0)) forts.push(`<b>${esc(d.ind.nom)}</b> : record battu à la dernière séance (${esc(afficherValeur(d.ind, d.valeurs.at(-1).v))})`);
+    }
+  }
+
+  // 1. Bandeau
+  const nomStatut = (code, n) => ({ ABS: 'absence', DISP: 'dispense' }[code] ? { ABS: 'absence', DISP: 'dispense' }[code] + (n > 1 ? 's' : '') : STATUTS_ENT[code].toLocaleLowerCase('fr'));
+  const absences = Object.entries(statuts).map(([code, n]) => `${n} ${esc(nomStatut(code, n))}`);
+  const puce = (classe, texte, titre = '') => `<span class="puce-fiche ${classe}"${titre ? ` title="${esc(titre)}"` : ''}>${texte}</span>`;
+  let html = `<div class="bandeau-fiche">
+    ${puce(absences.length ? 'neutre' : 'bien', `📅 Présent ${presences}/${seances.length}${absences.length ? ' · ' + absences.join(', ') : ''}${retards ? ` · ${retards} retard${retards > 1 ? 's' : ''}` : ''}`)}
+    ${nb('progres') ? puce('bien', `↗ ${nb('progres')} en progrès`, 'Depuis la première séance') : ''}
+    ${nb('baisse') ? puce('alerte', `↘ ${nb('baisse')} en baisse`, 'Depuis la première séance') : ''}
+    ${priorites.size ? puce('alerte', `⚠ ${priorites.size} à travailler`) : lignes.length ? puce('bien', '✔ Rien d’urgent') : ''}
+  </div>`;
+
+  // 2. À retenir
   const jamais = etapes.length ? ETAPES_SN.filter(e => e.code.startsWith('P') && !donnees.get(e.id)?.valeurs.length).map(e => e.code) : [];
-  html += `<h3>À travailler en priorité</h3>${priorites.size
+  html += `<div class="retenir-fiche">
+    <div class="bloc-retenir ${priorites.size ? 'travailler' : ''}"><h3>⚠ À travailler en priorité</h3>${priorites.size
     ? `<ol class="liste-fiche priorites">${[...priorites.values()].map(p => `<li>${p.texte}${p.baisse ? ` <span class="tendance regres">↘ ${p.baisse}</span>` : ''}${
       p.critere ? `<br><span class="critere">${esc(p.critere)}</span>` : ''}</li>`).join('')}</ol>`
     : `<p class="aide">${!lignes.length ? `Pas encore de données pour cet élève ${esc(mot('dansCetteActivite'))}.`
       : lignes.some(d => d.ind.type === 'echelle') ? 'Rien sous le degré 3 ni en baisse : consolider, et viser l’aisance (degré 4).'
-        : 'Pas de baisse depuis la séance précédente. (Sans degré de maîtrise relevé ' + mot('dansCetteActivite') + ', la fiche ne propose pas d’autre priorité : appuie-toi sur l’évolution des performances.)'}</p>`}
-    ${jamais.length ? `<p class="aide">Pas encore évaluées : ${jamais.join(', ')}.</p>` : ''}`;
+        : 'Rien en baisse à la dernière séance.'}</p>`}
+      ${jamais.length ? `<p class="aide">Pas encore évaluées : ${jamais.join(', ')}.</p>` : ''}</div>
+    <div class="bloc-retenir forts"><h3>⭐ Points forts</h3>${forts.length
+    ? `<ul class="liste-fiche">${forts.map(f => `<li>${f}</li>`).join('')}</ul>`
+    : '<p class="aide">Pas encore de degré 4 ni de record battu à la dernière séance.</p>'}</div>
+  </div>`;
+
+  // Savoir-nager : le parcours en un coup d'œil
+  if (etapes.length) {
+    const parcours = ETAPES_SN.filter(e => e.code.startsWith('P'));
+    const acquises = parcours.filter(e => (derniere(donnees.get(e.id) || { valeurs: [] }) || '0') >= '3').length;
+    const attestation = autres.find(d => d.ind.type === 'choix' && /attestation/i.test(d.ind.nom));
+    html += `<h3>🏊 Parcours ASNS</h3>
+      <div class="parcours-fiche">${parcours.map(e => {
+        const d = donnees.get(e.id);
+        return `<div class="etape-fiche" title="${esc(e.code + ' : ' + e.texte)}"><span>${e.code}</span>${pastilleDegre(d ? derniere(d) : '')}</div>`;
+      }).join('')}</div>
+      <p class="aide"><b>${acquises} étape${acquises > 1 ? 's' : ''} sur ${parcours.length}</b> au degré 3 ou plus (dernière évaluation)${
+        attestation && derniere(attestation) ? ` · Attestation : <b>${esc(derniere(attestation))}</b>` : ''}.</p>`;
+  }
+
+  // 3. Séance par séance : une colonne par séance, une ligne par donnée, et le bilan au bout.
+  if (seances.length) {
+    const statutDe = s => statutEnt(s.id, el.id);
+    const cellule = (d, s) => {
+      if (statutDe(s)) return '<td class="vide-fiche"></td>';
+      const brut = Donnees.note(s.id, el.id, d.ind.id) || '', sc = statutCase(brut);
+      if (sc) return `<td><span class="statut-fiche" title="${esc(STATUTS_ENT[sc])}">${esc(sc)}</span></td>`;
+      return brut ? `<td>${afficherV(d.ind, brut)}</td>` : '<td class="vide-fiche">·</td>';
+    };
+    const bilan = (d, evo) => {
+      let t = evo ? `<span class="tendance ${evo === 'progres' ? 'progres' : evo === 'baisse' ? 'regres' : ''}">${MOTS_EVOLUTION[evo]}</span>` : '';
+      if (TYPES_NUMERIQUES.includes(d.ind.type) && sensFiche(d.ind) && d.valeurs.length > 1) {
+        const nums = d.valeurs.map(x => nombre(x.v)).filter(n => n !== null);
+        if (nums.length) t += `<span class="aide">meilleure : ${esc(afficherValeur(d.ind, String(sensFiche(d.ind) < 0 ? Math.min(...nums) : Math.max(...nums))))}</span>`;
+      }
+      return t;
+    };
+    const presence = s => {
+      const st = statutDe(s);
+      if (st) return `<span class="statut-fiche" title="${esc(STATUTS_ENT[st])}">${esc(st)}</span>`;
+      return Donnees.note(s.id, el.id, 'presence') === 'Retard' ? '<span title="Retard">⏰</span>' : '<span class="present-fiche" title="Présent">✔</span>';
+    };
+    html += `<h3>📋 Séance par séance</h3>
+      <div class="defile-fiche"><table class="tableau-fiche seances-fiche">
+        <thead><tr><th></th>${seances.map((s, k) => `<th class="${statutDe(s) ? 'col-absent' : ''}" title="${esc(s.titre || '')}">L${k + 1}<br><span class="aide">${esc(dateCourte(s.date))}</span></th>`).join('')}<th>Bilan</th></tr></thead>
+        <tbody>
+          <tr class="ligne-presence"><th>Présence</th>${seances.map(s => `<td>${presence(s)}</td>`).join('')}<td></td></tr>
+          ${lignes.map((d, k) => `<tr><th>${d.ind.etape ? `<b>${esc(d.ind.nom)}</b> ${esc(texteIndic(d.ind))}` : esc(nomCourtIndic(d.ind))}</th>
+            ${seances.map(s => cellule(d, s)).join('')}<td class="bilan-fiche">${bilan(d, evolutions[k])}</td></tr>`).join('')}
+        </tbody></table></div>
+      ${lignes.length ? '' : '<p class="aide">Aucune donnée relevée pour l’instant.</p>'}`;
+  }
+
+  // 4. Observations notées pendant les séances (données de type texte)
+  const observations = autres.filter(d => d.ind.type === 'texte').flatMap(d => d.valeurs.map(x => ({ ...x, nom: d.ind.nom })));
+  if (observations.length) {
+    html += `<h3>💬 Noté pendant les séances</h3><ul class="liste-fiche">${observations
+      .map(x => `<li><span class="aide">${esc(dateCourteS(x))}${/^observations?$/i.test(x.nom.trim()) ? '' : ' · ' + esc(x.nom)} :</span> ${esc(x.v)}</li>`).join('')}</ul>`;
+  }
 
   // Observations du prof (enregistrées dans le carnet)
   const suivi = Donnees.get('suivis', idSuivi(el.id, apsa));
-  html += `<h3>Mes observations</h3>
-    <textarea class="obs-fiche" data-obs rows="4" placeholder="Objectifs fixés avec l’élève, points d’appui, ce qui l’aide…">${esc(suivi?.texte || '')}</textarea>
+  html += `<h3>✍ Mon suivi <span class="aide">(enregistré tout seul)</span></h3>
+    <textarea class="obs-fiche" data-obs rows="3" placeholder="Objectifs fixés avec l’élève, points d’appui, ce qui l’aide…">${esc(suivi?.texte || '')}</textarea>
     ${suivi?.texte ? `<p class="aide">Modifié le ${dateHeure(suivi.maj)}</p>` : ''}`;
   return html;
 }

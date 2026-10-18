@@ -55,20 +55,20 @@ const Tableur = (() => {
     return new Blob([...morceaux, ...central, fin], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   }
 
-  async function dezipper(fichier) { // → Map nom → texte
+  async function dezipper(fichier, quoi = 'un classeur Excel (.xlsx)') { // → Map nom → texte (fichiers .xml et .rels)
     const buf = await fichier.arrayBuffer();
     const v = new DataView(buf);
     let fin = -1;
     for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 66000); i--) {
       if (v.getUint32(i, true) === 0x06054b50) { fin = i; break; }
     }
-    if (fin < 0) throw new Error('Ce fichier n’est pas un classeur Excel (.xlsx).');
+    if (fin < 0) throw new Error(`Ce fichier n’est pas ${quoi}.`);
     const nb = v.getUint16(fin + 10, true);
     let p = v.getUint32(fin + 16, true);
     const dec = new TextDecoder();
     const res = new Map();
     for (let k = 0; k < nb; k++) {
-      if (v.getUint32(p, true) !== 0x02014b50) throw new Error('Classeur Excel abîmé.');
+      if (v.getUint32(p, true) !== 0x02014b50) throw new Error('Fichier abîmé (archive illisible).');
       const methode = v.getUint16(p + 10, true), taille = v.getUint32(p + 20, true);
       const lgNom = v.getUint16(p + 28, true), lgExtra = v.getUint16(p + 30, true), lgCom = v.getUint16(p + 32, true);
       const local = v.getUint32(p + 42, true);
@@ -81,7 +81,7 @@ const Tableur = (() => {
       else if (methode === 8) {
         const flux = new Blob([brut]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
         res.set(nom, await new Response(flux).text());
-      } else throw new Error('Classeur Excel dans un format de compression inconnu.');
+      } else throw new Error('Fichier dans un format de compression inconnu.');
     }
     return res;
   }
@@ -200,5 +200,5 @@ const Tableur = (() => {
     });
   }
 
-  return { ecrire, lire };
+  return { ecrire, lire, dezipper };
 })();

@@ -194,6 +194,19 @@ function fourchetteDegre(pts, degre, pas) {
   const bas = degre === 1 ? 0 : arrondiPas((pts * (degre - 1)) / 4, pas) + pas, haut = arrondiPas((pts * degre) / 4, pas);
   return bas >= haut ? fmt(haut) : `${fmt(bas)} à ${fmt(haut)}`;
 }
+// Points fixés degré par degré (c.ptsDegres = [d1, d2, d3, d4], lus dans un barème importé : « 1,5 pt | 2,5 pts | 3,5 pts | 4 pts ») :
+// ils priment sur les quarts du total.
+const aPtsDegres = c => Array.isArray(c?.ptsDegres) && c.ptsDegres.length === 4 && c.ptsDegres.every(Number.isFinite);
+const ptsDuDegre = (c, degre, pas) => (aPtsDegres(c) ? c.ptsDegres[degre - 1] : arrondiPas(((+c.points || 0) * degre) / 4, pas));
+const texteDegre = (c, degre, pas) => (aPtsDegres(c) ? fmt(c.ptsDegres[degre - 1]) : fourchetteDegre(+c.points || 0, degre, pas));
+// Points du critère changés : ses points par degré suivent, en proportion.
+function echelleDegres(c, nouveau) {
+  if (!aPtsDegres(c)) return;
+  const k = +c.points ? nouveau / +c.points : 0;
+  if (!k) { delete c.ptsDegres; return; }
+  // (Au quart de point, comme dans les barèmes d'établissement ; le degré 4 vaut toujours les points du critère.)
+  c.ptsDegres = c.ptsDegres.map((x, j) => (j === 3 ? nouveau : Math.min(nouveau, Math.round(x * k * 4) / 4)));
+}
 
 // Change les points d'un bloc, en gardant les proportions de ses lignes / critères.
 function ajusterBloc(b, cible, pas) {
@@ -202,9 +215,9 @@ function ajusterBloc(b, cible, pas) {
   if (!avant) return;
   const k = cible / avant;
   if (b.type === 'degres') {
-    b.criteres.forEach(c => { c.points = arrondiPas(c.points * k, pas); });
+    b.criteres.forEach(c => { const n = arrondiPas(c.points * k, pas); echelleDegres(c, n); c.points = n; });
     const reste = Math.round((cible - b.criteres.reduce((s, c) => s + c.points, 0)) * 100) / 100;
-    if (b.criteres.length) b.criteres[0].points = Math.max(0, b.criteres[0].points + reste);
+    if (b.criteres.length) { const c = b.criteres[0], n = Math.max(0, c.points + reste); echelleDegres(c, n); c.points = n; }
   } else if (b.lignes) b.lignes.forEach(l => { l.pts = arrondiPas(l.pts * k, pas); });
 }
 
@@ -249,7 +262,7 @@ function htmlBaremes() {
     <div class="outils">
       <h2>📊 Barèmes</h2>
       <button class="primaire" data-bar="nouveau">+ Nouveau barème</button>
-      <button data-bar="recevoir" title="Ajouter un barème reçu d’un collègue (fichier .json)">📥 Recevoir un fichier</button>
+      <button data-bar="recevoir" title="Ton barème en PDF, Word (.docx), LibreOffice (.odt) ou Excel : l’appli le lit et le range dans Mes barèmes. Accepte aussi le fichier .json d’un collègue.">📥 Importer un barème</button>
       <label class="choix-tri">Champ<select data-bar-filtre="ca"><option value="">Tous</option>${['CA1', 'CA2', 'CA3', 'CA4', 'CA5'].map(c => `<option ${f.ca === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
       <label class="choix-tri">Niveau<select data-bar-filtre="niveau"><option value="">Tous</option>${Object.entries(NIVEAUX_BAREME).map(([k, n]) => `<option value="${k}" ${f.niveau === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <input type="search" data-bar-filtre="texte" value="${esc(f.texte)}" placeholder="Rechercher une APSA…" aria-label="Rechercher">
@@ -381,7 +394,7 @@ function htmlBloc(br, b, k) {
         <td><textarea data-bar-champ="${p}.criteres.${i}.nom" rows="3" aria-label="Critère">${esc(c.nom)}</textarea></td>
         <td class="pts-critere">${champBar(`${p}.criteres.${i}.points`, c.points, 'type="number" min="0" step="0.5" data-bar-type="nombre" aria-label="Points du critère"')}</td>
         ${c.cases.map((t, j) => `<td><textarea data-bar-champ="${p}.criteres.${i}.cases.${j}" rows="3" aria-label="Degré ${j + 1}">${esc(t)}</textarea>
-          <span class="fourchette" data-bar-fourchette="${k}|${i}|${j}">${fourchetteDegre(+c.points || 0, j + 1, br.pas)} pts</span></td>`).join('')}
+          <span class="fourchette" data-bar-fourchette="${k}|${i}|${j}">${texteDegre(c, j + 1, br.pas)} pts</span></td>`).join('')}
         <td><button class="icone-petit" data-bar="suppr-critere" data-arg="${k}|${i}" aria-label="Retirer ce critère">🗑</button></td></tr>`).join('')}</tbody></table></div>
       <button data-bar="ajout-critere" data-arg="${k}">+ Critère</button>`;
   } else if (b.type === 'ecart' || b.type === 'criteres') {
@@ -437,7 +450,7 @@ function majTotauxBareme(br) {
     if (p) p.textContent = fmt(pointsBloc({ ...b, inactif: false })) + ' pts';
     if (b.type === 'degres') b.criteres.forEach((c, i) => [1, 2, 3, 4].forEach(j => {
       const f = $(`[data-bar-fourchette="${k}|${i}|${j - 1}"]`);
-      if (f) f.textContent = fourchetteDegre(+c.points || 0, j, br.pas) + ' pts';
+      if (f) f.textContent = texteDegre(c, j, br.pas) + ' pts';
     }));
   });
 }
@@ -457,7 +470,7 @@ async function actionBareme(quoi, arg) {
   if (quoi === 'depuis-modele') { const [a, n] = arg.split('|'); return nouveauBareme(a, n); }
   if (quoi === 'ouvrir') { baremeOuvert = arg; return rendreVue(); }
   if (quoi === 'bibliotheque') { baremeOuvert = null; return rendreVue(); }
-  if (quoi === 'recevoir') return recevoirBareme();
+  if (quoi === 'recevoir') return choisirDocumentBareme();
   const br = baremeCourant();
   if (!br) return;
   const [k, i] = String(arg ?? '').split('|').map(Number), b = br.blocs[k];
@@ -541,7 +554,7 @@ function lignesBloc(b, pas) {
     return [['Points', ...cles.map(c => c[1])], ...b.lignes.map(l => [fmt(l.pts), ...cles.map(([c]) => affPerf(b, l[c]))])];
   }
   if (b.type === 'degres') return [['Critère', 'Pts', '1', '2', '3', '4'],
-    ...b.criteres.map(c => [c.nom, fmt(+c.points || 0), ...c.cases.map((t, j) => `${t} (${fourchetteDegre(+c.points || 0, j + 1, pas)} pts)`)])];
+    ...b.criteres.map(c => [c.nom, fmt(+c.points || 0), ...c.cases.map((t, j) => `${t} (${texteDegre(c, j + 1, pas)} pts)`)])];
   if (b.type === 'ecart' || b.type === 'criteres') return [[b.type === 'ecart' ? 'Palier' : 'Critère', 'Pts'], ...b.lignes.map(l => [l.libelle, fmt(+l.pts || 0)])];
   return [[b.texte || '']];
 }
@@ -601,30 +614,77 @@ function nettoyerBareme(x) {
       n.lignes = (Array.isArray(b.lignes) ? b.lignes : []).slice(0, 200).map(l => ({ pts: num(l?.pts), f: numOuNul(l?.f), g: numOuNul(l?.g), v: numOuNul(l?.v) }));
     } else if (b.type === 'degres') {
       n.criteres = (Array.isArray(b.criteres) ? b.criteres : []).slice(0, 30)
-        .map(c => ({ nom: txt(c?.nom, 300), points: num(c?.points), cases: [0, 1, 2, 3].map(j => txt(c?.cases?.[j], 400)) }));
-    } else if (b.type === 'texte') n.texte = txt(b.texte, 2000);
+        .map(c => ({ nom: txt(c?.nom, 300), points: num(c?.points), cases: [0, 1, 2, 3].map(j => txt(c?.cases?.[j], 400)),
+          ...(Array.isArray(c?.ptsDegres) && c.ptsDegres.length === 4 && c.ptsDegres.every(v => Number.isFinite(+v)) ? { ptsDegres: c.ptsDegres.map(num) } : {}) }));
+    } else if (b.type === 'texte') n.texte = txt(b.texte, 4000);
     else n.lignes = (Array.isArray(b.lignes) ? b.lignes : []).slice(0, 60).map(l => ({ libelle: txt(l?.libelle, 200), pts: num(l?.pts) }));
     return n;
   });
   return { titre: txt(x?.titre, 120) || 'Barème reçu', apsa: txt(x?.apsa, 60), niveau: NIVEAUX_BAREME[x?.niveau] ? x.niveau : 'college', pas: x?.pas === 1 ? 1 : 0.5, blocs };
 }
 
-function recevoirBareme() {
-  const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json' });
-  input.addEventListener('change', () => lancer(async () => {
-    const f = input.files[0];
-    if (!f) return;
-    if (f.size > 2e6) throw new Error('Fichier trop gros pour un barème.');
-    let contenu;
-    try { contenu = JSON.parse(await f.text()); } catch { throw new Error('Ce fichier n’est pas un barème du Carnet EPS.'); }
-    if (contenu?.format !== 'carnet-eps-bareme' || !contenu.bareme) throw new Error('Ce fichier n’est pas un barème du Carnet EPS.');
-    const br = nettoyerBareme(contenu.bareme);
-    const enreg = Donnees.ecrire('baremes', { ...br, id: Donnees.nouvelId(), cree: Date.now() });
-    baremeOuvert = enreg.id;
-    toast(`Barème « ${br.titre} » ajouté à ta bibliothèque ✔`, 'ok');
-    rendreVue();
-  }));
-  input.click();
+// Fichier .json d'un collègue (le bouton « 📥 Importer un barème » accepte aussi PDF, Word… : voir importbareme.js).
+async function recevoirFichierBareme(f) {
+  if (f.size > 2e6) throw new Error('Fichier trop gros pour un barème.');
+  let contenu;
+  try { contenu = JSON.parse(await f.text()); } catch { throw new Error('Ce fichier n’est pas un barème du Carnet EPS.'); }
+  if (contenu?.format !== 'carnet-eps-bareme' || !contenu.bareme) throw new Error('Ce fichier n’est pas un barème du Carnet EPS.');
+  const br = nettoyerBareme(contenu.bareme);
+  const enreg = Donnees.ecrire('baremes', { ...br, id: Donnees.nouvelId(), cree: Date.now() });
+  baremeOuvert = enreg.id;
+  toast(`Barème « ${br.titre} » ajouté à Mes barèmes ✔`, 'ok');
+  rendreVue();
+}
+
+/* ---------- Lien avec les évaluations (onglet Notes) ----------
+   e.bareme = { id, titre, maj, pas, blocs } : copie des blocs actifs au moment du lien (modifier le barème ensuite ne change
+   pas les notes ; la fenêtre de l'évaluation propose de mettre à jour). Chaque bloc donne une ou plusieurs parties de la note :
+     perf → 1 partie (on saisit la perf) ; degres → 1 par critère (on touche le degré) ; ecart → 1 (on choisit le palier) ;
+     criteres → 1 par critère (on coche). p.source = { type: 'perf' | 'degre' | 'palier' | 'case', bloc, i }.
+   La saisie brute (perf, degré, n° de palier, 1 = coché) est rangée à côté des points : notes[éval|élève|brut:id]. */
+
+function lienBareme(br) {
+  return { id: br.id, titre: br.titre, maj: br.maj, pas: br.pas || 0.5, blocs: structuredClone(br.blocs.filter(b => !b.inactif && b.type !== 'texte')) };
+}
+
+function partiesDuBareme(lien) {
+  const l = [];
+  for (const b of lien.blocs) {
+    if (b.type === 'perf') l.push({ id: b.id, nom: b.titre, max: +b.points || 0, source: { type: 'perf', bloc: b.id } });
+    else if (b.type === 'ecart') l.push({ id: b.id, nom: b.titre, max: pointsBloc(b), source: { type: 'palier', bloc: b.id } });
+    else if (b.type === 'degres') b.criteres.forEach((c, i) => l.push({ id: `${b.id}~${i}`, nom: c.nom || `${b.titre} ${i + 1}`, groupe: b.titre, max: +c.points || 0, source: { type: 'degre', bloc: b.id, i } }));
+    else if (b.type === 'criteres') b.lignes.forEach((c, i) => l.push({ id: `${b.id}~${i}`, nom: c.libelle || `${b.titre} ${i + 1}`, groupe: b.titre, max: +c.pts || 0, source: { type: 'case', bloc: b.id, i } }));
+  }
+  return l.filter(p => p.max > 0);
+}
+
+const blocDuLien = (e, p) => e.bareme?.blocs.find(b => b.id === p.source?.bloc) || null;
+
+// Points d'une partie d'après la saisie brute : nombre, null (rien de saisi) ou undefined (sexe de l'élève inconnu).
+function pointsPartieBareme(e, p, brut, sexe) {
+  const b = blocDuLien(e, p), s = p.source;
+  if (!b || brut === '' || brut === null || brut === undefined) return null;
+  if (s.type === 'perf') {
+    const cle = b.sexes ? { F: 'f', G: 'g' }[sexe] : 'v';
+    if (!cle) return undefined;
+    const v = +brut, mieux = b.unite === 'temps' ? (x, r) => x <= r : (x, r) => x >= r;
+    const lignes = b.lignes.filter(l => Number.isFinite(l[cle])).sort((x, y) => y.pts - x.pts);
+    return lignes.find(l => mieux(v, l[cle]))?.pts ?? 0;
+  }
+  if (s.type === 'palier') return +(b.lignes[+brut]?.pts) || 0;
+  if (s.type === 'degre') { const c = b.criteres[s.i]; return c ? ptsDuDegre(c, +brut, e.bareme.pas || 0.5) : null; } // haut de la fourchette (ou points fixés du degré)
+  if (s.type === 'case') return +brut ? +(b.lignes[s.i]?.pts) || 0 : null;
+  return null;
+}
+
+// Texte d'une saisie brute, pour l'affichage (« 3:12 », « 4,35 m », « Écart ≤ 2 s », « degré 3 », « ✔ »).
+function texteBrutBareme(e, p, brut) {
+  const b = blocDuLien(e, p);
+  if (!b || brut === '' || brut === null || brut === undefined) return '';
+  if (p.source.type === 'perf') return affPerf(b, +brut);
+  if (p.source.type === 'palier') return b.lignes[+brut]?.libelle || '';
+  if (p.source.type === 'degre') return 'degré ' + brut;
+  return '✔';
 }
 
 /* ---------- Événements ---------- */
@@ -689,6 +749,8 @@ document.addEventListener('change', e => {
 });
 
 function appliquerChampBareme(br, chemin, v) {
+  const crit = /^b\.(\d+)\.criteres\.(\d+)\.points$/.exec(chemin);
+  if (crit) echelleDegres(br.blocs[+crit[1]]?.criteres[+crit[2]], v);
   ecrireChemin(br, chemin, v);
   const refaire = /^b\.\d+\.(points|unite)$/.test(chemin) || chemin === 'pas';
   if (/^b\.\d+\.points$/.test(chemin)) genererPerf(br.blocs[+chemin.split('.')[1]], br.pas);

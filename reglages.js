@@ -41,9 +41,11 @@ const REGLAGES_DEFAUT = {
   onglets: { masques: [], noms: {}, demarrage: '' },
   // Appréciations proposées par l'appli (appreciations.js) : rubriques abordées et leur ordre, ton, style, longueur.
   appreciations: {
+    // Par défaut (choix de l'auteur) : attitude, compétences, motricité (performances, notes) et objectif ; les autres
+    // rubriques reviennent d'elles-mêmes quand le carnet signale un point de vigilance (voir rubriquesAppr).
     ordre: ['attitude', 'competences', 'moteur', 'methodo', 'comportement', 'progression', 'objectif'],
-    actives: ['attitude', 'competences', 'moteur', 'methodo', 'comportement', 'progression', 'objectif'],
-    bilan: true, ton: 'bienveillant', style: 'phrases', longueur: 400,
+    actives: ['attitude', 'competences', 'moteur', 'objectif'],
+    bilan: true, ton: 'bienveillant', style: 'phrases', longueur: 300, // (400 jusqu'à la v0.93 : voir reglageAppr)
   },
   // Discipline du carnet (discipline.js). Jamais exportée avec les réglages partagés : chaque collègue garde la sienne.
   discipline: { code: 'eps' },
@@ -686,6 +688,8 @@ async function premierLancement() {
       <h4>Mode</h4>
       <div class="segments">${radio('mode', 'auto', a.mode, 'Automatique')}${radio('mode', 'clair', a.mode, '☀ Clair')}${radio('mode', 'sombre', a.mode, '🌙 Sombre')}</div>
     </div>
+    <label class="case" data-choix-exemple ${disciplineActive() === 'eps' ? '' : 'hidden'}><input type="checkbox" name="exemple" checked>
+      <span>🎓 Ajouter une <b>classe exemple</b> déjà remplie (élèves inventés), pour découvrir le carnet <small class="aide">— supprimable d’un clic</small></span></label>
     <label class="bouton">📂 Utiliser les réglages d’un collègue…<input type="file" accept=".json,application/json" data-importer-reglages hidden></label>`,
   '<span class="espace"></span><button type="button" data-fermer>Plus tard</button><button value="ok" class="primaire">C’est parti</button>', 'reglages');
   d.querySelectorAll('[data-pastille]').forEach(s => s.style.setProperty('--p', s.dataset.pastille));
@@ -694,7 +698,10 @@ async function premierLancement() {
   let importe = null;
   const disciplineChoisie = () => form.querySelector('[name="discipline"]:checked')?.value || 'eps';
   let discipline = disciplineActive(); // (mis à jour à chaque choix : la fenêtre n'existe plus une fois fermée)
+  let exemple = true; // classe exemple : celle de l'EPS (pas proposée pour les autres disciplines)
   d.addEventListener('change', e => {
+    if (e.target.name === 'exemple') exemple = e.target.checked;
+    if (e.target.name === 'discipline') $('[data-choix-exemple]', d).hidden = disciplineChoisie() !== 'eps';
     if (e.target.closest('[data-rubrique="apparence"]')) appliquerApparence(choisi(), reglagesAppareil(), form.elements.etablissement.value || a.etablissement);
     // (Le nom du carnet en haut de la page suit tout de suite la discipline choisie.)
     if (e.target.name === 'discipline') {
@@ -717,6 +724,11 @@ async function premierLancement() {
     await importerReglages(importe).catch(signalerErreur);
   } else if (r.action === 'ok') {
     ecrireReglage('apparence', { ...choisi(), etablissement: r.data.etablissement.trim() || a.etablissement, prof: r.data.prof.trim() });
+  }
+  // (« Plus tard » : souvent un carnet à récupérer sur la clé, on n'y mélange pas la classe exemple.)
+  if ((importe || r.action === 'ok') && exemple && discipline === 'eps' && !classesTriees().length) {
+    ui.classeId = creerClasseExemple().id;
+    memoriserUi();
   }
   appliquerReglages(true);
   rendre();

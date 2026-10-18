@@ -1,5 +1,5 @@
-﻿'use strict';
-const VERSION_APP = '0.88.3'; // garder identique à VERSION dans sw.js
+'use strict';
+const VERSION_APP = '0.103.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -523,7 +523,7 @@ function rendreClasses() {
     <li class="${c.id === active?.id ? 'active' : ''}" data-id="${c.id}">
       <button class="classe" data-classe="${c.id}" title="Appui long pour changer l’ordre des classes">
         <span class="classe-nom">${esc(c.nom)}</span>
-        <span class="classe-info">${esc(c.niveau || '')}${c.niveau ? ' · ' : ''}${elevesDe(c.id).length} élèves</span>
+        <span class="classe-info">${esc(c.niveau || '')}${c.niveau ? ' · ' : ''}${elevesDe(c.id).length} élèves${c.exemple ? ' · exemple' : ''}</span>
       </button>
       ${c.id === active?.id ? `<button class="modif" data-modif-classe="${c.id}" title="Modifier la classe" aria-label="Modifier la classe">✎</button>` : ''}
     </li>`).join('') || '<li class="aide">Aucune classe</li>';
@@ -614,10 +614,14 @@ function rendreVue() {
         <p class="aide">Tu as déjà un carnet sur ta clé USB ? <button class="lien" data-action="cle">Récupère-le ici</button>.
           · <button class="lien" data-action="guide">Comment ça marche ?</button>
           · <button class="lien" data-action="reglages">⚙ Personnaliser</button></p>
+        <p class="aide">Envie de voir un carnet déjà rempli ? <button class="lien" data-action="exemple">🎓 Ouvre la classe exemple</button> (élèves inventés).</p>
       </div>`;
     return;
   }
-  v.innerHTML = ui.vue === 'eleves' ? htmlEleves(c) : ui.vue === 'appel' ? htmlAppel(c) : ui.vue === 'entrainement' ? htmlEntrainement(c) : htmlNotes(c);
+  v.innerHTML = (c.exemple && !enModeEleve() ? `<p class="bandeau-exemple">🎓 <span><b>Classe exemple</b> : élèves et résultats inventés, pour voir un carnet rempli.
+    Touche à tout (notes, appel, fiches bilan, ✍ appréciations…), rien n’est grave.</span>
+    <button class="lien" data-action="suppr-exemple">Supprimer la classe exemple</button></p>` : '')
+    + (ui.vue === 'eleves' ? htmlEleves(c) : ui.vue === 'appel' ? htmlAppel(c) : ui.vue === 'entrainement' ? htmlEntrainement(c) : htmlNotes(c));
   if (ui.vue === 'notes') { majMoyennes(); majBilans(); caleEntete(); }
   if (ui.vue === 'entrainement') { majStatsEnt(); caleEntete(); }
 }
@@ -815,7 +819,7 @@ function htmlNotes(c) {
         </tr>
         <tr class="entete-comp">
           ${evals.filter(e => nbSousColonnes(e)).map(e => `
-            ${partiesEval(e).map(p => `<th class="sous-comp sous-partie${classeCa(e)}" title="${esc(p.nom)} : sur ${fmt(p.max)} pts">${esc(resumeTexte(p.nom, 14))}<div class="eval-info">/${fmt(p.max)}</div></th>`).join('')}
+            ${partiesEval(e).map(p => `<th class="sous-comp sous-partie${classeCa(e)}" title="${esc((p.groupe ? p.groupe + ' › ' : '') + p.nom)} : sur ${fmt(p.max)} pts${p.source ? '\n' + { perf: 'Tape la performance : les points se calculent', degre: 'Touche le degré (1 à 4) : haut de la fourchette', palier: 'Choisis le palier atteint', case: 'Coche si le critère est rempli' }[p.source.type] : ''}">${esc(resumeTexte(p.nom, 14))}<div class="eval-info">/${fmt(p.max)}</div></th>`).join('')}
             <th class="sous-note${classeCa(e)}">${partiesEval(e).length ? `Total<div class="eval-info">/${fmt(e.max)}</div>` : 'Note'}</th>
             ${competencesEval(e).map(a => `<th class="sous-comp${classeCa(e)}" title="${esc(a.code + ' : ' + a.texte)}">${esc(a.code)}</th>`).join('')}`).join('')}
         </tr></thead>
@@ -830,6 +834,18 @@ function htmlNotes(c) {
               // Case vide un jour où l'élève était dispensé : on le suggère discrètement.
               const suggestion = !v && dispenseLe(el, e.date) ? ' placeholder="disp."' : '';
               // Note décomposée : une case par partie, puis le total (calculé, pas saisi).
+              if (partiesEval(e).length && e.bareme) {
+                // Évaluation liée à un barème : saisie par type de bloc ; Total calculé (on n'y tape qu'un code : ABS, DISP…).
+                const detail = partiesEval(e).map(p => {
+                  const brut = Donnees.note(e.id, el.id, cleBrut(p)), pts = Donnees.note(e.id, el.id, clePartie(p));
+                  return brut === '' ? '' : `${p.nom} : ${texteBrutBareme(e, p, brut)} → ${affichage(pts) || '–'} pt(s)`;
+                }).filter(Boolean).join('\n');
+                return partiesEval(e).map((p, k) => celluleBareme(e, el, p, k, i, col++)).join('')
+                  + `<td class="total-parties td-total-bareme"><input class="cellule cellule-total${classeCode(v)}" value="${esc(affichage(v))}" size="4" data-eval="${e.id}" data-eleve="${el.id}"
+                    data-ligne="${i}" data-col="${col++}" autocomplete="off" enterkeyhint="next" title="${esc((detail ? detail + '\n' : '') + `Total sur ${fmt(e.max)} (calculé avec le barème « ${e.bareme.titre} ») — ici, seulement un code : ${lettresCodes()}`)}"
+                    aria-label="${esc(nomEleve + ' — ' + e.titre + ' — total')}"></td>`
+                  + celluleDegres(e, el, i, () => col++);
+              }
               if (partiesEval(e).length) {
                 return partiesEval(e).map((p, k) => {
                   const vp = valeurPartie(e, el.id, p);
@@ -1256,6 +1272,15 @@ function validerCellule(input) {
   const eleveId = input.dataset.eleve;
   const avant = Donnees.note(ev.id, eleveId);
   const brut = input.value.trim().toUpperCase().replace(',', '.');
+  // Évaluation liée à un barème : la note se calcule ; la case « Total » ne prend qu'un code (ABS, DISP…), ou vide pour l'enlever.
+  if (ev.bareme && partiesEval(ev).length) {
+    if (RACCOURCIS[brut]) { effacerParties(ev, eleveId); if (avant !== RACCOURCIS[brut]) Donnees.ecrireNote(ev.id, eleveId, RACCOURCIS[brut]); }
+    else if (brut === '' && codeEval(ev, eleveId)) Donnees.ecrireNote(ev.id, eleveId, '');
+    else if (brut !== '' && brut !== (avant || '').replace(',', '.')) toast(`La note se calcule avec le barème : remplis les parties. Ici, seulement un code : ${lettresCodes()}.`, 'erreur');
+    preremplirDegres(ev, eleveId);
+    majMoyennes();
+    return rafraichirNotes(input);
+  }
   let valeur;
   if (brut === '') valeur = '';
   else if (RACCOURCIS[brut]) valeur = RACCOURCIS[brut];
@@ -1281,6 +1306,39 @@ function validerCellule(input) {
 const partiesEval = e => e.parties || [];
 const clePartie = p => 'part:' + p.id;
 const arrondi2 = x => Math.round(x * 100) / 100;
+
+// Barèmes proposés dans la fenêtre de l'évaluation : mes barèmes, puis les modèles fournis de la bibliothèque
+// (valeur « fourni|APSA|niveau » : copié dans mes barèmes à l'enregistrement). Même APSA d'abord, au niveau de la classe.
+function optionsBaremesEval(e, apsaSaisie, niveauClasse, choisi) {
+  if (typeof mesBaremes !== 'function') return '';
+  const apsa = sansAccent(apsaSaisie || ''), memeApsa = a => !!apsa && sansAccent(a || '') === apsa;
+  const niveauBr = { cycle3: 'cycle3', cycle4: 'college', lycee: 'lycee' }[REFERENTIEL_PAR_NIVEAU[niveauClasse]] || '';
+  const sel = v => (v === choisi ? 'selected' : '');
+  const option = b => `<option value="${b.id}" ${sel(b.id)}>${esc(b.titre)} — sur ${fmt(totalBareme(b))}</option>`;
+  const fourni = (a, n) => `<option value="fourni|${esc(a)}|${n}" ${sel(`fourni|${a}|${n}`)}>${esc(a)} — ${NIVEAUX_BAREME[n]} (modèle)</option>`;
+  const miens = mesBaremes(), mA = miens.filter(b => memeApsa(b.apsa)), mAutres = miens.filter(b => !memeApsa(b.apsa));
+  const modeles = APSA_BAREMES.flatMap(a => Object.keys(NIVEAUX_BAREME).map(n => [a, n]))
+    .sort(([a1, n1], [a2, n2]) => (n2 === niveauBr) - (n1 === niveauBr));
+  const fA = modeles.filter(([a]) => memeApsa(a)), fAutres = modeles.filter(([a]) => !memeApsa(a));
+  const groupe = (titre, html) => (html ? `<optgroup label="${esc(titre)}">${html}</optgroup>` : '');
+  return groupe(`Mes barèmes — ${apsaSaisie}`, mA.map(option).join(''))
+    + groupe(`Modèles fournis — ${apsaSaisie}`, fA.map(x => fourni(...x)).join(''))
+    + groupe(mA.length ? 'Mes autres barèmes' : 'Mes barèmes', mAutres.map(option).join(''))
+    + groupe('Autres modèles fournis', fAutres.map(x => fourni(...x)).join(''))
+    // (Barème supprimé de la bibliothèque : l'évaluation garde sa copie.)
+    + (e.bareme && !Donnees.get('baremes', e.bareme.id) ? `<option value="${e.bareme.id}" ${sel(e.bareme.id)}>${esc(e.bareme.titre)} (copie gardée : supprimé de la bibliothèque)</option>` : '');
+}
+
+// Barème choisi dans la fenêtre de l'évaluation : un des miens, la copie gardée par l'évaluation, ou un modèle fourni.
+function baremeChoisiEval(e, valeur, apercu) {
+  if (!valeur) return null;
+  if (valeur.startsWith('fourni|')) {
+    const [, a, n] = valeur.split('|');
+    if (!APSA_BAREMES.includes(a) || !NIVEAUX_BAREME[n]) return null;
+    return apercu[valeur] ??= { ...preparerBareme(modeleFourni(a, n)), id: valeur };
+  }
+  return Donnees.get('baremes', valeur) || (e.bareme?.id === valeur ? e.bareme : null);
+}
 
 // Ligne d'une partie dans la fenêtre de l'évaluation.
 const lignePartie = p => `<div class="ligne ligne-partie"><input type="hidden" name="partieId" value="${esc(p.id)}">
@@ -1308,16 +1366,107 @@ function majLigneParties(e, eleveId) {
   if (td) { const v = Donnees.note(e.id, eleveId); td.textContent = affichage(v); td.className = 'total-parties' + classeCode(v); }
 }
 
+/* ---------- Évaluation liée à un barème (bibliothèque, baremes.js) ----------
+   Chaque case garde ce qui a été saisi (perf, degré, palier, coché) et affiche en petit les points qu'il rapporte. */
+
+const cleBrut = p => 'brut:' + p.id;
+const codeEval = (e, eleveId) => { const n = Donnees.note(e.id, eleveId); return nombre(n) === null && n ? n : ''; };
+
+// Efface les points (et saisies brutes) de toutes les parties d'un élève.
+function effacerParties(e, eleveId) {
+  for (const x of partiesEval(e)) for (const cle of [clePartie(x), cleBrut(x)]) if (Donnees.note(e.id, eleveId, cle)) Donnees.ecrireNote(e.id, eleveId, '', cle);
+}
+
+// Texte d'une case de partie (saisie, ou code de toute l'évaluation).
+function texteSaisiePartie(e, eleveId, p) {
+  const code = codeEval(e, eleveId);
+  if (code) return affichage(code);
+  return p.source?.type === 'perf' ? texteBrutBareme(e, p, Donnees.note(e.id, eleveId, cleBrut(p))) : affichage(valeurPartie(e, eleveId, p));
+}
+
+function celluleBareme(e, el, p, k, i, col) {
+  const code = codeEval(e, el.id), brut = Donnees.note(e.id, el.id, cleBrut(p)), pts = Donnees.note(e.id, el.id, clePartie(p));
+  const b = blocDuLien(e, p), debut = k ? '' : ' debut-eval' + classeCa(e);
+  const attrs = `data-eval="${e.id}" data-eleve="${el.id}" data-partie="${esc(p.id)}" data-ligne="${i}" data-col="${col}"`;
+  const label = esc(`${el.nom} ${el.prenom} — ${p.nom} (sur ${fmt(p.max)})`);
+  const points = !code && pts !== '' ? `<span class="pts-partie">${affichage(pts)} pt${+pts > 1 ? 's' : ''}</span>` : '';
+  const t = p.source.type;
+  if (t === 'perf') {
+    return `<td class="td-bareme${debut}"><input class="cellule cellule-partie cellule-perf${classeCode(code)}" value="${esc(texteSaisiePartie(e, el.id, p))}" size="6" ${attrs}
+      inputmode="decimal" autocomplete="off" enterkeyhint="next" placeholder="${b?.unite === 'temps' ? '0:00' : ''}" aria-label="${label}">${points}</td>`;
+  }
+  if (t === 'palier') {
+    return `<td class="td-bareme${debut}"><select class="cellule-palier${classeCode(code)}" ${attrs} aria-label="${label}">
+      <option value="">${code ? esc(affichage(code)) : ''}</option>${(b?.lignes || []).map((l, j) => `<option value="${j}" ${!code && brut === String(j) ? 'selected' : ''}>${esc(l.libelle || 'Palier ' + (j + 1))} (${fmt(+l.pts || 0)})</option>`).join('')}</select>${points}</td>`;
+  }
+  if (t === 'degre') {
+    return `<td class="td-bareme td-niveau${debut}"><button class="niveau${!code && brut ? ' n' + brut : ''}${classeCode(code)}" data-degre-bareme ${attrs}
+      title="${esc(p.nom)} : toucher pour choisir le degré (1 à 4)" aria-label="${label}">${code ? esc(code) : brut}</button>${points}</td>`;
+  }
+  return `<td class="td-bareme td-niveau${debut}"><button class="case-bareme${!code && brut === '1' ? ' oui' : ''}${classeCode(code)}" data-case-bareme ${attrs}
+    title="${esc(p.nom)} : toucher pour cocher" aria-label="${label}" aria-pressed="${brut === '1'}">${code ? esc(code) : brut === '1' ? '✔' : ''}</button>${points}</td>`;
+}
+
+// Saisie dans une partie liée au barème : points calculés, total recalculé (un code posé sur l'évaluation est remplacé).
+function ecrireSaisieBareme(e, eleveId, p, brut) {
+  const el = Donnees.get('eleves', eleveId);
+  const v = brut === '' ? null : pointsPartieBareme(e, p, brut, el?.sexe);
+  if (v === undefined) {
+    toast(`${el?.prenom || 'Élève'} : sexe non renseigné (onglet Élèves) — ce barème distingue filles et garçons.`, 'erreur');
+    return false;
+  }
+  const pts = v === null ? '' : String(v);
+  if (brut !== Donnees.note(e.id, eleveId, cleBrut(p))) Donnees.ecrireNote(e.id, eleveId, brut, cleBrut(p));
+  if (pts !== Donnees.note(e.id, eleveId, clePartie(p))) Donnees.ecrireNote(e.id, eleveId, pts, clePartie(p));
+  const total = totalParties(e, eleveId);
+  if (total !== Donnees.note(e.id, eleveId)) Donnees.ecrireNote(e.id, eleveId, total);
+  preremplirDegres(e, eleveId);
+  return true;
+}
+
+// Recalcule les points de toutes les parties d'un élève (barème mis à jour, sexe changé…).
+function recalculerBareme(e, eleveId) {
+  if (!e.bareme || codeEval(e, eleveId)) return;
+  let saisi = false;
+  for (const p of partiesEval(e).filter(x => x.source)) {
+    const brut = Donnees.note(e.id, eleveId, cleBrut(p));
+    if (brut === '') continue;
+    saisi = true;
+    const v = pointsPartieBareme(e, p, brut, Donnees.get('eleves', eleveId)?.sexe);
+    const pts = v === null || v === undefined ? '' : String(v);
+    if (pts !== Donnees.note(e.id, eleveId, clePartie(p))) Donnees.ecrireNote(e.id, eleveId, pts, clePartie(p));
+  }
+  const total = totalParties(e, eleveId);
+  if (saisi && total !== Donnees.note(e.id, eleveId)) Donnees.ecrireNote(e.id, eleveId, total);
+}
+
+// Redessine la grille des notes en gardant le focus sur la case active (ou celle qu'on vient de toucher).
+function rafraichirNotes(repli) {
+  const a = document.activeElement?.dataset?.ligne !== undefined ? document.activeElement.dataset : repli?.dataset;
+  rendreVue();
+  if (a?.ligne !== undefined) cellule(a.ligne, a.col)?.focus();
+}
+
 function validerPartie(input) {
   const ev = Donnees.get('evals', input.dataset.eval), p = partiesEval(ev).find(x => x.id === input.dataset.partie);
   const eleveId = input.dataset.eleve;
   if (!p) return;
   const brut = input.value.trim().toUpperCase().replace(',', '.');
   const note = Donnees.note(ev.id, eleveId);
+  if (p.source?.type === 'perf' && !RACCOURCIS[brut]) {
+    // Barème : on tape la performance, l'appli met les points.
+    const b = blocDuLien(ev, p), v = input.value.trim() ? lirePerf(b, input.value) : null;
+    if (v === undefined) toast(`« ${input.value} » : ${b?.unite === 'temps' ? 'temps illisible (ex. 3:12 ou 12,5)' : 'nombre illisible (ex. 4,35)'} — ou un code : ${lettresCodes()}.`, 'erreur');
+    else if (v === null && input.value.trim()) toast(`« ${input.value} » : valeur illisible.`, 'erreur');
+    else ecrireSaisieBareme(ev, eleveId, p, v === null ? '' : String(v));
+    majMoyennes();
+    return rafraichirNotes(input);
+  }
   if (RACCOURCIS[brut]) {
     // Code : pour toute l'évaluation (les points des parties sont effacés).
-    for (const x of partiesEval(ev)) if (Donnees.note(ev.id, eleveId, clePartie(x))) Donnees.ecrireNote(ev.id, eleveId, '', clePartie(x));
+    effacerParties(ev, eleveId);
     if (note !== RACCOURCIS[brut]) Donnees.ecrireNote(ev.id, eleveId, RACCOURCIS[brut]);
+    if (ev.bareme) { preremplirDegres(ev, eleveId); return rafraichirNotes(input); }
   } else if (brut === '' || (/^\d+(\.\d+)?$/.test(brut) && +brut <= p.max)) {
     // (Un nombre, ou la case vidée, remplace un code posé sur l'évaluation.)
     const valeur = brut === '' ? '' : String(+brut);
@@ -1369,7 +1518,8 @@ async function editerClasse(id) {
   boutonsModale(id ? 'Enregistrer' : 'Créer', id
     ? BOUTON_SUPPRIMER + (elevesDe(id).some(el => el.responsables)
       ? '<button value="effacer-coord" formnovalidate title="Retire téléphones, emails et adresses des responsables de toute la classe">Effacer les coordonnées</button>' : '')
-    : '<button value="ecole-directe" formnovalidate title="Créer la classe et ses élèves à partir de la liste exportée d’École Directe ou de Pronote (.xlsx, .csv)">📥 Depuis École Directe / Pronote…</button>'), 'modale-large');
+    : '<button value="ecole-directe" formnovalidate title="Créer la classe et ses élèves à partir de la liste exportée d’École Directe ou de Pronote (.xlsx, .csv)">📥 Depuis École Directe / Pronote…</button>'
+      + (classeExemple() ? '' : '<button value="exemple" formnovalidate title="Une classe inventée, déjà remplie, pour découvrir le carnet">🎓 Classe exemple</button>')), 'modale-large');
   const r = await resultat;
   if (r.action === 'ecole-directe') return ListeClasse.choisirFichier(null);
   if (r.action === 'effacer-coord') {
@@ -1378,15 +1528,10 @@ async function editerClasse(id) {
     toast(`Coordonnées effacées pour ${n} élève${n > 1 ? 's' : ''}.`, 'ok');
   } else if (r.action === 'supprimer') {
     if (!(await confirmer(`Supprimer la classe « ${c.nom} », ses élèves et toutes ses notes ?`))) return;
-    const eleves = new Set(elevesDe(id).map(el => el.id));
-    supprimerNotes(n => eleves.has(n.eleveId));
-    for (const s of Donnees.liste('suivis', x => eleves.has(x.eleveId))) Donnees.supprimer('suivis', s.id);
-    for (const el of eleves) Donnees.supprimer('eleves', el);
-    for (const e of evalsDe(id)) Donnees.supprimer('evals', e.id);
-    const docs = seancesDe(id).flatMap(s => s.documents || []);
-    for (const s of seancesDe(id)) Donnees.supprimer('seances', s.id);
-    supprimerDocumentsInutilises(docs);
-    Donnees.supprimer('classes', id);
+    supprimerClasse(id);
+  } else if (r.action === 'exemple') {
+    ui.classeId = creerClasseExemple().id;
+    memoriserUi();
   } else if (r.action === 'ok') {
     const seuils = [+r.data.s2, +r.data.s3, +r.data.s4].sort((x, y) => x - y);
     const enreg = Donnees.ecrire('classes', { ...c, id: c.id || Donnees.nouvelId(), nom: r.data.nom.trim(), niveau: r.data.niveau, seuils });
@@ -1396,6 +1541,20 @@ async function editerClasse(id) {
     for (const e of evalsDe(enreg.id).filter(e => !e.seuils)) for (const el of elevesDe(enreg.id)) preremplirDegres(e, el.id);
   }
   rendre();
+}
+
+// Une classe et tout ce qui s'y rattache (élèves, notes, observations, évaluations, leçons, documents, agenda).
+function supprimerClasse(id) {
+  const eleves = new Set(elevesDe(id).map(el => el.id));
+  supprimerNotes(n => eleves.has(n.eleveId));
+  for (const s of Donnees.liste('suivis', x => eleves.has(x.eleveId))) Donnees.supprimer('suivis', s.id);
+  for (const el of eleves) Donnees.supprimer('eleves', el);
+  for (const e of evalsDe(id)) Donnees.supprimer('evals', e.id);
+  const docs = seancesDe(id).flatMap(s => s.documents || []);
+  for (const s of seancesDe(id)) Donnees.supprimer('seances', s.id);
+  supprimerDocumentsInutilises(docs);
+  for (const a of Donnees.liste('agenda', x => x.classeId === id)) Donnees.supprimer('agenda', a.id);
+  Donnees.supprimer('classes', id);
 }
 
 async function editerEval(id) {
@@ -1415,13 +1574,18 @@ async function editerEval(id) {
   const { d, resultat } = ouvrirModale(id ? 'Modifier l’évaluation' : 'Nouvelle évaluation', `
     <label>Titre<input name="titre" required autofocus value="${esc(e.titre)}" placeholder="${esc(mot('titreEvalExemple'))}"></label>
     <label>${esc(mot('activite'))}<input name="apsa" list="liste-apsa" value="${esc(e.apsa)}" placeholder="${esc(mot('activitePlaceholder'))}"></label>
-    <datalist id="liste-apsa">${activitesDiscipline().map(a => `<option value="${esc(a)}">`).join('')}</datalist>
+    <datalist id="liste-apsa">${[...activitesDiscipline(), ACTIVITE_AUTRE].map(a => `<option value="${esc(a)}">`).join('')}</datalist>
     <div class="ligne">
       <label>Date<input type="date" name="date" value="${esc(e.date)}"></label>
       <label>Noté sur<input type="number" name="max" min="1" step="any" required value="${e.max}"></label>
       <label>Coefficient<input type="number" name="coef" min="0" step="any" required value="${e.coef}"></label>
     </div>
-    <fieldset class="parties-note">
+    <fieldset class="parties-note lien-bareme">
+      <legend>Barème <span class="aide">(bibliothèque, onglet Barèmes)</span></legend>
+      <label>Calculer la note avec<select name="bareme"><option value="">— aucun barème —</option>${optionsBaremesEval(e, e.apsa, c.niveau, e.bareme?.id)}</select></label>
+      <div class="info-bareme aide"></div>
+    </fieldset>
+    <fieldset class="parties-note parties-manuelles">
       <legend>Décomposition de la note <span class="aide">(facultatif)</span></legend>
       <p class="aide">Ex. 7 pts sur l’investissement, 3 pts sur l’exécution, 10 pts sur la performance : une colonne par partie
         dans la grille, le total se calcule tout seul (c’est lui qui compte dans les moyennes).</p>
@@ -1521,6 +1685,31 @@ async function editerEval(id) {
   d.addEventListener('input', ev => { if (ev.target.name === 'partieMax') majTotalParties(); });
   majTotalParties();
 
+  // Barème : ses blocs deviennent les parties de la note (la décomposition « à la main » est alors masquée).
+  const selBareme = $('[name="bareme"]', d), infoBareme = $('.info-bareme', d), apercuModeles = {};
+  // APSA tapée ou changée : la liste se réordonne (ses barèmes et modèles en premier), le choix est gardé.
+  $('[name="apsa"]', d).addEventListener('change', ev => {
+    selBareme.innerHTML = `<option value="">— aucun barème —</option>${optionsBaremesEval(e, ev.target.value.trim(), c.niveau, selBareme.value)}`;
+  });
+  const majLienBareme = () => {
+    const br = baremeChoisiEval(e, selBareme.value, apercuModeles);
+    $('.parties-manuelles', d).hidden = !!br;
+    if (!br) { infoBareme.innerHTML = 'La note se saisit directement (ou par parties ci-dessous). Un barème calcule la note : tu tapes la perf, touches le degré, coches…'; return majTotalParties(); }
+    const deja = e.bareme?.id === br.id, change = deja && e.bareme.maj !== br.maj;
+    const caseMaj = $('[name="majBareme"]', d), garderAncien = change && caseMaj && !caseMaj.checked;
+    const lien = deja && (!change || garderAncien) ? e.bareme : lienBareme(br), parties = partiesDuBareme(lien);
+    champMax.readOnly = true;
+    champMax.value = arrondi2(parties.reduce((s, p) => s + p.max, 0));
+    champMax.dispatchEvent(new Event('input', { bubbles: true }));
+    infoBareme.innerHTML = `${br.id.startsWith('fourni|') ? '📚 Modèle fourni (chiffres indicatifs) : il sera copié dans tes barèmes (onglet Barèmes), où tu pourras l’adapter.<br>' : ''}
+      ${parties.length} partie${parties.length > 1 ? 's' : ''} : ${parties.map(p => `${esc(p.nom)} /${fmt(p.max)}`).join(' · ')}
+      ${change ? `<label class="case maj-bareme"><input type="checkbox" name="majBareme" ${garderAncien ? '' : 'checked'}> <span>⚠ Le barème a été modifié depuis le lien :
+        <b>mettre à jour</b> et recalculer les notes déjà saisies (décoche pour garder l’ancienne version)</span></label>` : ''}`;
+  };
+  selBareme.addEventListener('change', majLienBareme);
+  d.addEventListener('change', ev => { if (ev.target.name === 'majBareme') majLienBareme(); });
+  majLienBareme();
+
   // Conversion des seuils dans le barème de l'évaluation, mise à jour pendant la saisie.
   d.addEventListener('input', ev => {
     if (!['max', 's2', 's3', 's4'].includes(ev.target.name)) return;
@@ -1539,13 +1728,23 @@ async function editerEval(id) {
     const toutes = !!REFERENTIEL.refs[r.data.referentiel]?.toutes;
     const duChamp = x => { const a = REFERENTIEL.attendu(x); return a?.refId === r.data.referentiel && (toutes || a.ca === r.data.ca); };
     // Parties de la note (lignes sans points ignorées ; sans intitulé : « Partie 1 »…).
+    // Barème lié : ses blocs (copiés) donnent les parties ; sinon, parties « à la main ».
+    let brLie = baremeChoisiEval(e, r.data.bareme, apercuModeles);
+    if (brLie?.id.startsWith('fourni|')) {
+      // Modèle fourni : copié dans mes barèmes (pour l'adapter ensuite), et c'est cette copie qui est liée.
+      const { id: _, ...modele } = brLie;
+      brLie = Donnees.ecrire('baremes', { ...modele, id: Donnees.nouvelId(), cree: Date.now() });
+      toast(`Barème « ${brLie.titre} » ajouté à tes barèmes (onglet Barèmes) et lié à l’évaluation ✔`, 'ok');
+    }
+    const garderAncien = brLie && e.bareme?.id === brLie.id && (e.bareme.maj === brLie.maj || r.data.majBareme !== 'on');
+    const lien = brLie ? (garderAncien ? e.bareme : lienBareme(brLie)) : undefined;
     const noms = r.fd.getAll('partieNom'), maxs = r.fd.getAll('partieMax'), ids = r.fd.getAll('partieId');
-    const parties = noms.map((nom, k) => ({ id: ids[k] || Donnees.nouvelId(), nom: nom.trim() || `Partie ${k + 1}`, max: +maxs[k] }))
+    const parties = lien ? partiesDuBareme(lien) : noms.map((nom, k) => ({ id: ids[k] || Donnees.nouvelId(), nom: nom.trim() || `Partie ${k + 1}`, max: +maxs[k] }))
       .filter(p => p.max > 0);
     const max = parties.length ? arrondi2(parties.reduce((s, p) => s + p.max, 0)) : +r.data.max;
     const enreg = Donnees.ecrire('evals', {
       ...e, id: e.id || Donnees.nouvelId(), classeId: c.id, cree: e.cree || Date.now(),
-      parties: parties.length ? parties : undefined,
+      parties: parties.length ? parties : undefined, bareme: lien,
       titre: r.data.titre.trim(), apsa: r.data.apsa.trim(), date: r.data.date, max, coef: +r.data.coef,
       referentiel: r.data.referentiel, ca: toutes ? '' : r.data.ca,
       competences: r.data.ca || toutes ? r.fd.getAll('competence').filter(duChamp) : [],
@@ -1556,10 +1755,12 @@ async function editerEval(id) {
     });
     // Parties retirées : leurs points sont effacés ; les totaux des élèves déjà notés par parties sont recalculés.
     // (Plus aucune partie : les totaux restent, comme des notes ordinaires.)
-    const gardees = new Set(parties.map(clePartie));
-    const notesParties = n => n.evalId === enreg.id && n.attendu?.startsWith('part:');
+    const gardees = new Set([...parties.map(clePartie), ...(lien ? parties.map(cleBrut) : [])]);
+    const notesParties = n => n.evalId === enreg.id && /^(part|brut):/.test(n.attendu || '');
     const notesParEleve = new Set(Donnees.liste('notes', n => notesParties(n) && n.valeur !== '').map(n => n.eleveId));
     supprimerNotes(n => notesParties(n) && !gardees.has(n.attendu));
+    // Barème (nouveau ou mis à jour) : les points sont recalculés d'après ce qui avait été saisi.
+    if (lien && lien !== e.bareme) for (const el of elevesDe(c.id)) recalculerBareme(enreg, el.id);
     if (parties.length) {
       for (const el of elevesDe(c.id)) {
         const note = Donnees.note(enreg.id, el.id), total = totalParties(enreg, el.id);
@@ -2429,6 +2630,12 @@ document.addEventListener('click', e => {
     case 'sauvegarder': return lancer(sauvegarder);
     case 'maj-appli': return lancer(boutonVersion);
     case 'ajout-classe': basculerMenu(false); return lancer(() => editerClasse());
+    case 'exemple': ui.classeId = creerClasseExemple().id; memoriserUi(); return rendre();
+    case 'suppr-exemple': return lancer(async () => {
+      if (!classeExemple() || !(await confirmer('Supprimer la classe exemple (élèves et résultats inventés) ? Tu pourras la recréer depuis « + Nouvelle classe ».', 'Supprimer'))) return;
+      supprimerClasse(ID_CLASSE_EXEMPLE);
+      rendre();
+    });
     case 'ajout-eval': return lancer(() => editerEval());
     case 'periodes': return lancer(editerPeriodes);
     case 'reglages': basculerMenu(false); return lancer(() => ouvrirReglages());
@@ -2472,9 +2679,46 @@ document.addEventListener('change', e => {
     if (champ === 'dispense' && t.checked && !el.dispDebut) modif.dispDebut = aujourdhui();
     if (champ === 'dispFin' && modif.dispFin) dispensesEnEdition.delete(el.id); // date de fin saisie : on replie
     Donnees.ecrire('eleves', modif);
+    // Sexe corrigé : les points des barèmes filles / garçons sont recalculés.
+    if (champ === 'sexe') for (const ev of evalsDe(el.classeId).filter(x => x.bareme)) recalculerBareme(ev, el.id);
     rendreClasses();
     if (['dispense', 'dispDebut', 'dispFin'].includes(champ)) rendreVue(); // met à jour le statut affiché
   }
+});
+
+// Évaluation liée à un barème : degré d'un critère (toucher : vide → 1 → 2 → 3 → 4 → vide), case à cocher, palier.
+function saisieBoutonBareme(b, valeur) {
+  const ev = Donnees.get('evals', b.dataset.eval), p = partiesEval(ev || {}).find(x => x.id === b.dataset.partie);
+  if (!p) return;
+  const avant = codeEval(ev, b.dataset.eleve) ? '' : Donnees.note(ev.id, b.dataset.eleve, cleBrut(p));
+  if (valeur === undefined) valeur = p.source.type === 'case' ? (avant === '1' ? '' : '1') : avant === '4' ? '' : String(+avant + 1);
+  ecrireSaisieBareme(ev, b.dataset.eleve, p, valeur);
+  majMoyennes();
+  rafraichirNotes(b);
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('#vue [data-degre-bareme], #vue [data-case-bareme]');
+  if (b) lancer(() => saisieBoutonBareme(b));
+});
+document.addEventListener('change', e => {
+  const s = e.target;
+  if (!s.matches?.('#vue .cellule-palier')) return;
+  const ev = Donnees.get('evals', s.dataset.eval), p = partiesEval(ev || {}).find(x => x.id === s.dataset.partie);
+  if (!p) return;
+  ecrireSaisieBareme(ev, s.dataset.eleve, p, s.value);
+  majMoyennes();
+  rafraichirNotes(s);
+});
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (!t.matches?.('#vue [data-degre-bareme], #vue [data-case-bareme], #vue .cellule-palier')) return;
+  const fleches = { ArrowDown: [1, 0], ArrowUp: [-1, 0], ArrowRight: [0, 1], ArrowLeft: [0, -1] };
+  if (t.matches('.cellule-palier') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return; // (choix dans la liste)
+  if (t.dataset.degreBareme !== undefined && /^[1-4]$/.test(e.key)) { lancer(() => { saisieBoutonBareme(t, e.key); deplacer(t, 1, 0); }); }
+  else if (!t.matches('.cellule-palier') && ['0', 'Delete', 'Backspace'].includes(e.key)) { lancer(() => { saisieBoutonBareme(t, ''); deplacer(t, 1, 0); }); }
+  else if (fleches[e.key]) deplacer(t, ...fleches[e.key]);
+  else return;
+  e.preventDefault();
 });
 
 // Degrés de maîtrise : un toucher fait défiler les degrés ; au clavier 1 à 4, 0 ou Suppr pour effacer, flèches pour se déplacer.
@@ -2534,7 +2778,7 @@ document.addEventListener('keydown', e => {
       t.value = statut ? STATUTS_ENT[statut] : sc ? STATUTS_ENT[sc] : afficherValeur(ind, v);
     } else if (t.dataset.partie) {
       const ev = Donnees.get('evals', t.dataset.eval), p = partiesEval(ev).find(x => x.id === t.dataset.partie);
-      t.value = p ? affichage(valeurPartie(ev, t.dataset.eleve, p)) : '';
+      t.value = p ? texteSaisiePartie(ev, t.dataset.eleve, p) : '';
     } else {
       t.value = affichage(Donnees.note(t.dataset.eval, t.dataset.eleve));
     }

@@ -30,6 +30,54 @@ const cleBareme = cfg => cfg.etape + '|' + mesureAsns(cfg);
 const baremeAsns = cfg => cfg.baremes[cleBareme(cfg)] || baremeDefautAsns(cfg.etape, mesureAsns(cfg));
 const resultatsAsns = cfg => (cfg.resultats[cfg.etape] ??= {});
 const etapeSn = cfg => ETAPES_SN.find(e => e.id === cfg.etape);
+
+// Ordre de passage (par deux) : ordre de la liste, hétérogène (un plus à l'aise avec un plus en difficulté)
+// ou homogène (niveaux proches ensemble), en commençant par les plus en difficulté ou par les plus à l'aise.
+// L'ordre est calculé une fois puis gardé pour l'étape (les cartes ne bougent pas pendant la séance) ;
+// « 🔀 Refaire l'ordre » le recalcule (ex. avec les nouveaux résultats).
+const ORDRES_ASNS = {
+  liste: 'Ordre de la liste',
+  hetero: 'Hétérogène : un plus à l’aise avec un plus en difficulté',
+  croissant: 'Homogène : les plus en difficulté d’abord',
+  decroissant: 'Homogène : les plus à l’aise d’abord',
+};
+const ordreAsns = cfg => (cfg.ordre ??= { mode: 'liste', critere: 'etape' });
+// Critères de niveau : le résultat à cette étape, ou ce que le carnet sait de la classe.
+const criteresAsns = c => [{ groupe: 'ASNS', liste: [['etape', 'Résultat à cette étape (déjà mesuré)']] },
+  ...criteresNiveau(c).map(g => ({ ...g, groupe: g.groupe || 'Carnet' }))];
+// Niveau d'un élève (plus haut = plus à l'aise), ou null s'il n'a rien.
+function niveauAsns(c, cfg, critere) {
+  if (critere === 'etape') {
+    const res = resultatsAsns(cfg), sens = MESURES_ASNS[mesureAsns(cfg)].sens;
+    return id => { const v = res[id]?.v; return v === null || v === undefined ? null : sens * v; };
+  }
+  const n = niveauOutil(c, critere);
+  return id => n(id)?.val ?? null;
+}
+// Calcule l'ordre des présents (identifiants). Un élève sans niveau compte au niveau moyen.
+function calculerOrdreAsns(c, cfg, presents) {
+  const o = ordreAsns(cfg), brut = niveauAsns(c, cfg, o.critere);
+  const connus = presents.map(el => brut(el.id)).filter(v => v !== null);
+  const moyenne = connus.length ? connus.reduce((a, b) => a + b, 0) / connus.length : 0;
+  const val = id => brut(id) ?? moyenne;
+  const tries = [...presents].sort((a, b) => val(b.id) - val(a.id) || collator.compare(a.nom, b.nom)).map(el => el.id);
+  if (o.mode === 'croissant') tries.reverse();
+  if (o.mode === 'hetero') {
+    const duo = [];
+    for (let i = 0, j = tries.length - 1; i <= j; i++, j--) duo.push(...(i === j ? [tries[i]] : [tries[i], tries[j]]));
+    return { ids: duo, inconnus: presents.length - connus.length };
+  }
+  return { ids: tries, inconnus: presents.length - connus.length };
+}
+// Présents dans l'ordre de passage (l'ordre gardé, puis les élèves arrivés depuis, dans l'ordre de la liste).
+function presentsOrdonnesAsns(c, cfg, presents) {
+  const o = ordreAsns(cfg);
+  if (o.mode === 'liste') return presents;
+  const passages = (cfg.passages ??= {});
+  if (!passages[cfg.etape]) passages[cfg.etape] = calculerOrdreAsns(c, cfg, presents).ids;
+  const rang = new Map(passages[cfg.etape].map((id, k) => [id, k]));
+  return [...presents].sort((a, b) => (rang.get(a.id) ?? 1e9) - (rang.get(b.id) ?? 1e9));
+}
 const codeEtapeAsns = cfg => (cfg.etape === 'parcours' ? 'Parcours ASNS' : cfg.etape === 'libre' ? cfg.libre.trim() || 'Épreuve' : etapeSn(cfg)?.code);
 
 // Valeur → texte (« 1:23,4 », « 12,5 s », « 3,5 m »).
@@ -67,7 +115,7 @@ const mesureChrono = mesure => mesure !== 'distance';
 // Un toucher sur son nom = départ ; un second = arrivée (temps, médaille). Les réglages sont repliés, pour le professeur.
 function htmlAsns(c) {
   const cfg = cfgAsns(c), mesure = mesureAsns(cfg), b = baremeAsns(cfg), res = resultatsAsns(cfg);
-  const presents = presentsOutil(c), ids = new Set(presents.map(el => el.id));
+  const presents = presentsOrdonnesAsns(c, cfg, presentsOutil(c)), ids = new Set(presents.map(el => el.id));
   const comptes = { Or: 0, Argent: 0, Bronze: 0, '': 0 };
   for (const r of Object.values(res)) if (r.v !== null && r.v !== undefined) comptes[medailleAsns(cfg, r)]++;
   const nbRes = comptes.Or + comptes.Argent + comptes.Bronze + comptes[''];
@@ -93,19 +141,22 @@ function htmlAsns(c) {
 
 // Jusqu'à deux élèves dans l'eau en même temps, chacun avec son chrono : ceux qui nagent en grand, en haut
 // (côte à côte s'ils sont deux) ; les autres restent touchables tant qu'il reste une place, puis sont grisés.
-// Le premier sans résultat (et pas dans l'eau) est marqué « À toi ! ».
+// Les premiers sans résultat (et pas dans l'eau), autant que de places libres, sont marqués « À toi ! ».
+// Ordre de passage choisi : chaque carte porte son numéro de duo.
 const MAX_NAGEURS_ASNS = 2;
 function htmlCartesAsns(c, cfg, mesure, presents, res) {
   const ids = new Set(presents.map(el => el.id));
   const nageurs = Object.keys(cfg.enCours || {}).filter(id => ids.has(id));
-  const complet = nageurs.length >= MAX_NAGEURS_ASNS;
-  const suivant = !complet && presents.find(el => !nageurs.includes(el.id) && !(res[el.id] && res[el.id].v !== null && res[el.id].v !== undefined))?.id;
+  const places = MAX_NAGEURS_ASNS - nageurs.length, complet = places <= 0;
+  const suivants = new Set(complet ? [] : presents.filter(el => !nageurs.includes(el.id) && !(res[el.id] && res[el.id].v !== null && res[el.id].v !== undefined))
+    .slice(0, places).map(el => el.id));
+  const duos = ordreAsns(cfg).mode === 'liste' ? null : new Map(presents.map((el, k) => [el.id, Math.floor(k / 2) + 1]));
   const dansLEau = nageurs.map(id => presents.find(el => el.id === id));
   return (dansLEau.length ? `<div class="nageurs-asns n${dansLEau.length}">${dansLEau.map(el => carteAsns(c, cfg, mesure, el, res[el.id])).join('')}</div>` : '')
-    + presents.filter(el => !nageurs.includes(el.id)).map(el => carteAsns(c, cfg, mesure, el, res[el.id], complet, el.id === suivant)).join('');
+    + presents.filter(el => !nageurs.includes(el.id)).map(el => carteAsns(c, cfg, mesure, el, res[el.id], complet, suivants.has(el.id), duos?.get(el.id))).join('');
 }
 
-function carteAsns(c, cfg, mesure, el, r, attend = false, suivant = false) {
+function carteAsns(c, cfg, mesure, el, r, attend = false, suivant = false, duo = null) {
   const t = enCoursAsns(cfg, el.id), m = medailleAsns(cfg, r);
   const nom = esc(nomEleveOutil(el));
   if (t !== null) {
@@ -117,6 +168,7 @@ function carteAsns(c, cfg, mesure, el, r, attend = false, suivant = false) {
   const a = r && r.v !== null && r.v !== undefined;
   return `<button class="carte-asns${a ? ' fini m-' + (m ? sansAccent(m) : 'bravo') : ''}${attend ? ' attend' : ''}${suivant ? ' suivant' : ''}" data-as="carte" data-arg="${el.id}" ${attend ? 'disabled' : ''}
       aria-label="${mesureChrono(mesure) ? 'Départ de' : 'Distance de'} ${nom}">
+    ${duo ? `<span class="duo-asns" title="Passe avec son duo">Duo ${duo}</span>` : ''}
     <span class="nom-asns">${nom}</span>
     ${a ? `<span class="medaille-carte">${ICONES_MEDAILLE[m] || BRAVO}</span>
       <span class="temps-asns">${esc(texteValAsns(mesure, r.v))}</span>
@@ -129,7 +181,7 @@ function carteAsns(c, cfg, mesure, el, r, attend = false, suivant = false) {
 function htmlReglagesAsns(c, cfg, mesure, b, res, ids, nbRes) {
   const unite = mesure === 'distance' ? 'm' : 's ou min:s';
   const opt = (v, nom, sel) => `<option value="${esc(v)}" ${v === sel ? 'selected' : ''}>${esc(nom)}</option>`;
-  const eleves = elevesDe(c.id).filter(el => ids.has(el.id) || res[el.id]);
+  const eleves = elevesDe(c.id).filter(el => ids.has(el.id) || res[el.id]), o = ordreAsns(cfg);
   return `<details class="reglages-asns" data-as-reglages ${reglagesAsnsOuverts ? 'open' : ''}>
     <summary>⚙ Réglages du professeur <span class="aide">étape, barème, présents, corrections</span></summary>
     <div class="ligne reglage-outil">
@@ -152,6 +204,14 @@ function htmlReglagesAsns(c, cfg, mesure, b, res, ids, nbRes) {
       (temps : 45 ou 1:30 ; distance en mètres). Un nouveau temps ne remplace l’ancien que s’il est meilleur.</p>
     <div class="boutons-outil"><button data-as="proposer" ${nbRes >= 3 ? '' : 'disabled'} title="Or : le meilleur quart · Argent : la moitié · Bronze : presque tous">📐 Proposer d’après la classe</button>
       <button data-as="bareme-defaut">↺ Barème de départ</button></div>
+    <h4>Ordre de passage <span class="aide">(par deux)</span></h4>
+    <div class="ligne reglage-outil">
+      <label>Ordre<select data-as-champ="ordre">${Object.entries(ORDRES_ASNS).map(([k, n]) => opt(k, n, o.mode)).join('')}</select></label>
+      ${o.mode !== 'liste' ? `<label class="large-outil">Niveau d’après<select data-as-champ="critere">${criteresAsns(c).map(g => `<optgroup label="${esc(g.groupe)}">${g.liste.map(([k, n]) => opt(k, n, o.critere)).join('')}</optgroup>`).join('')}</select></label>` : ''}
+    </div>
+    ${o.mode !== 'liste' ? `<div class="boutons-outil"><button data-as="refaire-ordre">🔀 Refaire l’ordre</button></div>
+      <p class="aide">L’ordre est gardé pour cette étape ; « Refaire l’ordre » le recalcule (nouveaux résultats, nouveaux présents).
+        Un élève sans résultat pour ce critère compte au niveau moyen. Les niveaux ne s’affichent pas sur les cartes.</p>` : ''}
     ${htmlPresents(c)}
     <h4>Résultats (corriger, réussite)</h4>
     <div class="carte"><table class="tableau-outil tableau-asns">
@@ -212,6 +272,12 @@ function actionAsns(action, arg, c) {
       return rendreOutil();
     }
     case 'bareme-defaut': delete cfg.baremes[cleBareme(cfg)]; return rendreOutil();
+    case 'refaire-ordre': {
+      const { ids, inconnus } = calculerOrdreAsns(c, cfg, presentsOutil(c));
+      (cfg.passages ??= {})[cfg.etape] = ids;
+      toast(inconnus ? `Ordre refait. ${inconnus} élève${inconnus > 1 ? 's' : ''} sans résultat pour ce critère (compté${inconnus > 1 ? 's' : ''} au niveau moyen).` : 'Ordre de passage refait ✔', 'ok');
+      return rendreOutil();
+    }
   }
 }
 
@@ -267,6 +333,7 @@ document.addEventListener('change', e => {
     const k = t.dataset.asChamp;
     if (k === 'etape') { cfg.etape = t.value; cfg.enCours = {}; }
     else if (k === 'mesure') cfg.mesures[cfg.etape] = t.value;
+    else if (k === 'ordre' || k === 'critere') { ordreAsns(cfg)[k === 'ordre' ? 'mode' : 'critere'] = t.value; cfg.passages = {}; }
     else if (k === 'libre') { cfg.libre = t.value.slice(0, 40); return sauverOutils(); } // (texte : pas de redessin, le prochain clic n'est pas perdu)
     return rendreOutil();
   }
@@ -304,7 +371,7 @@ function majMedaillesAsns(c, cfg) {
   const b = baremeAsns(cfg), m = mesureAsns(cfg), signe = MESURES_ASNS[m].sens < 0 ? '≤' : '≥';
   document.querySelectorAll('#vue .palier-asns b').forEach((x, k) => { x.textContent = `${signe} ${texteValAsns(m, b[['or', 'argent', 'bronze'][k]])}`; });
   const cartes = $('#vue .cartes-asns');
-  if (cartes) cartes.innerHTML = htmlCartesAsns(c, cfg, m, presentsOutil(c), res);
+  if (cartes) cartes.innerHTML = htmlCartesAsns(c, cfg, m, presentsOrdonnesAsns(c, cfg, presentsOutil(c)), res);
   const proposer = $('#vue [data-as="proposer"]');
   if (proposer) proposer.disabled = n < 3;
 }

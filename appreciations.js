@@ -27,7 +27,21 @@ const idAppr = (eleveId, periode) => idSuivi(eleveId, 'appréciation ' + periode
 const estSuiviAppr = s => /^appréciation /i.test(s.apsa || '');
 // Selon la discipline (discipline.js) : noms des rubriques, phrases et objectifs propres (ex. en SVT, « motricité » → « connaissances »).
 const rubriqueAppr = k => ({ ...RUBRIQUES_APPR[k], ...(profil().appreciations?.noms?.[k] || {}) });
-const phrasesAppr = () => ({ ...PHRASES_APPR, ...(profil().appreciations?.phrases || {}) });
+// (Phrases propres à la discipline : remplacent celles de l'EPS niveau par niveau ; les niveaux non redéfinis restent communs.)
+const phrasesAppr = () => {
+  const propres = profil().appreciations?.phrases || {};
+  return Object.fromEntries(Object.keys({ ...PHRASES_APPR, ...propres }).map(k => [k, { ...PHRASES_APPR[k], ...(propres[k] || {}) }]));
+};
+// L'activité (ou le thème) au milieu d'une phrase : « en badminton », « en génétique », « sur le corps humain et la santé ».
+// Rien si le nom ne se glisse pas dans une phrase (trop long, virgule, « À la recherche… ») : la phrase reste juste sans lui.
+function activiteDansPhrase(nom) {
+  const n = String(nom || '').replace(/\s+/g, ' ').trim();
+  if (!n || estActiviteAutre(n) || n.length > 45 || /[,;:()]/.test(n)) return '';
+  const art = /^(le|la|les)\s+(.+)$/i.exec(n) || /^(l[’'])\s*(.+)$/i.exec(n);
+  if (art) return ` sur ${art[1].toLocaleLowerCase('fr')}${/[’']$/.test(art[1]) ? '' : ' '}${art[2]}`;
+  if (/^(à|au|aux|de|du|des|un|une)\s/i.test(n)) return '';
+  return ' en ' + n[0].toLocaleLowerCase('fr') + n.slice(1);
+}
 const objectifsAppr = () => ({ ...OBJECTIFS_APPR, ...(profil().appreciations?.objectifs || {}) });
 
 /* ---------- Réglages ---------- */
@@ -39,14 +53,16 @@ function reglageAppr() {
   r.actives = r.actives.filter(k => RUBRIQUES_APPR[k]);
   if (!TONS_APPR[r.ton]) r.ton = 'bienveillant';
   if (!STYLES_APPR[r.style]) r.style = 'phrases';
-  r.longueur = Math.max(80, Math.min(2000, +r.longueur || 400));
+  // (Ancien défaut, 400 caractères : jugé trop long, il passe à 300 ; une autre valeur choisie est gardée.)
+  r.longueur = Math.max(80, Math.min(2000, +r.longueur === 400 || !+r.longueur ? 300 : +r.longueur));
   return r;
 }
 
 function htmlReglageAppr(r) {
   return `
     <p class="aide">Coche les rubriques à aborder, et range-les dans l’ordre voulu (↑ ↓). Si la place manque,
-      les dernières rubriques sont laissées de côté (l’objectif est gardé jusqu’au bout).</p>
+      les dernières rubriques sont laissées de côté (l’objectif est gardé jusqu’au bout).
+      Si ce que tu as rempli (observations, mots-clés…) signale une difficulté, la rubrique passe en priorité (⚠), même décochée (ex. comportement) ; touche-la jusqu’à « non mentionné » pour l’écarter.</p>
     <ol class="rubriques-appr">${r.ordre.map((k, i) => `<li>
       <label class="case"><input type="checkbox" name="appr-${k}" ${r.actives.includes(k) ? 'checked' : ''}>
         <b>${esc(rubriqueAppr(k).nom)}</b> <span class="aide">${esc(rubriqueAppr(k).aide)}</span></label>
@@ -54,7 +70,7 @@ function htmlReglageAppr(r) {
       <button type="button" class="icone-petit" data-appr-monter="${k}" ${i ? '' : 'disabled'} aria-label="Monter ${esc(rubriqueAppr(k).nom)}">↑</button>
       <button type="button" class="icone-petit" data-appr-descendre="${k}" ${i < r.ordre.length - 1 ? '' : 'disabled'} aria-label="Descendre ${esc(rubriqueAppr(k).nom)}">↓</button>
       <input type="hidden" name="appr-ordre" value="${k}"></li>`).join('')}</ol>
-    <label class="case"><input type="checkbox" name="appr-bilan" ${r.bilan ? 'checked' : ''}> Commencer par un bilan général (« Bon trimestre. »)</label>
+    <label class="case"><input type="checkbox" name="appr-bilan" ${r.bilan ? 'checked' : ''}> Commencer par un bilan général (« Léa réalise un bon trimestre. »)</label>
     <div class="ligne">
       <label>Ton<select name="appr-ton">${Object.entries(TONS_APPR).map(([v, n]) => `<option value="${v}" ${r.ton === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label>Style<select name="appr-style">${Object.entries(STYLES_APPR).map(([v, n]) => `<option value="${v}" ${r.style === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
@@ -70,7 +86,7 @@ function lireReglageAppr(form) {
     ordre, actives: ordre.filter(k => form.elements['appr-' + k]?.checked),
     bilan: !!form.elements['appr-bilan']?.checked,
     ton: form.elements['appr-ton']?.value || 'bienveillant', style: form.elements['appr-style']?.value || 'phrases',
-    longueur: Math.max(80, Math.min(2000, +form.elements['appr-longueur']?.value || 400)),
+    longueur: Math.max(80, Math.min(2000, +form.elements['appr-longueur']?.value || 300)),
   };
 }
 
@@ -166,22 +182,27 @@ function analyserAppr(el, periode, eleves) {
   }
   // Moyenne par APSA (pour citer la meilleure ou la plus fragile)
   const parApsa = new Map();
-  for (const e of evals) { const a = (e.apsa || '').trim(); if (a) parApsa.set(a, [...(parApsa.get(a) || []), e]); }
+  for (const e of evals) { const a = (e.apsa || '').trim(); if (a && !estActiviteAutre(a)) parApsa.set(a, [...(parApsa.get(a) || []), e]); }
   const moyApsa = [...parApsa].map(([a, l]) => ({ a, m: moyenneEleve(el.id, l) })).filter(x => x.m !== null);
 
   // Degrés de maîtrise des évaluations : dernier degré de chaque compétence, et son évolution.
+  // saisi : rubriques appuyées sur ce que l'enseignant a rempli lui-même (degré choisi à la main, donnée de leçon,
+  // observation, absence, note) — pas sur un degré pré-rempli d'après la note. Seules elles font un point de vigilance.
+  const saisi = { moteur: true, progression: true };
   const comps = new Map();
   for (const e of evals) for (const a of competencesEval(e)) {
     const v = Donnees.note(e.id, el.id, a.id);
     if (!v) continue;
     if (!comps.has(a.id)) comps.set(a.id, { a, valeurs: [] });
     comps.get(a.id).valeurs.push(+v);
+    comps.get(a.id).auto = !!Donnees.noteComplete(e.id, el.id, a.id)?.auto;
   }
   const faibles = [];
-  for (const { a, valeurs } of comps.values()) {
+  for (const { a, valeurs, auto } of comps.values()) {
     const der = valeurs.at(-1);
     degres.competences.push(der);
     degres[categorieAppr(a.texte)].push(der);
+    if (!auto) { saisi.competences = true; saisi[categorieAppr(a.texte)] = true; }
     if (valeurs.length > 1) { if (der > valeurs[0]) mieux++; else if (der < valeurs[0]) pire++; }
     if (der < 3) faibles.push({ texte: a.texte, cat: categorieAppr(a.texte), v: der });
   }
@@ -213,6 +234,7 @@ function analyserAppr(el, periode, eleves) {
       const cat = ind.etape ? 'moteur' : categorieAppr(ind.nom);
       degres[cat].push(der);
       degres.competences.push(der);
+      saisi[cat] = saisi.competences = true;
       if (der < 3) faibles.push({ texte: ind.etape ? texteIndic(ind) : ind.nom, cat, v: der, indic: !ind.etape });
     }
     // Médaille (dernière obtenue) : bronze → degré 2, argent → 3, or → 4, côté motricité.
@@ -240,13 +262,13 @@ function analyserAppr(el, periode, eleves) {
   } else if (degres.moteur.length) {
     const m = moyenneListe(degres.moteur);
     niveaux.moteur = niveauDegre(m);
-    sources.moteur = `Pas de note : moyenne des degrés « moteurs » ${fmtD(m)}`;
+    sources.moteur = `Pas de note : moyenne des degrés « ${rubriqueAppr('moteur').nom.toLocaleLowerCase('fr')} » ${fmtD(m)}`;
   }
   if (moyApsa.length > 1) {
     const tri = [...moyApsa].sort((x, y) => y.m - x.m);
     details.apsaForte = tri[0].a; details.apsaFaible = tri.at(-1).a;
   } else {
-    const apsas = [...new Set([...evals.map(e => (e.apsa || '').trim()), ...seances.map(s => (s.apsa || '').trim())].filter(Boolean))];
+    const apsas = [...new Set([...evals.map(e => (e.apsa || '').trim()), ...seances.map(s => (s.apsa || '').trim())].filter(a => a && !estActiviteAutre(a)))];
     if (apsas.length === 1) details.apsaSeule = apsas[0];
   }
 
@@ -254,6 +276,7 @@ function analyserAppr(el, periode, eleves) {
   if (degres.competences.length) {
     const m = moyenneListe(degres.competences);
     niveaux.competences = niveauDegre(m);
+    details.degreMoyen = m; // (valeur exacte, pour la synthèse graphique de la fiche bilan)
     const validees = degres.competences.filter(v => v >= 3).length;
     sources.competences = `${validees}/${degres.competences.length} au degré 3 ou 4 · degré moyen ${fmtD(m)}`;
   }
@@ -262,7 +285,7 @@ function analyserAppr(el, periode, eleves) {
   if (degres.methodo.length) {
     const m = moyenneListe(degres.methodo);
     niveaux.methodo = niveauDegre(m);
-    sources.methodo = `Degré moyen ${fmtD(m)} sur ${degres.methodo.length} critère${degres.methodo.length > 1 ? 's' : ''} (rôles, organisation, sécurité)`;
+    sources.methodo = `Degré moyen ${fmtD(m)} sur ${degres.methodo.length} critère${degres.methodo.length > 1 ? 's' : ''} (${rubriqueAppr('methodo').aide})`;
   }
 
   // Attitude : critère « attitude / engagement » relevé en leçon, présence, mots-clés des observations.
@@ -276,7 +299,7 @@ function analyserAppr(el, periode, eleves) {
       morceaux.push(`${Math.round(taux * 100)} % de ${mot('presenceLecons')}`);
       if (n === null) n = 3;
       // (Seules les absences comptent, pas les blessures ni les maladies ; une absence isolée ne suffit pas.)
-      if (abs >= 3 || (abs >= 2 && taux < 0.8)) n = Math.min(n, 2);
+      if (abs >= 3 || (abs >= 2 && taux < 0.8)) { n = Math.min(n, 2); saisi.attitude = true; }
     }
     if (absNotes) morceaux.push(`${absNotes} absence${absNotes > 1 ? 's' : ''} à une évaluation`);
     // Blessé / malade : signalé pour mémoire, sans baisser le niveau (ce n'est pas un manque d'engagement).
@@ -284,7 +307,7 @@ function analyserAppr(el, periode, eleves) {
     const santeNotes = evals.filter(e => ['BLE', 'MAL'].includes(Donnees.note(e.id, el.id))).length;
     if (sante + santeNotes) morceaux.push(`blessé / malade : ${sante + santeNotes} fois (${mot('lecons').toLocaleLowerCase('fr')} et évaluations), sans effet sur ce niveau`);
     if (mots.plus || mots.moins) {
-      morceaux.push('observations : ' + mots.trouves.join(', '));
+      morceaux.push('observations : ' + mots.trouves.join(', ')); saisi.attitude = true;
       n = Math.max(1, Math.min(4, (n ?? 3) + Math.sign(mots.plus - mots.moins) * (Math.abs(mots.plus - mots.moins) >= 2 ? 2 : 1)));
     }
     if (n === null) { n = 3; defaut.attitude = true; morceaux.push('aucune donnée : niveau par défaut, à vérifier'); }
@@ -298,7 +321,7 @@ function analyserAppr(el, periode, eleves) {
     let n = null;
     if (degres.comportement.length) { n = niveauDegre(moyenneListe(degres.comportement)); morceaux.push(`critères respect / comportement : degré ${fmtD(moyenneListe(degres.comportement))}`); }
     if (mots.plus || mots.moins) {
-      morceaux.push('observations : ' + mots.trouves.join(', '));
+      morceaux.push('observations : ' + mots.trouves.join(', ')); saisi.comportement = true;
       n = Math.max(1, Math.min(4, (n ?? 3) + Math.sign(mots.plus - mots.moins) * (Math.abs(mots.plus - mots.moins) >= 2 ? 2 : 1)));
     }
     if (n === null) { n = 3; defaut.comportement = true; morceaux.push('aucune donnée : niveau par défaut, à vérifier'); }
@@ -332,6 +355,7 @@ function analyserAppr(el, periode, eleves) {
   }
 
   details.faibles = faibles.sort((a, b) => a.v - b.v);
+  details.saisi = saisi;
   details.moyenne = moy;
   sources.objectif = 'Choisi d’après la rubrique la plus faible';
   return { niveaux, sources, defaut, details };
@@ -344,44 +368,44 @@ function analyserAppr(el, periode, eleves) {
 // Niveaux 1 et 2 : une liste par ton (b bienveillant, n neutre, x exigeant). Style télégraphique : listes `t`.
 const PHRASES_APPR = {
   attitude: {
-    4: { p: ['{S} s’investit pleinement dans toutes les activités.', '{S} fait preuve d’un engagement exemplaire en cours.', '{S} montre un investissement remarquable et constant.'],
+    4: { p: ['{S} s’investit pleinement dans toutes les activités.', '{S} fait preuve d’un engagement exemplaire en cours.', '{S} montre un investissement remarquable et constant.', 'L’investissement est exemplaire dans toutes les activités.'],
       t: ['Investissement exemplaire.', 'Engagement remarquable.'] },
-    3: { p: ['{S} s’investit avec sérieux en cours.', '{S} montre un engagement régulier.', '{S} participe avec envie aux activités proposées.'],
+    3: { p: ['{S} s’investit avec sérieux en cours.', '{S} montre un engagement régulier.', '{S} participe avec envie aux activités proposées.', 'L’engagement en cours est sérieux et régulier.'],
       t: ['Investissement sérieux.', 'Bon engagement en cours.'] },
     2: { p: { b: ['{S} doit gagner en régularité dans son engagement.', '{S} s’investit, mais de façon encore irrégulière.'],
       n: ['{S} s’investit de manière irrégulière.', 'L’engagement en cours reste irrégulier.'],
       x: ['{S} doit s’investir davantage en cours.', '{S} manque trop souvent d’engagement.'] },
-    t: { b: ['Engagement à rendre plus régulier.'], n: ['Engagement irrégulier.'], x: ['Manque d’investissement.'] } },
+    t: { b: ['Engagement à rendre plus régulier.'], n: ['Engagement irrégulier.'], x: ['Manque d’investissement.', 'Engagement trop irrégulier.'] } },
     1: { p: { b: ['{S} doit trouver davantage d’envie pour s’engager en cours.', '{S} a du mal à s’engager : il faut s’accrocher.'],
       n: ['{S} s’investit trop peu en cours.'],
       x: ['L’investissement est très insuffisant.', '{S} ne s’investit pas suffisamment en cours.'] },
-    t: { b: ['Engagement à retrouver.'], n: ['Investissement trop faible.'], x: ['Investissement très insuffisant.'] } },
+    t: { b: ['Engagement à retrouver.'], n: ['Investissement trop faible.', 'Engagement trop faible.'], x: ['Investissement très insuffisant.', 'Engagement à retrouver d’urgence.'] } },
   },
   competences: {
-    4: { p: ['{S} maîtrise très bien les compétences travaillées.', 'Les compétences visées sont très bien maîtrisées.'], t: ['Compétences très bien maîtrisées.'] },
-    3: { p: ['{S} maîtrise de façon satisfaisante les compétences travaillées.', 'Les compétences visées sont globalement acquises.'], t: ['Compétences acquises.', 'Bonne maîtrise des compétences.'] },
+    4: { p: ['{S} maîtrise très bien les compétences travaillées.', 'Les compétences visées sont très bien maîtrisées.', '{S} maîtrise parfaitement les compétences travaillées.'], t: ['Compétences très bien maîtrisées.', 'Excellente maîtrise des compétences.'] },
+    3: { p: ['{S} maîtrise de façon satisfaisante les compétences travaillées.', 'Les compétences visées sont globalement acquises.', '{S} montre un bon niveau de maîtrise des compétences travaillées.'], t: ['Compétences acquises.', 'Bonne maîtrise des compétences.'] },
     2: { p: { b: ['Les compétences sont en cours d’acquisition, à consolider.', '{S} est en bonne voie dans l’acquisition des compétences.'],
-      n: ['La maîtrise des compétences reste fragile.'], x: ['La maîtrise des compétences est encore trop fragile.'] },
-    t: { b: ['Compétences en cours d’acquisition.'], n: ['Compétences fragiles.'], x: ['Compétences insuffisamment maîtrisées.'] } },
+      n: ['La maîtrise des compétences reste fragile.', 'Les compétences sont partiellement acquises.'], x: ['La maîtrise des compétences est encore trop fragile.', 'La maîtrise des compétences doit être nettement renforcée.', 'Les compétences visées sont loin d’être acquises.'] },
+    t: { b: ['Compétences en cours d’acquisition.'], n: ['Compétences fragiles.', 'Compétences partiellement acquises.'], x: ['Compétences insuffisamment maîtrisées.', 'Maîtrise des compétences à renforcer.'] } },
     1: { p: { b: ['Les compétences visées ne sont pas encore acquises : il faut persévérer.'], n: ['La maîtrise des compétences est insuffisante.'],
       x: ['Les compétences visées ne sont pas maîtrisées.'] },
-    t: { b: ['Compétences pas encore acquises.'], n: ['Compétences non acquises.'], x: ['Compétences non maîtrisées.'] } },
+    t: { b: ['Compétences pas encore acquises.'], n: ['Compétences non acquises.'], x: ['Compétences non maîtrisées.', 'Compétences à acquérir.'] } },
   },
   moteur: {
-    4: { p: ['{S} réalise de très bonnes performances{apsa}.', '{S} dispose de très bonnes qualités motrices{apsa}.'], t: ['Très bonnes qualités motrices{apsa}.', 'Très bons résultats{apsa}.'] },
-    3: { p: ['{S} obtient de bons résultats{apsa}.', '{S} montre de bonnes capacités motrices{apsa}.'], t: ['Bons résultats{apsa}.', 'Bonnes capacités motrices{apsa}.'] },
-    2: { p: { b: ['{S} obtient des résultats encore justes{apsa}, qui peuvent progresser.'], n: ['{S} obtient des résultats moyens{apsa}.'],
+    4: { p: ['{S} réalise de très bonnes performances{apsa}.', '{S} dispose de très bonnes qualités motrices{apsa}.', 'Les performances sont d’un très bon niveau{apsa}.'], t: ['Très bonnes qualités motrices{apsa}.', 'Très bons résultats{apsa}.'] },
+    3: { p: ['{S} obtient de bons résultats{apsa}.', '{S} montre de bonnes capacités motrices{apsa}.', 'Les résultats sont d’un bon niveau{apsa}.'], t: ['Bons résultats{apsa}.', 'Bonnes capacités motrices{apsa}.'] },
+    2: { p: { b: ['{S} obtient des résultats encore justes{apsa}, qui peuvent progresser.', 'Les résultats restent encore justes{apsa}, mais peuvent progresser.', '{S} obtient des résultats corrects{apsa}, qui peuvent s’améliorer.', 'Les résultats{apsa} sont corrects et peuvent s’améliorer.'], n: ['{S} obtient des résultats moyens{apsa}.', 'Les résultats sont moyens{apsa}.'],
       x: ['Les résultats{apsa} sont insuffisants au regard des possibilités de {P}.'] },
-    t: { b: ['Résultats à consolider{apsa}.'], n: ['Résultats moyens{apsa}.'], x: ['Résultats insuffisants{apsa}.'] } },
-    1: { p: { b: ['{S} rencontre des difficultés{apsa}, mais peut progresser avec de la persévérance.'], n: ['{S} rencontre des difficultés{apsa}.'],
-      x: ['Les résultats{apsa} sont très insuffisants.'] },
-    t: { b: ['Difficultés motrices à surmonter{apsa}.'], n: ['Difficultés motrices{apsa}.'], x: ['Résultats très insuffisants{apsa}.'] } },
+    t: { b: ['Résultats à consolider{apsa}.', 'Résultats perfectibles{apsa}.'], n: ['Résultats moyens{apsa}.', 'Performances moyennes{apsa}.'], x: ['Résultats insuffisants{apsa}.', 'Résultats en deçà des attentes{apsa}.'] } },
+    1: { p: { b: ['{S} rencontre des difficultés{apsa}, mais peut progresser avec de la persévérance.', 'Les difficultés sont réelles{apsa}, mais la persévérance permettra de progresser.', '{S} rencontre des difficultés{apsa} ; un travail régulier l’aidera à les surmonter.', 'Les résultats{apsa} restent difficiles : il faut garder confiance.'], n: ['{S} rencontre des difficultés{apsa}.', 'Les résultats restent difficiles{apsa}.'],
+      x: ['Les résultats{apsa} sont très insuffisants.', '{S} est en grande difficulté{apsa}.', 'Les résultats{apsa} sont nettement en deçà des attentes.'] },
+    t: { b: ['Difficultés motrices à surmonter{apsa}.'], n: ['Difficultés motrices{apsa}.'], x: ['Résultats très insuffisants{apsa}.', 'Grandes difficultés{apsa}.'] } },
   },
   methodo: {
-    4: { p: ['{S} assume avec beaucoup de sérieux les rôles confiés (arbitre, juge, observateur).', '{S} fait preuve d’une excellente méthode de travail.'],
+    4: { p: ['{S} assume avec beaucoup de sérieux les rôles confiés (arbitre, juge, observateur).', '{S} fait preuve d’une excellente méthode de travail.', 'Les rôles confiés sont assumés avec beaucoup de sérieux.'],
       t: ['Rôles très bien assumés.', 'Excellente méthode de travail.'] },
-    3: { p: ['{S} tient correctement les rôles confiés et s’organise bien.', '{S} travaille avec méthode.'], t: ['Rôles bien assumés.', 'Travail méthodique.'] },
-    2: { p: { b: ['{S} doit encore gagner en rigueur dans les rôles et l’organisation.'], n: ['La méthode de travail et la tenue des rôles restent à améliorer.'],
+    3: { p: ['{S} tient correctement les rôles confiés et s’organise bien.', '{S} travaille avec méthode.', 'Les rôles confiés sont bien tenus et le travail est méthodique.', 'Le travail dans les rôles confiés est d’un bon niveau.'], t: ['Rôles bien assumés.', 'Travail méthodique.'] },
+    2: { p: { b: ['{S} doit encore gagner en rigueur dans les rôles et l’organisation.'], n: ['La méthode de travail et la tenue des rôles restent à améliorer.', 'La méthode de travail et la tenue des rôles sont à revoir.'],
       x: ['{S} manque de rigueur dans les rôles et l’organisation.'] },
     t: { b: ['Rigueur à développer dans les rôles.'], n: ['Méthode à améliorer.'], x: ['Manque de rigueur.'] } },
     1: { p: { b: ['{S} a besoin d’aide pour s’organiser et tenir les rôles confiés.'], n: ['{S} peine à s’organiser et à tenir les rôles confiés.'],
@@ -390,7 +414,7 @@ const PHRASES_APPR = {
   },
   comportement: {
     4: { p: ['{S} a un comportement exemplaire, respectueux de tous.', 'Le comportement est exemplaire envers les camarades comme envers l’adulte.'], t: ['Comportement exemplaire.'] },
-    3: { p: ['{S} a un comportement correct et respectueux.', '{S} respecte les règles et ses camarades.'], t: ['Comportement correct.', 'Attitude respectueuse.'] },
+    3: { p: ['{S} a un comportement correct et respectueux.', '{S} respecte les règles et ses camarades.', 'Le comportement est correct et respectueux.'], t: ['Comportement correct.', 'Attitude respectueuse.'] },
     2: { p: { b: ['{S} doit veiller à mieux respecter les consignes.'], n: ['Le comportement est parfois à reprendre.'], x: ['{S} doit impérativement mieux respecter les consignes.'] },
       t: { b: ['Respect des consignes à améliorer.'], n: ['Comportement parfois à reprendre.'], x: ['Comportement à corriger.'] } },
     1: { p: { b: ['Le comportement doit s’améliorer pour progresser sereinement.'], n: ['Le comportement pose problème en cours.'],
@@ -398,10 +422,10 @@ const PHRASES_APPR = {
     t: { b: ['Comportement à améliorer nettement.'], n: ['Comportement problématique.'], x: ['Comportement inacceptable.'] } },
   },
   progression: {
-    4: { p: ['{S} a nettement progressé {ce}.', 'Les progrès de {P} sont remarquables {ce}.'], t: ['Très nets progrès.'] },
+    4: { p: ['{S} a nettement progressé {ce}.', 'Les progrès de {P} sont remarquables {ce}.'], t: ['Très nets progrès.', 'Progrès remarquables.'] },
     3: { p: ['{S} est en progrès {ce}.', 'Les progrès sont réguliers et encourageants.'], t: ['En progrès.', 'Progrès encourageants.'] },
     2: { p: { b: ['Les résultats sont stables : {s} peut encore progresser.'], n: ['Les résultats sont stables.'], x: ['Les résultats stagnent.'] },
-      t: { b: ['Résultats stables.'], n: ['Résultats stables.'], x: ['Résultats qui stagnent.'] } },
+      t: { b: ['Résultats stables.', 'Niveau stable.'], n: ['Résultats stables.', 'Niveau stable.'], x: ['Résultats qui stagnent.', 'Niveau qui stagne.'] } },
     1: { p: { b: ['Les résultats sont en baisse {ce} : il faut se ressaisir.'], n: ['Les résultats sont en baisse {ce}.'], x: ['Les résultats sont en net recul {ce}.'] },
       t: { b: ['Résultats en baisse : se ressaisir.'], n: ['Résultats en baisse.'], x: ['Net recul des résultats.'] } },
   },
@@ -409,27 +433,29 @@ const PHRASES_APPR = {
 // Progression « stable » d'un élève qui a déjà un bon niveau : on le dit autrement.
 const STABLE_BON_APPR = { p: ['{S} maintient son bon niveau.', 'Les résultats restent d’un bon niveau.'], t: ['Bon niveau maintenu.'] };
 
+// (Le bilan ouvre l'appréciation : il commence par le prénom.)
 const BILANS_APPR = {
-  periode: { 4: ['Excellent {per}.', 'Très bon {per}.'], 3: ['Bon {per}.', '{Per} satisfaisant.'],
-    2: { b: ['{Per} encourageant, mais encore inégal.'], n: ['{Per} inégal.', '{Per} moyen.'], x: ['{Per} trop juste.'] },
-    1: { b: ['{Per} difficile.'], n: ['{Per} difficile.', '{Per} décevant.'], x: ['{Per} très insuffisant.'] } },
-  annee: { 4: ['Excellent bilan sur l’année.', 'Très bonne année.'], 3: ['Bon bilan sur l’année.', 'Année satisfaisante.'],
-    2: { b: ['Bilan annuel encourageant, mais inégal.'], n: ['Bilan annuel mitigé.'], x: ['Bilan annuel trop juste.'] },
-    1: { b: ['Année difficile.'], n: ['Année difficile.'], x: ['Bilan annuel très insuffisant.'] } },
+  periode: { 4: ['{S} réalise un excellent {per}.', '{S} réalise un très bon {per}.'], 3: ['{S} réalise un bon {per}.', '{S} réalise un {per} satisfaisant.', '{S} réalise un {per} d’un bon niveau.'],
+    2: { b: ['{S} réalise un {per} encourageant, mais encore inégal.', '{S} réalise un {per} encourageant, à confirmer.', '{S} réalise un {per} en demi-teinte, avec des points encourageants.'], n: ['{S} réalise un {per} inégal.', '{S} réalise un {per} moyen.'], x: ['{S} réalise un {per} trop juste.', '{S} réalise un {per} en dessous de ses possibilités.'] },
+    1: { b: ['{S} traverse un {per} difficile.'], n: ['{S} traverse un {per} difficile.', '{S} réalise un {per} décevant.'], x: ['{S} réalise un {per} très insuffisant.', '{S} réalise un {per} nettement insuffisant.'] } },
+  annee: { 4: ['{S} réalise une excellente année.', '{S} réalise une très bonne année.'], 3: ['{S} réalise une bonne année.', '{S} réalise une année satisfaisante.', '{S} réalise une année d’un bon niveau.'],
+    2: { b: ['{S} réalise une année encourageante, mais inégale.', '{S} réalise une année encourageante, qui reste à confirmer.', '{S} réalise une année en demi-teinte, avec des points encourageants.'], n: ['{S} réalise une année mitigée.'], x: ['{S} réalise une année trop juste.', '{S} réalise une année en dessous de ses possibilités.'] },
+    1: { b: ['{S} traverse une année difficile.'], n: ['{S} traverse une année difficile.'], x: ['{S} réalise une année très insuffisante.', '{S} réalise une année nettement insuffisante.'] } },
 };
 
-// Objectifs (verbe à l'infinitif), selon la rubrique la plus faible.
+// Objectifs (verbe à l'infinitif) : un axe de progrès général, selon la rubrique la plus faible
+// (pas une compétence précise : « maintenir ses efforts », « fournir davantage de travail pour consolider ses acquis »…).
 const OBJECTIFS_APPR = {
-  attitude: ['s’investir plus régulièrement', 'trouver davantage d’envie et d’engagement'],
-  absences: ['gagner en assiduité'],
-  comportement: ['mieux respecter les consignes et les camarades'],
-  methodo: ['s’impliquer davantage dans les rôles (arbitre, juge, observateur)', 'gagner en rigueur et en méthode'],
+  attitude: ['s’investir plus régulièrement', 'fournir davantage d’efforts en cours', 'trouver davantage d’envie et d’engagement', 'se montrer plus volontaire'],
+  absences: ['gagner en assiduité', 'venir en cours plus régulièrement'],
+  comportement: ['continuer ses efforts vis-à-vis de son comportement', 'mieux respecter les consignes et les camarades', 'adopter une attitude plus constructive en cours'],
+  methodo: ['s’impliquer davantage dans les rôles (arbitre, juge, observateur)', 'gagner en rigueur et en méthode', 'mieux s’organiser dans le travail de groupe'],
   securite: ['respecter et faire respecter les règles de sécurité'],
-  moteur: ['gagner en efficacité motrice', 'persévérer pour améliorer ses performances'],
-  competences: ['consolider les compétences travaillées'],
-  progression: ['se remobiliser pour retrouver son meilleur niveau'],
-  regularite: ['retrouver de la régularité dans ses résultats'],
-  haut: ['conserver cette belle dynamique', 'viser l’excellence', 'garder ce niveau d’investissement'],
+  moteur: ['persévérer pour améliorer ses performances', 'fournir davantage de travail pour progresser', 'gagner en efficacité par un entraînement régulier', 'chercher à se dépasser dans les activités'],
+  competences: ['fournir davantage de travail pour consolider ses acquis', 'consolider ses acquis par un travail régulier', 'mieux fixer ses apprentissages', 'approfondir les savoir-faire travaillés'],
+  progression: ['se remobiliser pour retrouver son meilleur niveau', 'maintenir ses efforts pour retrouver de la régularité', 'se remobiliser dans la durée'],
+  regularite: ['retrouver de la régularité dans ses résultats', 'maintenir ses efforts dans la durée'],
+  haut: ['maintenir ses efforts', 'conserver cette belle dynamique', 'viser l’excellence', 'garder ce niveau d’investissement'],
 };
 
 // Petit hasard reproductible : la même graine donne toujours la même formulation.
@@ -452,24 +478,207 @@ function objectifAppr(niv, a, actives) {
   // Seule la progression faiblit, chez un élève par ailleurs solide : on parle de régularité.
   if (k === 'progression' && notes.filter(x => x !== 'progression').every(x => niv[x] >= 3)) return { cle: 'regularite' };
   if (k === 'competences' || k === 'moteur' || k === 'methodo') {
-    // Un critère précis relevé en leçon (« Choix tactiques », « Arbitrage »…) donne un objectif concret.
-    const f = a.details.faibles.find(x => x.indic && (k === 'competences' || x.cat === k));
-    if (f && f.texte.length <= 40) return { texte: `progresser sur « ${f.texte} »` };
+    // (Objectif général, pas une compétence précise ; seule la sécurité est nommée, quand c'est elle qui pèche.)
     const g = a.details.faibles.find(x => k === 'competences' || x.cat === k);
     if (g && /securite|assurage/.test(sansAccent(g.texte))) return { cle: 'securite' };
   }
   return { cle: k };
 }
 
+// Difficulté signalée par ce que l'enseignant a rempli (observation et ses mots-clés, degré choisi, absence, note…,
+// pas un degré pré-rempli d'après la note) : niveau 1 ou 2 ; progression : en baisse.
+function difficulteSaisieAppr(a, k) {
+  if (k === 'objectif' || a.defaut[k] || !a.niveaux[k]) return false;
+  if (a.details?.saisi && !a.details.saisi[k]) return false;
+  return a.niveaux[k] <= (k === 'progression' ? 1 : 2);
+}
+
+// Rubriques abordées : celles cochées dans les réglages, plus les rubriques décochées où le carnet signale une difficulté
+// (point de vigilance : ex. observation « bavarde, insolent » → comportement). 0 choisi à la main = ne pas en parler.
+function rubriquesAppr(r, a, perso = {}) {
+  perso ||= {};
+  return r.ordre.filter(k => {
+    if (!r.actives.includes(k) && !difficulteSaisieAppr(a, k)) return false;
+    return k === 'objectif' || !(k in perso) || !!perso[k];
+  });
+}
+
+// Points de vigilance : rubriques abordées où le carnet signale une difficulté (en priorité dans le texte et l'objectif).
+function vigilanceAppr(r, a, perso = {}) {
+  return new Set(rubriquesAppr(r, a, perso).filter(k => difficulteSaisieAppr(a, k)));
+}
+
+// Niveaux choisis à la main encore utiles : ceux d'une rubrique décochée dont la difficulté a disparu
+// (observation supprimée) sont oubliés.
+function persoUtileAppr(r, a, perso) {
+  return Object.fromEntries(Object.entries(perso || {}).filter(([k]) => r.actives.includes(k) || difficulteSaisieAppr(a, k)));
+}
+
+/* ---------- Relecture (faite par l'appli, sur l'appareil, sans internet) ----------
+   Une appréciation correctement écrite : jamais deux fois le même adverbe (« encore… encore »), ni deux mots de
+   liaison de même sens (« néanmoins » puis « mais »), ni le même mot plein répété (« pour progresser… progresser ») ;
+   élisions (« de il » → « d’il »), majuscules, ponctuation, il / elle, quelques fautes courantes.
+   Sert à choisir les phrases proposées (voir redigerAppr) et à relire un texte réécrit à la main. */
+
+// Mots de liaison de même sens : une seule fois par appréciation.
+const LIAISONS_APPR = {
+  opposition: ['mais', 'neanmoins', 'en revanche', 'cependant', 'toutefois', 'pourtant', 'par contre', 'malgre'],
+  ajout: ['de plus', 'en outre', 'par ailleurs', 'egalement', 'aussi'],
+  explication: ['en effet', 'car'],
+  consequence: ['donc', 'ainsi', 'par consequent', 'c’est pourquoi', 'c\'est pourquoi'],
+};
+const ADVERBES_APPR = ['encore', 'davantage', 'toujours', 'tres', 'bien', 'mieux', 'plus', 'moins', 'maintenant', 'regulierement', 'souvent',
+  'parfois', 'notamment', 'vraiment', 'pleinement', 'imperativement', 'globalement', 'nettement', 'trop', 'deja', 'beaucoup', 'assez',
+  'particulierement', 'correctement', 'serieusement', 'activement', 'volontiers', 'ensuite', 'enfin', 'surtout', 'vite', 'sans cesse'];
+// Adverbes qu'on peut retirer sans changer le sens (2e fois : retirés de la proposition).
+const ADVERBES_RETIRABLES_APPR = ['encore', 'vraiment', 'toujours', 'maintenant', 'deja', 'egalement', 'aussi', 'pleinement', 'globalement'];
+// Mots pleins courants à ne pas compter comme répétitions.
+const MOTS_LIBRES_APPR = new Set(['toutes', 'autres', 'chaque', 'quelques', 'pendant', 'depuis', 'courage', 'bravo', 'objectif']);
+const LETTRE_APPR = /[\p{L}\p{M}]/u;
+const normAppr = t => sansAccent(String(t)).toLocaleLowerCase('fr').replace(/[’']/g, '’');
+const motsAppr = t => normAppr(t).split(/[^\p{L}\p{M}]+/u).filter(Boolean);
+// « progresser », « progrès », « progression » : même famille (7 premières lettres).
+const racineAppr = m => (m.length > 7 ? m.slice(0, 7) : m.replace(/s$/, ''));
+const contientAppr = (texteNorm, expr) => new RegExp(`(^|[^\\p{L}\\p{M}])${expr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{M}])`, 'u').test(texteNorm);
+
+const RE_LIAISONS_APPR = Object.entries(LIAISONS_APPR).flatMap(([fam, exprs]) => exprs.map(e =>
+  ({ fam, e, re: new RegExp(`(^|[^\\p{L}\\p{M}])${e.replace(/[’']/g, '[’\']')}(?![\\p{L}\\p{M}])`, 'gu') })));
+// Ce que le texte contient : adverbes, familles de liaison, racines des mots pleins (avec leur nombre).
+function inventaireAppr(texte, ignorer = []) {
+  const n = normAppr(texte), mots = motsAppr(texte), ign = new Set(ignorer.map(normAppr));
+  const compte = liste => { const m = new Map(); liste.forEach(x => m.set(x, (m.get(x) || 0) + 1)); return m; };
+  const adverbes = compte(mots.filter(m => ADVERBES_APPR.includes(m)).concat(contientAppr(n, 'sans cesse') ? ['sans cesse'] : []));
+  const liaisons = new Map();
+  for (const { fam, e, re } of RE_LIAISONS_APPR) {
+    const nb = (n.match(re) || []).length;
+    if (nb) liaisons.set(fam, [...(liaisons.get(fam) || []), ...Array(nb).fill(e)]);
+  }
+  const pleins = compte(mots.filter(m => m.length >= 6 && !ADVERBES_APPR.includes(m) && !MOTS_LIBRES_APPR.has(m) && !ign.has(m)).map(racineAppr));
+  return { adverbes, liaisons, pleins };
+}
+
+// Nombre de répétitions qu'ajouterait `ajout` à la suite de `avant` (pour choisir les phrases).
+let inventaireMemoAppr = { cle: null, inv: null }; // (même début de texte comparé à toutes les phrases candidates)
+function conflitsAppr(avant, ajout, ignorer = []) {
+  const cle = avant + '\u0000' + ignorer.join('|');
+  if (inventaireMemoAppr.cle !== cle) inventaireMemoAppr = { cle, inv: inventaireAppr(avant, ignorer) };
+  const a = inventaireMemoAppr.inv, b = inventaireAppr(ajout, ignorer);
+  let n = 0;
+  for (const [m, k] of b.adverbes) n += (a.adverbes.has(m) ? k : k - 1);
+  for (const [f, l] of b.liaisons) n += (a.liaisons.has(f) ? l.length : l.length - 1);
+  for (const [m, k] of b.pleins) n += (a.pleins.has(m) ? k : k - 1);
+  return n;
+}
+
+// Corrections sûres (sans changer le sens) : espaces, élisions, mots doublés, majuscules, adverbe répété retiré.
+function corrigerAppr(texte, { retirerAdverbes = false } = {}) {
+  let t = String(texte).replace(/[ \t]+/g, ' ').replace(/ +([,.])/g, '$1').replace(/([,.;:!?])(?=\p{L})/gu, '$1 ')
+    .replace(/(\S)([!?;:])(?=\s|$)/g, (x, a, b) => (/\d/.test(a) && b === ':' ? x : `${a} ${b}`)).trim();
+  // Élisions : « de il » → « d’il », « que elle » → « qu’elle », « si il » → « s’il » (pas devant un h : « le handball »).
+  t = t.replace(/(^|[^\p{L}])(d|l|qu|n|s|j|m|t)(e) (?=[aeiouàâäéèêëîïôöûüAEIOUÀÂÉÈÊÎÔÛ])/gu, (x, a, b) => `${a}${b}’`)
+    .replace(/(^|[^\p{L}])([Ll])a (?=[aeiouàâéèêîôûAEIOUÀÂÉÈÊÎÔÛ])/gu, '$1$2’')
+    .replace(/(^|[^\p{L}])([Ss])i (?=ils?(?![\p{L}]))/gu, '$1$2’');
+  // Mots doublés (« de de »), sauf « nous nous », « vous vous ».
+  t = t.replace(/(^|[^\p{L}])(\p{L}+) \2(?![\p{L}])/gu, (x, a, m) => (/^(nous|vous)$/i.test(m) ? x : a + m));
+  // Virgule après une liaison en début de phrase (« Néanmoins, elle… »).
+  t = t.replace(/(^|[.!?] )(Néanmoins|En revanche|En effet|Cependant|Toutefois|De plus|Par ailleurs|En outre|Par conséquent|Pourtant|Enfin|Ainsi) (?=\p{L})/gu, '$1$2, ');
+  // Majuscule en début de phrase ; point final.
+  t = t.replace(/(^|[.!?] )(\p{Ll})/gu, (x, a, l) => a + l.toLocaleUpperCase('fr'));
+  if (t && !/[.!?…)»]$/.test(t)) t += '.';
+  if (retirerAdverbes) {
+    for (const adv of ADVERBES_RETIRABLES_APPR) {
+      let vu = false;
+      t = t.replace(new RegExp(`(^|[^\\p{L}])([\\p{L}]+)(?![\\p{L}])`, 'gu'), (x, a, m) => {
+        if (normAppr(m) !== adv) return x;
+        if (!vu) { vu = true; return x; }
+        return a.endsWith(' ') || a === '' ? '' : a; // (l'espace qui suit est fusionné plus bas)
+      }).replace(/ {2,}/g, ' ').replace(/ ([,.!?])/g, (x, p) => (p === ',' || p === '.' ? p : x));
+    }
+  }
+  return t;
+}
+
+// Fautes courantes (relecture d'un texte écrit à la main).
+const FAUTES_APPR = [
+  [/(^|[^\p{L}])malgrés(?![\p{L}])/giu, '« malgrés » → « malgré »'],
+  [/quelque soi[st]?(?![\p{L}])/giu, '« quelque soit » → « quel que soit »'],
+  [/(^|[^\p{L}])parmis(?![\p{L}])/giu, '« parmis » → « parmi »'],
+  [/comme même/giu, '« comme même » → « quand même »'],
+  [/pallier à/giu, '« pallier à » → « pallier » (sans « à »)'],
+  [/au jour d[’']aujourd[’']hui/giu, '« au jour d’aujourd’hui » → « aujourd’hui »'],
+  [/(^|[^\p{L}])language(?![\p{L}])/giu, '« language » → « langage »'],
+  [/(^|[^\p{L}])(?:il|elle) [àa] (?:du|de) mal(?![\p{L}])/giu, ''], // (correct : ignoré)
+];
+const PAS_INFINITIF_APPR = new Set(['hier', 'cher', 'fier', 'amer', 'mer', 'fer', 'super', 'premier', 'dernier', 'entier', 'leger', 'chantier', 'quartier', 'atelier', 'clavier', 'papier']);
+
+// Remarques sur un texte : [{ grave, texte }]. el : l'élève (il / elle, prénom) ; autres : prénoms des autres élèves.
+function relireAppr(texte, el = {}, autres = []) {
+  const t = String(texte || '').trim(), res = [];
+  if (!t) return res;
+  const prenom = (el.prenom || '').trim();
+  const inv = inventaireAppr(t, prenom ? [prenom, ...prenom.split(/[\s-]+/)] : []);
+  const original = mot => (t.match(new RegExp(`(?:^|[^\\p{L}])(${mot.split('').map(c => '[' + c + c.toUpperCase() + 'àâäéèêëîïôöûüç]').join('')})`, 'u')) || [])[1] || mot;
+  for (const [m, k] of inv.adverbes) if (k > 1) res.push({ grave: true, texte: `« ${m === 'tres' ? 'très' : m === 'deja' ? 'déjà' : m === 'regulierement' ? 'régulièrement' : m} » répété ${k} fois` });
+  for (const [, l] of inv.liaisons) if (l.length > 1) res.push({ grave: true, texte: `Liaisons de même sens : ${[...new Set(l)].map(x => `« ${x.replace('neanmoins', 'néanmoins').replace('malgre', 'malgré').replace('egalement', 'également').replace('consequent', 'conséquent')} »`).join(' et ')}${new Set(l).size === 1 ? ` (${l.length} fois)` : ''}` });
+  const mots = motsAppr(t);
+  for (const [rac, k] of inv.pleins) {
+    if (k < 2) continue;
+    const vus = [...new Set(mots.filter(m => racineAppr(m) === rac))];
+    res.push({ grave: true, texte: `Répétition : ${vus.map(m => `« ${original(m)} »`).join(', ')}` });
+  }
+  if (/(^|[^\p{L}])(\p{L}+) \2(?![\p{L}])/iu.test(t) && !/(^|[^\p{L}])(nous nous|vous vous)(?![\p{L}])/iu.test(t)) res.push({ grave: true, texte: 'Mot écrit deux fois de suite' });
+  if (corrigerAppr(t) !== t) res.push({ grave: true, texte: 'Ponctuation, majuscules ou élisions à corriger', corrigeable: true });
+  // Il / elle
+  if (el.sexe === 'F' && /(^|[.!?] |, )Il (?!faut|faudra|faudrait|reste|est (?:important|nécessaire|essentiel)|s’agit|y a)/u.test(t)) res.push({ grave: true, texte: '« Il » pour une élève ?' });
+  if (el.sexe === 'G' && /(^|[^\p{L}])[Ee]lle(?![\p{L}])/u.test(t)) res.push({ grave: true, texte: '« Elle » pour un élève ?' });
+  // Copier-coller : le prénom d'un autre élève
+  const autre = autres.find(p => p && p !== prenom && p.length > 2 && new RegExp(`(^|[^\\p{L}])${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}])`, 'u').test(t));
+  if (autre) res.push({ grave: true, texte: `Le texte cite « ${autre} » : est-ce le bon élève ?` });
+  if (prenom && !new RegExp(prenom.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'iu').test(t) && /^(Il|Elle) /.test(t)) res.push({ grave: false, texte: 'Commence par « Il / Elle » sans citer le prénom' });
+  for (const [re, msg] of FAUTES_APPR) if (msg && re.test(t)) res.push({ grave: true, texte: msg });
+  // Participe / infinitif : « il a progresser », « doit progressé »
+  // « de le travail » → « du travail » (mais « de le faire » est juste : pas devant un infinitif)
+  const contr = [...t.matchAll(/(?:^|[^\p{L}])([Dd]e le|[Dd]e les|[Àà] le|[Àà] les) (\p{L}+)/gu)].find(x => !/(er|ir|re|oir)$/.test(x[2]));
+  if (contr) {
+    const bon = { 'de le': 'du', 'de les': 'des', 'à le': 'au', 'à les': 'aux' }[contr[1].toLocaleLowerCase('fr')];
+    res.push({ grave: true, texte: `« ${contr[1]} ${contr[2]} » → « ${bon} ${contr[2]} »` });
+  }
+  // (« a encore progresser » : un adverbe peut s'intercaler.)
+  const adv = '(?:(?:encore|bien|beaucoup|toujours|déjà|vraiment|nettement|souvent|parfois|peu|trop|mieux) )?';
+  const aInf = [...t.matchAll(new RegExp(`(?:^|[^\\p{L}])(?:a|ont|as|avons|avez) ${adv}(\\p{L}{3,}er)(?![\\p{L}])`, 'gu'))].map(x => x[1]).find(m => !PAS_INFINITIF_APPR.has(normAppr(m)));
+  if (aInf) res.push({ grave: true, texte: `« a ${aInf} » → « a ${aInf.slice(0, -2)}é » ?` });
+  // « des efforts a faire » → « à faire » (après un nom, pas après il / elle / on)
+  const rePrenom = new RegExp(`^${prenom.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'iu');
+  const aFaire = [...t.matchAll(/(?:^|[^\p{L}])(?!(?:il|elle|on|qui|Il|Elle|On|Qui) )(\p{L}+) a (faire|\p{L}{2,}(?:ir|re|oir))(?![\p{L}])/gu)]
+    .find(x => !/^(notre|votre|entre|contre|autre|propre|encore|plaisir|désir|avenir|loisir|soir|espoir)$/i.test(x[2]) && !(prenom && rePrenom.test(x[1])));
+  if (aFaire) res.push({ grave: true, texte: `« a ${aFaire[2]} » → « à ${aFaire[2]} » ?` });
+  const doitPp = [...t.matchAll(/(?:^|[^\p{L}])(?:doit|doivent|peut|peuvent|faut|faudra|va|vont|devra|pourra) (\p{L}{3,}é)(?![\p{L}])/gu)].map(x => x[1]).find(m => !/té$/.test(m));
+  if (doitPp) res.push({ grave: true, texte: `« ${doitPp} » → « ${doitPp.slice(0, -1)}er » ?` });
+  return res;
+}
+
+const prenomsAutresAppr = (el, eleves) => (eleves || []).filter(x => x.id !== el.id).map(x => (x.prenom || '').trim());
+const htmlRelectureAppr = (texte, el, autres, manuel) => {
+  const rem = relireAppr(texte, el, autres);
+  if (!texte.trim()) return '';
+  if (!rem.length) return '<span class="relu-appr ok" title="Relu par l’appli : pas de répétition ni de faute repérée">✔ Relu</span>';
+  const corrigeable = manuel && corrigerAppr(texte) !== texte.trim();
+  return `<span class="relu-appr" title="${esc(rem.map(x => '• ' + x.texte).join('\n'))}">⚠ ${rem.map(x => esc(x.texte)).join(' · ')}</span>`
+    + (corrigeable ? ' <button type="button" class="lien" data-appr-corriger title="Espaces, majuscules, élisions, mot doublé">✔ Corriger</button>' : '');
+};
+
 function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
+  niveauxPerso = persoUtileAppr(r, a, niveauxPerso);
   const niv = { ...a.niveaux };
-  for (const [k, v] of Object.entries(niveauxPerso || {})) niv[k] = v || null; // 0 = ne pas en parler
+  for (const [k, v] of Object.entries(niveauxPerso)) niv[k] = v || null; // 0 = ne pas en parler
   const ton = r.ton, tele = r.style === 'telegraphique';
   const sexe = ['F', 'G'].includes(el.sexe) ? el.sexe : '';
   const prenom = (el.prenom || '').trim() || el.nom;
-  let dejaNomme = false;
+  // Sujet : le prénom la 1re fois, puis il / elle. Pour ne pas enchaîner « Il… Il… Il… » : deux phrases de suite ne
+  // commencent pas par le pronom (voir choisir) ; faute d'autre tournure, le prénom est repris (rappelPrenom).
+  let dejaNomme = false, dernierPronom = false, rappelPrenom = false;
   const sujet = maj => {
-    if (!dejaNomme || !sexe) { dejaNomme = true; return prenom; }
+    if (!dejaNomme || !sexe || (maj && rappelPrenom)) { dejaNomme = true; rappelPrenom = false; return prenom; }
     return sexe === 'F' ? (maj ? 'Elle' : 'elle') : (maj ? 'Il' : 'il');
   };
   const p = periodesAnnee().find(x => x.id === periode);
@@ -477,33 +686,55 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   const ce = periode === 'annee' ? 'cette année' : `ce ${per}`;
   const minuscule = s => s[0].toLocaleLowerCase('fr') + s.slice(1);
   const apsaTexte = k => {
-    const d = a.details;
-    if (d.apsaSeule) return ' en ' + minuscule(d.apsaSeule);
-    if (k >= 3 && d.apsaForte) return ', notamment en ' + minuscule(d.apsaForte);
-    if (k <= 2 && d.apsaFaible) return ', notamment en ' + minuscule(d.apsaFaible);
+    const d = a.details, x = n => activiteDansPhrase(n);
+    if (d.apsaSeule) return x(d.apsaSeule);
+    if (k >= 3 && d.apsaForte && x(d.apsaForte)) return ', notamment' + x(d.apsaForte);
+    if (k <= 2 && d.apsaFaible && x(d.apsaFaible)) return ', notamment' + x(d.apsaFaible);
     return '';
   };
   const remplir = (modele, k) => modele
     .replace(/\{S\}/g, () => sujet(true)).replace(/\{s\}/g, () => sujet(false)).replace(/\{P\}/g, prenom)
-    .replace(/\{apsa\}/g, apsaTexte(k)).replace(/\{ce\}/g, ce).replace(/\{Per\}/g, per[0].toUpperCase() + per.slice(1)).replace(/\{per\}/g, per);
-  const g = cle => `${el.id}|${periode}|${graine}|${cle}`;
-  const actives = r.ordre.filter(k => r.actives.includes(k));
+    // (Incise « , notamment en … » au milieu de la phrase : refermée par une virgule.)
+    .replace(/\{apsa\}(?= [\p{L}])/gu, () => apsaTexte(k) + (apsaTexte(k).startsWith(',') ? ',' : '')).replace(/\{apsa\}/g, apsaTexte(k)).replace(/\{ce\}/g, ce).replace(/\{Per\}/g, per[0].toUpperCase() + per.slice(1)).replace(/\{per\}/g, per);
+  // (essai : autres tirages quand la relecture trouve une répétition ; l'essai 0 donne le tirage habituel.)
+  let essai = 0;
+  const g = cle => `${el.id}|${periode}|${graine}|${essai ? essai + '|' : ''}${cle}`;
+  const ignores = [prenom, ...prenom.split(/[\s-]+/)];
+  const brut = x => x.replace(/\{apsa\}/g, '').replace(/\{ce\}/g, ce).replace(/\{[A-Za-z]+\}/g, ' ');
+  const actives = rubriquesAppr(r, a, niveauxPerso);
+  const vigilance = vigilanceAppr(r, a, niveauxPerso); // (passent en priorité)
 
   // court = true : la phrase la plus courte de chaque liste (essayé avant de laisser des rubriques de côté).
   const construire = (court, exclues = []) => {
-    dejaNomme = false;
+    dejaNomme = false; dernierPronom = false; rappelPrenom = false;
+    let ecrit = ''; // (texte déjà choisi : pour ne pas répéter un adverbe, une liaison ou un mot)
+    // Les phrases qui répètent le moins ce qui est déjà écrit (aucune répétition si possible).
+    const moinsDeRepetitions = (liste, voir = x => x) => {
+      const n = liste.map(x => conflitsAppr(ecrit, voir(x), ignores)), min = Math.min(...n);
+      return liste.filter((x, i) => n[i] === min);
+    };
     const choisir = (tout, graine) => {
+      tout = moinsDeRepetitions(tout, brut);
+      // L'appréciation commence par le prénom : la 1re phrase est prise parmi celles qui commencent par lui.
+      const premiere = !dejaNomme && !tele ? tout.filter(x => x.startsWith('{S}')) : [];
       // Sans il / elle (sexe non renseigné), le prénom se répéterait : on préfère alors les phrases sans sujet.
       const sansSujet = dejaNomme && !sexe ? tout.filter(x => !/\{[Ss]\}/.test(x)) : [];
-      const liste = sansSujet.length ? sansSujet : tout;
-      return court ? liste.reduce((x, y) => (y.length < x.length ? y : x)) : choisirAppr(liste, graine);
+      // Phrase précédente en « Il / Elle » : on varie la tournure (« L’engagement est… », « Les résultats… »).
+      const varie = dejaNomme && dernierPronom ? tout.filter(x => !x.startsWith('{S}')) : [];
+      const liste = premiere.length ? premiere : sansSujet.length ? sansSujet : varie.length ? varie : tout;
+      const choix = court ? liste.reduce((x, y) => (y.length < x.length ? y : x)) : choisirAppr(liste, graine);
+      const enPronom = dejaNomme && sexe && choix.startsWith('{S}');
+      if (enPronom && dernierPronom) { rappelPrenom = true; dernierPronom = false; } // (pas d'autre tournure : on redit le prénom)
+      else dernierPronom = enPronom;
+      return choix;
     };
     const morceaux = []; // { cle, texte }
+    const ajouter = m => { morceaux.push(m); ecrit += ' ' + m.texte; };
     if (r.bilan && !exclues.includes('bilan')) {
       const base = ['moteur', 'competences', 'attitude'].map(k => niv[k]).filter(Boolean);
       if (base.length) {
         const k = Math.max(1, Math.min(4, Math.round(moyenneListe(base))));
-        morceaux.push({ cle: 'bilan', texte: remplir(choisir(selonTon(BILANS_APPR[periode === 'annee' ? 'annee' : 'periode'][k], ton), g('bilan')), k) });
+        ajouter({ cle: 'bilan', pol: k >= 3 ? 1 : -1, texte: remplir(choisir(selonTon(BILANS_APPR[periode === 'annee' ? 'annee' : 'periode'][k], ton), g('bilan')), k) });
       }
     }
     for (const k of actives) {
@@ -513,27 +744,83 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
       let banque = phrasesAppr()[k][n];
       if (k === 'progression' && n === 2 && (niv.moteur || 0) >= 3) banque = STABLE_BON_APPR;
       // Importance (pour le manque de place) : niveau par défaut < « stable » < satisfaisant < fragile < extrêmes (1 et 4).
-      const importance = a.defaut[k] && !(k in (niveauxPerso || {})) ? 0 : k === 'progression' && n === 2 ? 1 : n === 3 ? 2 : n === 2 ? 3 : 4;
-      morceaux.push({ cle: k, importance, texte: remplir(choisir(selonTon(tele ? banque.t : banque.p, ton), g(k)), n) });
+      // Point de vigilance (difficulté signalée par ce que l'enseignant a rempli) : gardé en priorité.
+      const importance = vigilance.has(k) ? 5 : a.defaut[k] && !(k in (niveauxPerso || {})) ? 0 : k === 'progression' && n === 2 ? 1 : n === 3 ? 2 : n === 2 ? 3 : 4;
+      // pol : sens de la phrase (+1 point fort, −1 difficulté, 0 neutre), pour les liaisons (voir lier).
+      const pol = k === 'progression' && n === 2 ? (banque === STABLE_BON_APPR ? 1 : 0) : n >= 3 ? 1 : -1;
+      ajouter({ cle: k, importance, pol, texte: remplir(choisir(selonTon(tele ? banque.t : banque.p, ton), g(k)), n) });
     }
     if (actives.includes('objectif') && niv.objectif !== null) {
-      const o = objectifAppr(niv, a, actives);
-      const but = o.texte || choisir(objectifsAppr()[o.cle], g('but'));
+      // (À faiblesse égale, l'objectif vise d'abord un point de vigilance rempli par l'enseignant.)
+      const o = objectifAppr(niv, a, [...vigilance, ...actives.filter(k => !vigilance.has(k))]);
+      // (Le but est un bout de phrase : choisi à part, pour ne pas fausser le suivi des « Il / Elle ».)
+      const buts = objectifsAppr()[o.cle];
+      // (Sans répéter un mot déjà écrit : « Pour progresser, il faudra fournir davantage de travail pour progresser ».)
+      const butsOk = moinsDeRepetitions(buts);
+      const but = o.texte || (court ? butsOk.reduce((x, y) => (y.length < x.length ? y : x)) : choisirAppr(butsOk, g('but')));
       const modeles = tele ? (o.cle === 'haut' ? ['Objectif : {but}.'] : ['Objectif : {but}.', 'À travailler : {but}.'])
         : o.cle === 'haut' ? (ton === 'bienveillant' ? ['Bravo ! Il faut maintenant {but}.', 'Bravo, il faut {but} !'] : ['Il faut maintenant {but}.', 'Objectif : {but}.'])
           : ton === 'exigeant' ? ['{S} doit maintenant {but}.', 'Il faut impérativement {but}.']
             : ton === 'bienveillant' ? ['Objectif pour la suite : {but}. Courage !', 'Pour progresser, il faudra {but}. Courage !'] : ['Objectif : {but}.', 'Il faut maintenant {but}.'];
-      let t = remplir(choisir(modeles, g('objectif')), 0).replace('{but}', but);
+      let t = remplir(choisir(modeles.map(m => m.replace('{but}', but)), g('objectif')), 0);
       t = t[0].toUpperCase() + t.slice(1);
-      morceaux.push({ cle: 'objectif', texte: t });
+      ajouter({ cle: 'objectif', texte: t });
     }
     return morceaux;
   };
 
+  // Liaisons entre les phrases (style « phrases ») : « En effet, » après le bilan quand la phrase le confirme ;
+  // « Néanmoins, » d'un point fort à une difficulté, « En revanche, » dans l'autre sens ; « et » pour réunir deux points
+  // forts courts dont le second commence par il / elle (« Il s’investit avec sérieux et obtient de bons résultats »).
+  const debutMinuscule = t => (t.startsWith(prenom) ? t : t[0].toLocaleLowerCase('fr') + t.slice(1));
+  const lier = liste => {
+    if (tele) return liste.map(m => m.texte).join(' ');
+    const sortie = [];
+    // Une seule liaison de chaque sens dans l'appréciation : pas de « Néanmoins » s'il y a déjà un « mais »…
+    const deja = inventaireAppr(liste.map(m => m.texte).join(' ')).liaisons;
+    let enEffet = deja.has('explication'), opposition = deja.has('opposition'), lies = 0, avant = null;
+    for (const m of liste) {
+      let t = m.texte;
+      const prec = sortie.at(-1);
+      if (avant && m.cle !== 'objectif' && m.pol) {
+        // (« En effet » : une appréciation sur deux environ, toujours la même pour un élève donné.)
+        if (avant.cle === 'bilan' && !enEffet && m.pol === avant.pol && hasardAppr(g('en effet')) < 0.55) { t = 'En effet, ' + debutMinuscule(t); enEffet = true; }
+        else if (avant.cle !== 'bilan' && avant.pol * m.pol < 0) {
+          if (!opposition) { t = (avant.pol > 0 ? 'Néanmoins, ' : 'En revanche, ') + debutMinuscule(t); opposition = true; }
+        }
+        // « et » : deux points forts courts à la suite (jamais deux « et » dans une phrase). Même sujet (l'élève) :
+        // « Il s’investit … et obtient … » ; sinon : « Les compétences … sont acquises et il obtient … ».
+        else if (avant.cle !== 'bilan' && avant.pol > 0 && m.pol > 0 && lies < 2 && prec && /\.$/.test(prec)
+          && !/ et |^En effet|^Néanmoins|^En revanche|:/.test(prec) && !/ et |:/.test(t) && prec.length < 95 && t.length < 95) {
+          // (« … et Léa obtient » : le prénom redit au milieu de la phrase est retiré, comme il / elle.)
+          const debutSujet = new RegExp(`^(Il|Elle|${prenom.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}) `);
+          const memeSujet = debutSujet.test(t) && (prec.startsWith(prenom + ' ') || /^(Il|Elle) /.test(prec));
+          // (Après une incise « , notamment en … » : « , et ».)
+          const joint = /, notamment [^,]*\.$/.test(prec) ? ', et ' : ' et ';
+          sortie[sortie.length - 1] = prec.slice(0, -1) + joint + (memeSujet ? t.replace(debutSujet, '') : debutMinuscule(t));
+          lies++; avant = m;
+          continue;
+        }
+      }
+      sortie.push(t);
+      avant = m;
+    }
+    return sortie.join(' ');
+  };
+
+  // Texte final : liaisons, puis relecture (corrections sûres ; un adverbe répété malgré tout est retiré).
+  // (« un bon trimestre… a progressé ce trimestre » : la période déjà nommée n'est pas redite.)
+  const finir = liste => {
+    let t = lier(liste);
+    const i = t.indexOf(per);
+    if (i >= 0) t = t.slice(0, i + per.length) + t.slice(i + per.length).split(' ' + ce).join('');
+    return corrigerAppr(t, { retirerAdverbes: true });
+  };
   // Longueur : phrases les plus courtes, puis on retire les dernières rubriques (avant l'objectif), puis le bilan.
+  const essayer = () => {
   let morceaux = construire(false);
   const retirees = [];
-  const longueur = () => morceaux.map(m => m.texte).join(' ').length;
+  const longueur = () => finir(morceaux).length;
   if (longueur() > r.longueur) morceaux = construire(true);
   // Le moins important d'abord (à importance égale, le plus loin dans l'ordre) ; le texte est refait à chaque
   // retrait, pour que le prénom soit toujours cité avant « il / elle ».
@@ -545,7 +832,20 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
     retirees.push(cle);
     morceaux = construire(true, retirees);
   }
-  return { texte: morceaux.map(m => m.texte).join(' '), niveaux: niv, retirees };
+  // Toujours commencer par le prénom (style télégraphique : « Léa : investissement sérieux. … »).
+  let texte = finir(morceaux);
+  if (texte && !texte.startsWith(prenom)) texte = `${prenom} : ${texte[0].toLocaleLowerCase('fr')}${texte.slice(1)}`;
+  return { texte, retirees, remarques: relireAppr(texte, el).filter(x => x.grave).length };
+  };
+  // Relecture : si le texte garde une répétition ou une faute, d'autres formulations sont essayées ; on garde la meilleure
+  // (le moins de remarques, puis le moins de rubriques laissées de côté).
+  let meilleur = null;
+  for (essai = 0; essai < 4; essai++) {
+    const res = essayer();
+    if (!meilleur || res.remarques * 10 + res.retirees.length < meilleur.remarques * 10 + meilleur.retirees.length) meilleur = res;
+    if (!res.remarques) break;
+  }
+  return { texte: meilleur.texte, niveaux: niv, retirees: meilleur.retirees };
 }
 
 /* ---------- Appréciation d'un élève (texte gardé, ou proposé) ---------- */
@@ -576,15 +876,20 @@ async function copierTexte(texte) {
 
 /* ---------- Fenêtre « ✍ Appréciations » de la classe ---------- */
 
-function htmlCarteAppr(el, periode, eleves, r) {
+// suite : contenu ajouté au bas de la carte (fiche bilan : le ⚙ des réglages, dans la carte même).
+function htmlCarteAppr(el, periode, eleves, r, suite = '') {
   const { analyse, propose, texte, manuel, enreg } = appreciationEleve(el, periode, eleves, r);
-  const perso = enreg?.niveaux || {};
-  const puces = r.ordre.filter(k => r.actives.includes(k) && k !== 'objectif').map(k => {
-    const n = propose.niveaux[k] || 0, change = k in perso;
+  const perso = persoUtileAppr(r, analyse, enreg?.niveaux);
+  // Rubriques montrées : celles cochées, plus les décochées que le carnet signale (⚠ point de vigilance, en priorité
+  // dans le texte). Une rubrique décochée mise à « non mentionné » disparaît (↺ niveaux calculés pour la retrouver).
+  const vigilance = vigilanceAppr(r, analyse, perso), abordees = new Set(rubriquesAppr(r, analyse, perso));
+  const puces = r.ordre.filter(k => k !== 'objectif' && (r.actives.includes(k) || abordees.has(k))).map(k => {
+    const n = propose.niveaux[k] || 0, change = k in perso, vigil = vigilance.has(k);
     const noms = k === 'progression' ? NOMS_NIV_PROG : NOMS_NIV_APPR;
-    const source = change ? `Choisi par toi (calculé : ${analyse.niveaux[k] ? noms[analyse.niveaux[k]] : 'pas de donnée'})` : analyse.sources[k] || 'Pas de donnée : non mentionné';
-    return `<button type="button" class="puce-appr n${n}${change ? ' change' : ''}${!change && analyse.defaut[k] ? ' defaut' : ''}" data-appr-niveau="${k}"
-      title="${esc(source + '\n(toucher pour changer)')}">${esc(rubriqueAppr(k).nom)} <b>${n || '–'}</b><small>${esc(noms[n])}</small></button>`;
+    const source = (vigil ? `⚠ Point de vigilance : ce que tu as rempli signale une difficulté, l’appréciation en parle en priorité${r.actives.includes(k) ? '' : ' (même si la rubrique est décochée)'}.\n` : '')
+      + (change ? `Choisi par toi (calculé : ${analyse.niveaux[k] ? noms[analyse.niveaux[k]] : 'pas de donnée'})` : analyse.sources[k] || 'Pas de donnée : non mentionné');
+    return `<button type="button" class="puce-appr n${n}${change ? ' change' : ''}${!change && analyse.defaut[k] ? ' defaut' : ''}${vigil ? ' vigilance' : ''}" data-appr-niveau="${k}"
+      title="${esc(source + '\n(toucher pour changer)')}">${vigil ? '⚠ ' : ''}${esc(rubriqueAppr(k).nom)} <b>${n || '–'}</b><small>${esc(noms[n])}</small></button>`;
   }).join('');
   const retirees = propose.retirees.length && !manuel
     ? `<span class="aide">Faute de place, laissé de côté : ${propose.retirees.map(k => k === 'bilan' ? 'bilan' : rubriqueAppr(k).nom.toLowerCase()).join(', ')}.</span>` : '';
@@ -598,6 +903,8 @@ function htmlCarteAppr(el, periode, eleves, r) {
     <div class="puces-appr">${puces}${Object.keys(perso).length ? '<button type="button" class="lien" data-appr-auto title="Revenir aux niveaux calculés par l’appli">↺ niveaux calculés</button>' : ''}</div>
     <textarea class="texte-appr" data-appr-texte rows="3" maxlength="3000" aria-label="${esc(`Appréciation de ${el.nom} ${el.prenom}`)}">${esc(texte)}</textarea>
     <div class="pied-appr"><span class="compte-appr${texte.length > r.longueur ? ' trop' : ''}" data-appr-compte>${texte.length} / ${r.longueur} caractères</span>${retirees}</div>
+    <div class="relecture-appr" data-appr-relecture>${htmlRelectureAppr(texte, el, prenomsAutresAppr(el, eleves), manuel)}</div>
+    ${suite}
   </div>`;
 }
 
@@ -623,41 +930,22 @@ async function ouvrirAppreciations(periodeVoulue, eleveVise) {
     + '<span class="espace"></span><button type="button" data-fermer class="primaire">Fermer</button>', 'modale-large modale-appr');
   const form = $('form', d);
 
-  const dessinerCarte = id => {
-    const carte = d.querySelector(`[data-appr-eleve="${id}"]`);
-    if (carte) carte.outerHTML = htmlCarteAppr(Donnees.get('eleves', id), periode, eleves, r);
-  };
+
   const dessiner = () => {
     $('[data-appr-periodes]', d).innerHTML = [...periodes.map(p => [p.id, p.code]), ['annee', 'Toute l’année']]
       .map(([v, nom]) => `<button type="button" class="${v === periode ? 'actif' : ''}" data-appr-periode="${v}">${nom}</button>`).join('');
     const evals = evalsPeriode(c.id, periode), seances = seancesPeriode(c.id, periode);
     $('[data-appr-liste]', d).innerHTML = (evals.length || seances.length ? ''
-      : `<p class="aide">⚠ Aucune évaluation ni leçon sur cette période : les propositions ne s’appuient que sur tes observations.</p>`)
+      : `<p class="aide">⚠ Aucune évaluation ni ${motMin('lecon')} sur cette période : les propositions ne s’appuient que sur tes observations.</p>`)
       + eleves.map(el => htmlCarteAppr(el, periode, eleves, r)).join('');
   };
-
-  // Texte réécrit à la main : enregistré pendant la frappe (petit délai).
-  let minuteur = null, enAttente = null;
-  const enregistrerTexte = () => {
-    clearTimeout(minuteur);
-    if (!enAttente) return;
-    const { eleve, per, texte } = enAttente;
-    enAttente = null;
-    const el = Donnees.get('eleves', eleve);
-    const propose = appreciationEleve(el, per, eleves, r).propose.texte;
-    ecrireAppr(eleve, per, { texte: texte === propose ? '' : texte });
-  };
+  // Cartes des élèves (niveaux, formulation, texte réécrit, copier) : même fonctionnement que dans la fiche bilan.
+  const { enregistrerTexte } = gererCartesAppr(d, { periode: () => periode, eleves, r: () => r });
   const reglagesModifies = () => {
     r = { ...reglageAppr(), ...lireReglageAppr(form) };
     ecrireReglage('appreciations', lireReglageAppr(form));
     enregistrerTexte();
     dessiner();
-  };
-  // Changer un niveau ou la formulation remplace le texte proposé ; un texte réécrit à la main est d'abord confirmé.
-  const garderTexteManuel = async id => {
-    const enreg = Donnees.get('suivis', idAppr(id, periode));
-    if (!enreg?.texte) return true;
-    return confirmer('Tu as réécrit cette appréciation à la main. La remplacer par une nouvelle proposition ?', 'Remplacer');
   };
 
   d.addEventListener('click', e => lancer(async () => {
@@ -669,11 +957,53 @@ async function ouvrirAppreciations(periodeVoulue, eleveVise) {
       enregistrerTexte();
       return copierTexte(eleves.map(el => `${el.nom} ${el.prenom}\t${appreciationEleve(el, periode, eleves, r).texte}`).join('\n'));
     }
-    const carte = b.closest('[data-appr-eleve]');
+  }));
+  // Réglages : redessinés sur les cases et listes ; la longueur quand on quitte le champ.
+  d.addEventListener('change', e => { if (e.target.closest('[data-appr-reglages]')) reglagesModifies(); });
+
+  dessiner();
+  if (eleveVise) d.querySelector(`[data-appr-eleve="${eleveVise}"]`)?.scrollIntoView({ block: 'center' });
+  await resultat;
+  enregistrerTexte();
+  rendre();
+}
+
+// Cartes d'appréciation (fenêtre ✍ Appréciations et fiche bilan) : toucher une rubrique change son niveau,
+// « Autre formulation », « Reproposer », retour aux niveaux calculés, texte réécrit (enregistré pendant la frappe), copier.
+// Tout est rangé au même endroit (suivis « appréciation <période> ») : la fiche bilan et la fenêtre de la classe montrent
+// toujours la même appréciation. ctx : { periode(), eleves, r(), suite() (bas de carte, facultatif) } ;
+// renvoie { enregistrerTexte, dessinerCarte }.
+function gererCartesAppr(d, ctx) {
+  const dessinerCarte = id => {
+    const carte = d.querySelector(`[data-appr-eleve="${id}"]`);
+    if (carte) carte.outerHTML = htmlCarteAppr(Donnees.get('eleves', id), ctx.periode(), ctx.eleves, ctx.r(), ctx.suite?.() || '');
+  };
+  let minuteur = null, enAttente = null;
+  const enregistrerTexte = () => {
+    clearTimeout(minuteur);
+    if (!enAttente) return;
+    const { eleve, per, texte } = enAttente;
+    enAttente = null;
+    const propose = appreciationEleve(Donnees.get('eleves', eleve), per, ctx.eleves, ctx.r()).propose.texte;
+    ecrireAppr(eleve, per, { texte: texte === propose ? '' : texte });
+  };
+  // Changer un niveau ou la formulation remplace le texte proposé ; un texte réécrit à la main est d'abord confirmé.
+  const garderTexteManuel = async id => {
+    if (!Donnees.get('suivis', idAppr(id, ctx.periode()))?.texte) return true;
+    return confirmer('Tu as réécrit cette appréciation à la main. La remplacer par une nouvelle proposition ?', 'Remplacer');
+  };
+  d.addEventListener('click', e => lancer(async () => {
+    const b = e.target.closest('button'), carte = b?.closest('[data-appr-eleve]');
     if (!carte) return;
-    const id = carte.dataset.apprEleve, el = Donnees.get('eleves', id);
+    const id = carte.dataset.apprEleve, el = Donnees.get('eleves', id), periode = ctx.periode(), r = ctx.r();
     enregistrerTexte();
     if (b.matches('[data-appr-copier]')) return copierTexte($('[data-appr-texte]', carte).value.trim());
+    if (b.matches('[data-appr-corriger]')) {
+      // Corrections sûres seulement (espaces, majuscules, élisions, mot doublé) : le texte de l'enseignant reste le sien.
+      const zone = $('[data-appr-texte]', carte), corrige = corrigerAppr(zone.value.trim());
+      ecrireAppr(id, periode, { texte: corrige });
+      return dessinerCarte(id);
+    }
     if (b.matches('[data-appr-reproposer]')) { ecrireAppr(id, periode, { texte: '' }); return dessinerCarte(id); }
     if (b.matches('[data-appr-autre]')) {
       const enreg = Donnees.get('suivis', idAppr(id, periode));
@@ -689,43 +1019,32 @@ async function ouvrirAppreciations(periodeVoulue, eleveVise) {
       if (!(await garderTexteManuel(id))) return;
       // 1 → 2 → 3 → 4 → non mentionné → 1…
       const k = b.dataset.apprNiveau;
-      const actuel = appreciationEleve(el, periode, eleves, r).propose.niveaux[k] || 0;
+      const actuel = appreciationEleve(el, periode, ctx.eleves, r).propose.niveaux[k] || 0;
       const suivant = actuel >= 4 ? 0 : actuel + 1;
       const enreg = Donnees.get('suivis', idAppr(id, periode));
-      const niveaux = { ...(enreg?.niveaux || {}) };
-      if (suivant === (analyserAppr(el, periode, eleves).niveaux[k] || 0)) delete niveaux[k]; else niveaux[k] = suivant;
+      const a = analyserAppr(el, periode, ctx.eleves);
+      const niveaux = persoUtileAppr(r, a, enreg?.niveaux);
+      // Revenir au niveau calculé par l'appli efface le choix.
+      if (suivant === (a.niveaux[k] || 0)) delete niveaux[k]; else niveaux[k] = suivant;
       ecrireAppr(id, periode, { niveaux, texte: '' });
       dessinerCarte(id);
       d.querySelector(`[data-appr-eleve="${id}"] [data-appr-niveau="${k}"]`)?.focus();
     }
   }));
   d.addEventListener('input', e => {
-    if (e.target.matches('[data-appr-texte]')) {
-      const carte = e.target.closest('[data-appr-eleve]'), n = e.target.value.trim().length;
-      const compte = $('[data-appr-compte]', carte);
-      compte.textContent = `${n} / ${r.longueur} caractères`;
-      compte.classList.toggle('trop', n > r.longueur);
-      enAttente = { eleve: carte.dataset.apprEleve, per: periode, texte: e.target.value.trim() };
-      clearTimeout(minuteur);
-      minuteur = setTimeout(enregistrerTexte, 800);
-    }
+    if (!e.target.matches('[data-appr-texte]')) return;
+    const carte = e.target.closest('[data-appr-eleve]'), n = e.target.value.trim().length, r = ctx.r();
+    const compte = $('[data-appr-compte]', carte);
+    compte.textContent = `${n} / ${r.longueur} caractères`;
+    compte.classList.toggle('trop', n > r.longueur);
+    enAttente = { eleve: carte.dataset.apprEleve, per: ctx.periode(), texte: e.target.value.trim() };
+    clearTimeout(minuteur);
+    minuteur = setTimeout(() => {
+      enregistrerTexte();
+      // Relecture du texte tapé (une fois la frappe arrêtée)
+      const el = Donnees.get('eleves', carte.dataset.apprEleve), zone = $('[data-appr-relecture]', carte);
+      if (el && zone) zone.innerHTML = htmlRelectureAppr(e.target.value, el, prenomsAutresAppr(el, ctx.eleves), true);
+    }, 800);
   });
-  // Réglages : redessinés sur les cases et listes ; la longueur quand on quitte le champ.
-  d.addEventListener('change', e => { if (e.target.closest('[data-appr-reglages]')) reglagesModifies(); });
-
-  dessiner();
-  if (eleveVise) d.querySelector(`[data-appr-eleve="${eleveVise}"]`)?.scrollIntoView({ block: 'center' });
-  await resultat;
-  enregistrerTexte();
-  rendre();
-}
-
-// Bloc de la fiche élève des Notes : l'appréciation de la période affichée.
-function htmlApprFiche(el, periode, eleves) {
-  const { texte, manuel } = appreciationEleve(el, periode, eleves);
-  if (!texte) return '';
-  return `<h3>Appréciation ${manuel ? '<span class="badge-appr">modifiée à la main</span>' : '<span class="aide">proposée par l’appli</span>'}</h3>
-    <p class="texte-appr-fiche">${esc(texte)}</p>
-    <div class="actions-appr-fiche"><button type="button" data-fiche-appr-copier>📋 Copier</button>
-      <button type="button" data-fiche-appr-ajuster>✍ Ajuster les niveaux…</button></div>`;
+  return { enregistrerTexte, dessinerCarte };
 }

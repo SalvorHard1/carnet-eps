@@ -109,6 +109,13 @@ const DISCIPLINES = {
     appreciations: {
       noms: { moteur: { nom: 'Connaissances', aide: 'résultats, notes' }, methodo: { nom: 'Démarche', aide: 'démarche scientifique, TP, sécurité' } },
       phrases: {
+        // (Niveaux 1 et 2 : ceux de l'EPS, qui parlent déjà de « cours ».)
+        attitude: {
+          4: { p: ['{S} s’investit pleinement dans le travail demandé.', '{S} fait preuve d’un engagement exemplaire en classe.', '{S} montre un investissement remarquable et constant.', 'L’investissement en classe est exemplaire.'],
+            t: ['Investissement exemplaire.', 'Engagement remarquable.'] },
+          3: { p: ['{S} s’investit avec sérieux en classe.', '{S} montre un engagement régulier.', '{S} participe activement en classe.', 'Le travail en classe est sérieux et régulier.'],
+            t: ['Investissement sérieux.', 'Travail sérieux en classe.'] },
+        },
         moteur: {
           4: { p: ['{S} maîtrise très bien les connaissances{apsa}.', '{S} obtient de très bons résultats{apsa}.'], t: ['Connaissances très bien maîtrisées{apsa}.', 'Très bons résultats{apsa}.'] },
           3: { p: ['{S} obtient de bons résultats{apsa}.', '{S} maîtrise bien les connaissances{apsa}.'], t: ['Bons résultats{apsa}.', 'Connaissances bien maîtrisées{apsa}.'] },
@@ -134,6 +141,13 @@ const DISCIPLINES = {
         moteur: ['approfondir et apprendre régulièrement ses leçons', 'consolider les connaissances'],
         methodo: ['gagner en rigueur dans les démarches et les manipulations', 'mieux justifier ses raisonnements'],
       },
+      // Fiche bilan (onglet Notes) : points d'appui et axes de progression, [intitulé, phrase].
+      fiche: {
+        niveauFort: ['Bonnes connaissances', 'maîtrise bien les connaissances'],
+        niveauFaible: ['Connaissances fragiles', 'consolider ses connaissances par un travail régulier'],
+        methodo: ['Démarche scientifique', 'gagner en rigueur dans les démarches et les manipulations'],
+        assiduite: ['Assiduité', 'est assidu{e} et travaille avec régularité'],
+      },
     },
   },
 };
@@ -149,6 +163,9 @@ const profil = () => DISCIPLINES[disciplineActive()];
 const mot = cle => profil().mots[cle] ?? DISCIPLINES.eps.mots[cle] ?? cle;
 const motMin = cle => mot(cle).toLocaleLowerCase('fr'); // (au milieu d'une phrase : « leçons », « séances »)
 const activitesDiscipline = () => profil().activites;
+// « Autre » : évaluation hors activité (investissement, rôles sociaux…) ; jamais citée comme activité dans les appréciations.
+const ACTIVITE_AUTRE = 'Autre';
+const estActiviteAutre = a => (a || '').trim().toLocaleLowerCase('fr') === 'autre';
 const referentielDuNiveau = niveau => profil().referentielParNiveau[niveau] || profil().referentielDefaut;
 // Un référentiel est proposé s'il est personnel, ou officiel pour la discipline.
 const referentielDeLaDiscipline = r => !!r && (r.perso || profil().referentiels.includes(r.id));
