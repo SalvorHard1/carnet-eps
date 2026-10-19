@@ -38,7 +38,8 @@ const REGLAGES_DEFAUT = {
     niveaux: ['Maîtrise insuffisante', 'Maîtrise fragile', 'Maîtrise satisfaisante', 'Très bonne maîtrise'],
     masques: [], refsMasques: [], ajouts: [], refsPerso: [],
   },
-  onglets: { masques: [], noms: {}, demarrage: '' },
+  // (favoris : onglets de la barre en disposition « Favoris + Plus » sur tablette, voir onglets.js)
+  onglets: { masques: [], noms: {}, demarrage: '', favoris: ['appel', 'notes', 'entrainement', 'outils'] },
   // Appréciations proposées par l'appli (appreciations.js) : rubriques abordées et leur ordre, ton, style, longueur.
   appreciations: {
     // Par défaut (choix de l'auteur) : attitude, compétences, motricité (performances, notes) et objectif ; les autres
@@ -257,7 +258,7 @@ function htmlReglageNotes(n) {
 }
 
 function htmlReglageOnglets(o) {
-  return `
+  return `${typeof htmlReglageDisposition === 'function' ? htmlReglageDisposition(o) : ''}
     <p class="aide">Décoche un onglet pour le masquer (ses données sont gardées) ; tu peux aussi le renommer.</p>
     <div class="table-reglages">
       ${Object.entries(NOMS_ONGLETS).map(([v, nom]) => `
@@ -320,7 +321,7 @@ async function ouvrirReglages(rubrique = 'apparence') {
     ${typeof htmlReglageAppr === 'function' ? `<details ${ouvert('appreciations')}><summary>✍ Appréciations <small>rubriques, ton, style, longueur</small></summary>
       <div class="rubrique" data-rubrique="appreciations">${htmlReglageAppr(reglageAppr())}
         <p class="aide">Les appréciations se préparent dans l’onglet Notes › ✍ Appréciations, ou dans la fiche d’un élève.</p></div></details>` : ''}
-    <details ${ouvert('onglets')}><summary>🗂 Onglets <small>afficher, renommer</small></summary>
+    <details ${ouvert('onglets')}><summary>🗂 Onglets <small>disposition sur tablette, afficher, renommer</small></summary>
       <div class="rubrique">${htmlReglageOnglets(o)}</div></details>
     <details ${ouvert('partage')}><summary>🔄 Partager <small>avec un collègue, ou revenir à l’origine</small></summary>
       <div class="rubrique">
@@ -370,10 +371,13 @@ async function ouvrirReglages(rubrique = 'apparence') {
   const v = r.data;
   const visibles = Object.keys(NOMS_ONGLETS).filter(x => v['onglet-' + x] === 'on');
   if (!visibles.length) { toast('Garde au moins un onglet affiché.', 'erreur'); appliquerReglages(true); return ouvrirReglages('onglets'); }
+  const favoris = Object.keys(NOMS_ONGLETS).filter(x => v['favori-' + x] === 'on');
+  if (favoris.length > 4) { toast('4 onglets favoris au plus (les autres vont dans « Plus »).', 'erreur'); appliquerReglages(true); return ouvrirReglages('onglets'); }
   if (+v.alerteRouge < +v.alerteOrange || +v.tenueRouge < +v.tenueOrange) { toast('L’alerte rouge doit venir après (ou en même temps que) l’orange.', 'erreur'); appliquerReglages(true); return ouvrirReglages('notes'); }
 
   ui.taille = lireAppareil(form).taille;
   ui.densite = lireAppareil(form).densite;
+  if (v.disposition) ui.disposition = v.disposition; // (onglets sur tablette : propre à cet appareil)
   memoriserUi();
   ecrireReglage('apparence', { ...lireApparence(form, a), etablissement: v.etablissement.trim(), prof: v.prof.trim() });
   ecrireReglage('notes', {
@@ -391,6 +395,7 @@ async function ouvrirReglages(rubrique = 'apparence') {
     masques: Object.keys(NOMS_ONGLETS).filter(x => !visibles.includes(x)),
     noms: Object.fromEntries(Object.keys(NOMS_ONGLETS).map(x => [x, v['nom-' + x].trim()]).filter(([, l]) => l)),
     demarrage: visibles.includes(v.demarrage) ? v.demarrage : '',
+    ...(typeof htmlReglageDisposition === 'function' ? { favoris } : {}),
   });
   if (typeof lireReglageAppr === 'function') ecrireReglage('appreciations', lireReglageAppr(form));
   // Changement de discipline : confirmé, car tout l'affichage change (aucune donnée n'est effacée).
@@ -422,7 +427,7 @@ async function revenirOrigine() {
   ecrireReglage('competences', { niveaux: REGLAGES_DEFAUT.competences.niveaux });
   ecrireReglage('onglets', REGLAGES_DEFAUT.onglets);
   ecrireReglage('appreciations', REGLAGES_DEFAUT.appreciations);
-  delete ui.taille; delete ui.densite;
+  delete ui.taille; delete ui.densite; delete ui.disposition;
   memoriserUi();
   appliquerReglages(true);
   rendre();
@@ -624,6 +629,7 @@ function nettoyerReglage(nom, brut) {
     if (propre.masques?.length >= Object.keys(NOMS_ONGLETS).length) delete propre.masques;
     if (propre.noms) propre.noms = Object.fromEntries(Object.keys(NOMS_ONGLETS).filter(v => propre.noms[v]).map(v => [v, texte(propre.noms[v], 16)]));
     if (propre.demarrage && !NOMS_ONGLETS[propre.demarrage]) propre.demarrage = '';
+    if (propre.favoris) propre.favoris = [...new Set(propre.favoris.filter(v => NOMS_ONGLETS[v]))].slice(0, 4);
   }
   if (nom === 'discipline' && propre.code && !DISCIPLINES[propre.code]) delete propre.code;
   if (nom === 'appreciations') {
@@ -673,7 +679,8 @@ async function premierLancement() {
   const a = reglage('apparence');
   const { d, resultat } = ouvrirModale('Bienvenue dans ton carnet 👋', `
     <p class="bienvenue-intro">Quelques réglages pour commencer (tout se change ensuite dans <b>⚙ Réglages du carnet</b>, sous la liste des classes).</p>
-    <p class="aide">Tu as déjà un carnet sur une clé USB ? Choisis « Plus tard » puis récupère-le avec le bouton 🔑 : tes réglages reviendront avec lui.</p>
+    <button type="button" class="large deja-carnet" data-deja-carnet>📂 J’ai déjà un carnet (clé USB, dossier ou Drive) : le récupérer</button>
+    <p class="aide">Tes classes et tes réglages reviendront avec lui. Sinon, choisis ci-dessous pour commencer.</p>
     <h4>Ta discipline</h4>
     ${htmlChoixDiscipline(disciplineActive())}
     <p class="aide">${AIDE_DISCIPLINE}</p>
@@ -688,19 +695,18 @@ async function premierLancement() {
       <h4>Mode</h4>
       <div class="segments">${radio('mode', 'auto', a.mode, 'Automatique')}${radio('mode', 'clair', a.mode, '☀ Clair')}${radio('mode', 'sombre', a.mode, '🌙 Sombre')}</div>
     </div>
-    <label class="case" data-choix-exemple ${disciplineActive() === 'eps' ? '' : 'hidden'}><input type="checkbox" name="exemple" checked>
-      <span>🎓 Ajouter une <b>classe exemple</b> déjà remplie (élèves inventés), pour découvrir le carnet <small class="aide">— supprimable d’un clic</small></span></label>
+    <p class="aide" data-choix-exemple ${disciplineActive() === 'eps' ? '' : 'hidden'}>🎓 Une <b>classe exemple</b> déjà remplie (élèves inventés)
+      t’attend pour découvrir le carnet : tu pourras la supprimer d’un clic.</p>
     <label class="bouton">📂 Utiliser les réglages d’un collègue…<input type="file" accept=".json,application/json" data-importer-reglages hidden></label>`,
   '<span class="espace"></span><button type="button" data-fermer>Plus tard</button><button value="ok" class="primaire">C’est parti</button>', 'reglages');
   d.querySelectorAll('[data-pastille]').forEach(s => s.style.setProperty('--p', s.dataset.pastille));
   const form = $('form', d);
   const choisi = () => ({ ...a, theme: form.querySelector('[name="theme"]:checked').value, mode: form.querySelector('[name="mode"]:checked').value });
-  let importe = null;
+  let importe = null, dejaCarnet = false;
+  $('[data-deja-carnet]', d).addEventListener('click', () => { dejaCarnet = true; d.fermer(); });
   const disciplineChoisie = () => form.querySelector('[name="discipline"]:checked')?.value || 'eps';
   let discipline = disciplineActive(); // (mis à jour à chaque choix : la fenêtre n'existe plus une fois fermée)
-  let exemple = true; // classe exemple : celle de l'EPS (pas proposée pour les autres disciplines)
   d.addEventListener('change', e => {
-    if (e.target.name === 'exemple') exemple = e.target.checked;
     if (e.target.name === 'discipline') $('[data-choix-exemple]', d).hidden = disciplineChoisie() !== 'eps';
     if (e.target.closest('[data-rubrique="apparence"]')) appliquerApparence(choisi(), reglagesAppareil(), form.elements.etablissement.value || a.etablissement);
     // (Le nom du carnet en haut de la page suit tout de suite la discipline choisie.)
@@ -725,9 +731,17 @@ async function premierLancement() {
   } else if (r.action === 'ok') {
     ecrireReglage('apparence', { ...choisi(), etablissement: r.data.etablissement.trim() || a.etablissement, prof: r.data.prof.trim() });
   }
-  // (« Plus tard » : souvent un carnet à récupérer sur la clé, on n'y mélange pas la classe exemple.)
-  if ((importe || r.action === 'ok') && exemple && discipline === 'eps' && !classesTriees().length) {
+  // Classe exemple créée d'office (EPS seulement : son contenu est de l'EPS), même avec « Plus tard » ; supprimable d'un clic.
+  // (Supprimée sur un autre appareil, elle disparaît aussi ici en récupérant le carnet de la clé : ses identifiants sont fixes.)
+  // « J'ai déjà un carnet » : pas de classe exemple, on va le chercher (enregistrement.js).
+  if (dejaCarnet && typeof recupererCarnetExistant === 'function') {
+    appliquerReglages(true);
+    rendre();
+    return lancer(recupererCarnetExistant); // (attendu par le démarrage : le guide ne s'ouvre qu'après)
+  }
+  if (discipline === 'eps' && !classesTriees().length) {
     ui.classeId = creerClasseExemple().id;
+    Donnees.antidater('exemple-');
     memoriserUi();
   }
   appliquerReglages(true);

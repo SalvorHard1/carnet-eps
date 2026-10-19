@@ -34,31 +34,35 @@
       <button data-vue="agenda">Agenda</button>
       <button data-vue="baremes">Barèmes</button>
     </nav>
+    <!-- Tablette : onglets regroupés en rideaux, ou favoris + « Plus » (onglets.js) -->
+    <nav class="onglets-compact" id="onglets-compact" aria-label="Onglets" hidden></nav>
     <button class="icone btn-verrou" id="btn-verrou" title="Verrouiller le carnet maintenant" aria-label="Verrouiller le carnet" hidden>🔒</button>
     <div class="groupe-sauvegarde">
       <!-- Un seul bouton pour tout ce qui touche à la clé : sa couleur donne l'état, il ouvre le menu de la clé. -->
       <button class="sauver" id="btn-sauver" data-action="cle" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-cle">
-        <span class="sauver-icone" aria-hidden="true">🔑</span><span id="etat-cle">Ma clé</span>
+        <span class="sauver-icone" aria-hidden="true">💾</span><span id="etat-cle">Enregistrer</span>
       </button>
     </div>
   </header>
 
-  <!-- Menu de la clé : les deux gestes, et l'aide en dessous. -->
+  <!-- Menu « Enregistrer » : l'état, enregistrer (et, sur tablette, récupérer), l'endroit choisi, l'aide.
+       Les textes suivent l'endroit choisi sur cet appareil : clé, dossier ou Drive (app.js › ouvrirMenuCle). -->
   <div class="menu-cle" id="menu-cle" role="menu" hidden>
     <p class="menu-cle-etat" id="menu-cle-etat"></p>
-    <button class="choix-cle" data-menu-cle="recuperer" role="menuitem">
-      <span class="choix-icone" aria-hidden="true">⬇</span>
-      <span class="choix-texte"><b>Récupérer depuis la clé</b><small>En arrivant sur cet appareil</small></span>
+    <button class="choix-cle primaire" data-menu-cle="enregistrer" role="menuitem">
+      <span class="choix-icone" aria-hidden="true">⬆</span>
+      <span class="choix-texte"><b data-menu-texte="enregistrer">Enregistrer</b><small></small></span>
     </button>
     <label class="bouton choix-cle" data-menu-cle-fichier role="menuitem">
       <span class="choix-icone" aria-hidden="true">⬇</span>
-      <span class="choix-texte"><b>Récupérer depuis la clé</b><small>Choisis carnet-eps.json sur la clé</small></span>
-      <input type="file" accept=".json,application/json" data-importer hidden>
+      <span class="choix-texte"><b data-menu-texte="recuperer">Récupérer</b><small>Choisis les <b>.json</b> du dossier, un ou plusieurs : l’appli prend le plus récent</small></span>
+      <input type="file" accept=".json,application/json" multiple data-importer hidden>
     </label>
-    <button class="choix-cle primaire" data-menu-cle="enregistrer" role="menuitem">
-      <span class="choix-icone" aria-hidden="true">⬆</span>
-      <span class="choix-texte"><b>Enregistrer sur la clé</b><small>En partant</small></span>
+    <button class="choix-cle destination-menu" data-menu-cle="destination" role="menuitem">
+      <span class="choix-icone" aria-hidden="true" data-menu-texte="icone">🔑</span>
+      <span class="choix-texte"><b data-menu-texte="destination">Clé USB</b><small>Endroit choisi sur cet appareil — toucher pour changer</small></span>
     </button>
+    <p class="forme-sauvegarde" id="menu-cle-forme"></p>
     <button class="lien menu-cle-aide" data-menu-cle="aide" role="menuitem">Aide et dépannage…</button>
   </div>
 
@@ -81,6 +85,9 @@
     <div class="ascenseur" id="ascenseur" aria-hidden="true" hidden><div class="ascenseur-curseur"></div></div>
   </div>
 
+  <!-- Tablette : onglets en bas de l'écran, si choisi dans les réglages (onglets.js) -->
+  <nav class="onglets-bas" id="onglets-bas" aria-label="Onglets" hidden></nav>
+
   <div class="saisie" id="saisie" hidden>
     <button data-code="ABS" class="code-ABS">Absent</button>
     <button data-code="NR" class="code-NR" hidden>Non rendu</button>
@@ -100,12 +107,14 @@
   <script src="donnees.js"></script>
   <script src="discipline.js"></script>
   <script src="cle.js"></script>
+  <script src="enregistrement.js"></script>
   <script src="referentiel.js"></script>
   <script src="tableur.js"></script>
   <script src="entrainement.js"></script>
   <script src="notesexcel.js"></script>
   <script src="listeclasse.js"></script>
   <script src="reglages.js"></script>
+  <script src="onglets.js"></script>
   <script src="outils.js"></script>
   <script src="combine.js"></script>
   <script src="natation.js"></script>
@@ -118,6 +127,7 @@
   <script src="trombi.js"></script>
   <script src="agenda.js"></script>
   <script src="fichenotes.js"></script>
+  <script src="eleves.js"></script>
   <script src="appel.js"></script>
   <script src="exemple.js"></script>
   <script src="appreciations.js"></script>

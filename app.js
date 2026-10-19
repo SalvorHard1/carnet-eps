@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.103.1'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.108.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -509,6 +509,7 @@ function rendre() {
   if (!enModeEleve() && !ongletsVisibles().includes(ui.vue)) ui.vue = ongletsVisibles()[0]; // onglet masqué dans les réglages
   rendreClasses();
   document.querySelectorAll('#onglets [data-vue]').forEach(b => b.classList.toggle('actif', b.dataset.vue === ui.vue));
+  if (typeof majOnglets === 'function') majOnglets(); // tablette : onglets en rideaux, en bas ou favoris (onglets.js)
   // La barre de codes rapides s'adapte à l'onglet. (Attention : surtout pas « data-vue » sur <body>,
   // sinon chaque clic dans la page serait pris pour un clic sur un onglet.)
   document.body.dataset.onglet = ui.vue;
@@ -611,7 +612,7 @@ function rendreVue() {
         <h2>Bienvenue dans ton carnet ${esc(profil().nom)}</h2>
         <p>Commence par créer ta première classe.</p>
         <button class="primaire" data-action="ajout-classe">+ Nouvelle classe</button>
-        <p class="aide">Tu as déjà un carnet sur ta clé USB ? <button class="lien" data-action="cle">Récupère-le ici</button>.
+        <p class="aide">Tu as déjà un carnet (clé USB, dossier ou Drive) ? <button class="lien" data-action="cle">Récupère-le ici</button>.
           · <button class="lien" data-action="guide">Comment ça marche ?</button>
           · <button class="lien" data-action="reglages">⚙ Personnaliser</button></p>
         <p class="aide">Envie de voir un carnet déjà rempli ? <button class="lien" data-action="exemple">🎓 Ouvre la classe exemple</button> (élèves inventés).</p>
@@ -1066,9 +1067,19 @@ function htmlEleves(c) {
   const adaptes = eleves.filter(el => el.adapte).length;
   const optionsAmenagement = el => [['', '—'], ['dispense', 'Dispensé'], ['adapte', 'Adapté']]
     .map(([v, l]) => `<option value="${v}" ${amenagement(el) === v ? 'selected' : ''}>${l}</option>`).join('');
+  // 👀 Consulter (par défaut) : cartes et bandeau de la classe (eleves.js) ; ✎ Modifier la liste : le tableau ci-dessous.
+  if (eleves.length && typeof htmlConsulterEleves === 'function' && modeEleves() === 'consulter') {
+    return `
+    <div class="outils">
+      <h2>${esc(c.nom)}</h2>
+      ${htmlModeEleves()}
+    </div>
+    ${htmlConsulterEleves(c, eleves)}`;
+  }
   return `
     <div class="outils">
       <h2>${esc(c.nom)}</h2>
+      ${eleves.length && typeof htmlModeEleves === 'function' ? htmlModeEleves() : ''}
       <button class="primaire" data-action="ajout-eleve">+ Élève</button>
       <button data-action="coller-liste" title="Coller une liste copiée depuis Pronote ou un tableur">📋 Coller une liste</button>
       <button data-action="import-ed" title="Créer ou compléter les fiches à partir de la liste de classe exportée d’École Directe ou de Pronote (.xlsx, .csv)">📥 École Directe / Pronote</button>
@@ -1126,17 +1137,19 @@ function htmlEleves(c) {
 }
 
 function majPastille() {
-  // Un seul bouton : sa couleur et son texte indiquent l'état de la sauvegarde sur la clé.
-  const m = Donnees.meta();
+  // Un seul bouton « Enregistrer » : sa couleur et son texte indiquent l'état ; son icône, l'endroit choisi
+  // sur cet appareil (clé, dossier, Drive : enregistrement.js).
+  const m = Donnees.meta(), x = destEnr();
   const [etat, texte, info] =
-    etatAuto === 'encours' ? ['encours', 'Enregistrement…', 'Enregistrement sur la clé en cours']
-    : !m.dernierEnvoi ? ['jamais', 'Ma clé', 'Ce carnet n’a encore jamais été enregistré sur une clé — cliquer pour récupérer ou enregistrer']
-    : m.modifieLe <= m.dernierEnvoi ? ['ok', 'À jour · ' + quandCourt(m.dernierEnvoi), 'Tout est sur la clé — dernier enregistrement : ' + dateHeure(m.dernierEnvoi)]
-    : etatAuto === 'erreur' ? ['erreur', 'Clé absente ?', 'Enregistrement impossible : branche la clé puis clique ici']
-    : ['attente', 'À enregistrer', 'Des modifications ne sont pas encore sur la clé — cliquer pour enregistrer'];
+    etatAuto === 'encours' ? ['encours', 'Enregistrement…', `Enregistrement ${x.sur} en cours`]
+    : !m.dernierEnvoi ? ['jamais', 'Enregistrer', `Ce carnet n’est encore que dans ce navigateur — cliquer pour l’enregistrer (${ui.destination ? x.nom : 'clé, dossier ou Drive'}) ou récupérer un carnet`]
+    : m.modifieLe <= m.dernierEnvoi ? ['ok', 'À jour · ' + quandCourt(m.dernierEnvoi), `Tout est enregistré ${x.sur} — dernier enregistrement : ` + dateHeure(m.dernierEnvoi)]
+    : etatAuto === 'erreur' ? ['erreur', x.introuvable, `Enregistrement impossible : ${x.verifier}, puis clique ici`]
+    : ['attente', 'Enregistrer', `Des modifications ne sont pas encore enregistrées ${x.sur} — cliquer pour enregistrer`];
   const b = $('#btn-sauver');
   b.className = 'sauver etat-' + etat + (etat === 'attente' && !Cle.accesDirect ? ' rappel' : '');
   b.title = info;
+  $('.sauver-icone', b).textContent = etat === 'ok' ? '✔' : ui.destination ? x.icone : '💾';
   $('#etat-cle').textContent = texte;
 }
 
@@ -1172,8 +1185,20 @@ function texteChangements(ch) {
   return parts.join(', ');
 }
 
+const JOURS_RAPPEL = 7; // (tous appareils) pas enregistré ailleurs depuis une semaine : on le rappelle
+const JOURS_COPIE_AILLEURS = 30; // tablette qui n'enregistre que sur elle-même : une copie sur clé / Drive par mois
 function rappelerCle() {
-  if (!Cle.accesDirect && aEnregistrer() && !enModeEleve()) notifAuto('🔑 Pense à enregistrer sur la clé : bouton « À enregistrer » en haut.');
+  if (enModeEleve()) return;
+  if (!Cle.accesDirect && ui.destination === 'dossier' && Donnees.meta().dernierEnvoi && classesTriees().some(c => !c.exemple)
+    && Date.now() - (ui.copieAilleurs || Donnees.meta().dernierEnvoi) > JOURS_COPIE_AILLEURS * 86400000) {
+    return notifAuto('📦 Ton carnet n’est que sur cette tablette : fais une copie sur ta clé ou ton Drive (Enregistrer › Aide et dépannage › Copie de secours).');
+  }
+  if (!aEnregistrer()) return;
+  const m = Donnees.meta(), x = destEnr();
+  const jours = m.dernierEnvoi ? Math.floor((Date.now() - m.dernierEnvoi) / 86400000) : null;
+  if (!Cle.accesDirect) notifAuto(`${x.icone} Pense à enregistrer ${x.sur} : bouton « Enregistrer » en haut.`);
+  else if (jours !== null && jours >= JOURS_RAPPEL) notifAuto(`${x.icone} Rien enregistré ${x.sur} depuis ${jours} jours : bouton « Enregistrer » en haut.`);
+  else if (jours === null && classesTriees().some(c => !c.exemple)) notifAuto('💾 Ton carnet n’est que dans ce navigateur : bouton « Enregistrer » en haut.');
 }
 
 // Petite notification discrète en bas de l'écran (ne vole pas le focus de la saisie).
@@ -1183,7 +1208,7 @@ function notifAuto(message, erreur = false) {
   n.classList.toggle('erreur', erreur);
   n.hidden = false;
   clearTimeout(notifAuto.minuteur);
-  notifAuto.minuteur = setTimeout(() => { n.hidden = true; }, erreur ? 6000 : 2500);
+  notifAuto.minuteur = setTimeout(() => { n.hidden = true; }, erreur ? 6000 : Math.max(2500, message.length * 55)); // (long message : le temps de le lire)
 }
 
 /* ---------- Ascenseur (écran tactile) ----------
@@ -1491,7 +1516,10 @@ function deplacer(input, dl, dc) {
 // Barre de codes rapides (utile sur tablette, où le clavier numérique n'a pas de lettres)
 function placerBarreSaisie() {
   const vv = window.visualViewport;
-  if (vv) $('#saisie').style.bottom = Math.max(0, window.innerHeight - vv.height - vv.offsetTop) + 'px';
+  const clavier = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+  // Clavier fermé : au-dessus des onglets du bas s'il y en a (onglets.js) ; clavier ouvert : juste au-dessus du clavier.
+  const bas = $('#onglets-bas'), hauteurBas = bas && !bas.hidden ? bas.offsetHeight : 0;
+  $('#saisie').style.bottom = (clavier || hauteurBas) + 'px';
 }
 
 /* ---------- Classes, évaluations, élèves ---------- */
@@ -1899,8 +1927,8 @@ async function obtenirMdp(pourEnregistrer, aide = '') {
   const nouveau = pourEnregistrer && !temoin;
   const { resultat } = ouvrirModale(nouveau ? 'Mot de passe du carnet' : 'Déverrouiller le carnet', `
     <p class="aide">${nouveau
-    ? 'Il chiffre le fichier sur la clé : si tu la perds, personne ne peut lire les données des élèves.<br>'
-      + '<b>Tu as déjà un carnet sur ta clé (fait sur l’ordinateur) ? Mets le même mot de passe.</b><br>'
+    ? 'Il chiffre le fichier enregistré (clé, dossier ou Drive) : sans lui, personne ne peut lire les données des élèves.<br>'
+      + '<b>Tu as déjà un carnet enregistré sur un autre appareil ? Mets le même mot de passe.</b><br>'
       + 'Note-le bien : sans lui, impossible de récupérer le carnet.'
     : aide || 'Le mot de passe de ton carnet (le même sur tous tes appareils).'}</p>
     <label>Mot de passe<input type="password" name="mdp" required autofocus minlength="${nouveau ? 6 : 1}" autocomplete="${nouveau ? 'new-password' : 'current-password'}"></label>
@@ -1913,7 +1941,7 @@ async function obtenirMdp(pourEnregistrer, aide = '') {
     return obtenirMdp(pourEnregistrer, aide);
   }
   if (pourEnregistrer && temoin && !(await Cle.verifierTemoin(r.data.mdp, temoin))) {
-    toast('Ce n’est pas le mot de passe de ton carnet. (Changé de mot de passe ? Fais d’abord « Récupérer depuis la clé ».)', 'erreur');
+    toast(`Ce n’est pas le mot de passe de ton carnet. (Changé de mot de passe ? Fais d’abord « Récupérer » ${destEnr().depuis}.)`, 'erreur');
     return obtenirMdp(pourEnregistrer, aide);
   }
   mdpSession = r.data.mdp;
@@ -1966,13 +1994,14 @@ async function importerTexte(texte, { sauvegarde = false } = {}) {
 // Ordinateur : lit carnet-eps.json dans le dossier de la clé, fusionne, puis réécrit le tout
 // (avec, sur demande, une copie datée dans « Sauvegardes »).
 async function synchroniser(dossier, { silencieux = false, copie = false } = {}) {
-  if (!(await Cle.autoriser(dossier))) throw new Error('Accès au dossier de la clé refusé.');
+  const x = destEnr();
+  if (!(await Cle.autoriser(dossier))) throw new Error(`Accès au dossier refusé (${x.nom}).`);
   let h, texte;
   try {
     h = await Cle.fichierCarnet(dossier);
     texte = await Cle.lire(h);
   } catch {
-    throw new Error('Dossier introuvable : vérifie que la clé est bien branchée.');
+    throw new Error(`Dossier introuvable : ${x.verifier}.`);
   }
   // Récupérer / Enregistrer (pas l'enregistrement automatique) : en plus de carnet-eps.json, on réunit les
   // autres carnets posés à côté ou dans « Sauvegardes » (ex. le fichier enregistré sur la tablette).
@@ -2030,7 +2059,7 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
     await Cle.ecrire(h, sortie);
     if (copie) nomCopie = await Cle.copieDatee(dossier, sortie);
   } catch {
-    throw new Error('Impossible d’écrire sur la clé (retirée ou protégée en écriture ?).');
+    throw new Error(`Impossible d’écrire ${x.sur} (${x.verifier} ; protégé en écriture ?).`);
   }
   let supprimes = 0;
   if (copie) {
@@ -2046,11 +2075,11 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
   if (silencieux && !n) return; // ne pas redessiner : la saisie en cours n'est pas interrompue
   rendre();
   if (silencieux) return;
-  const recup = n ? ` · ${n} élément${n > 1 ? 's' : ''} récupéré${n > 1 ? 's' : ''} de la clé` : '';
-  toast(`Clé à jour ✔ (dossier « ${dossier.name} »)${recup}`
+  const recup = n ? ` · ${n} élément${n > 1 ? 's' : ''} récupéré${n > 1 ? 's' : ''}` : '';
+  toast(`${x.icone} Enregistré ${x.sur} ✔ (dossier « ${dossier.name} »)${recup}`
     + `\n${envoye ? '⬆ Envoyé : ' + envoye : 'Rien de nouveau à envoyer depuis cet appareil.'}`
     + (repris.length ? `\nRepris aussi : ${repris.join(', ')}` : '')
-    + (supprimes ? `\n${supprimes} fichier${supprimes > 1 ? 's' : ''} de la tablette retiré${supprimes > 1 ? 's' : ''} de la clé (contenu gardé dans le carnet)` : '')
+    + (supprimes ? `\n${supprimes} fichier${supprimes > 1 ? 's' : ''} de la tablette retiré${supprimes > 1 ? 's' : ''} du dossier (contenu gardé dans le carnet)` : '')
     + (ignores.length ? `\n⚠ Laissé de côté (autre mot de passe) : ${ignores.map(c => c.nom).join(', ')}` : ''), ignores.length ? 'erreur' : 'ok');
   return { ignores: ignores.map(c => c.nom) };
 }
@@ -2099,7 +2128,7 @@ async function changerMotDePasse() {
   if (nouveau !== nouveau2) { toast('Les deux nouveaux mots de passe ne correspondent pas.', 'erreur'); return changerMotDePasse(); }
   if (nouveau === ancien) { toast('Le nouveau mot de passe est le même que l’actuel.', 'erreur'); return changerMotDePasse(); }
 
-  let dossier = await Cle.dossierMemorise();
+  let dossier = await Cle.dossierMemorise(cleDossierDest());
   if (dossier && Cle.estDossierCopies(dossier)) dossier = null;
   if (!dossier) dossier = await choisirDossierCle();
   if (!(await Cle.autoriser(dossier))) throw new Error('Accès au dossier de la clé refusé.');
@@ -2159,19 +2188,30 @@ async function changerMotDePasse() {
 // Bouton 💾 : sur ordinateur, enregistre dans le dossier de la clé (choisi la première fois) ;
 // sur tablette, prépare le fichier à enregistrer sur la clé.
 async function sauvegarder() {
+  if (!(await destinationConnue())) throw new Annule(); // 1er enregistrement : où ? (enregistrement.js)
   if (!Cle.accesDirect) return exporterTablette();
-  let dossier = await Cle.dossierMemorise();
+  let dossier = await Cle.dossierMemorise(cleDossierDest());
   // « Sauvegardes » mémorisé par erreur (anciennes versions) : on l'oublie et on redemande le bon dossier.
   if (dossier && Cle.estDossierCopies(dossier)) dossier = null;
   if (!dossier) dossier = await choisirDossierCle();
   await synchroniser(dossier, { copie: true });
 }
 
-// Choix du dossier du carnet sur la clé (ordinateur), avec une explication avant et des garde-fous après.
+// Choix du dossier du carnet (ordinateur) selon l'endroit choisi, avec une explication avant et des garde-fous après.
+const CONSIGNES_DOSSIER = {
+  cle: ['Dossier du carnet sur la clé', 'va dans le dossier de ta <b>clé USB</b> qui contient <b>carnet-eps.json</b> et le dossier <b>Sauvegardes</b>'
+    + ' (ou crée-y un dossier « Carnet EPS » la première fois)'],
+  dossier: ['Dossier du carnet sur cet ordinateur', 'choisis un dossier de cet ordinateur, par exemple <b>Documents</b> › <b>Carnet EPS</b>'
+    + ' (bouton « Nouveau dossier » pour le créer la première fois)'],
+  drive: ['Dossier du carnet sur le Drive', 'ouvre le dossier de ton <b>Drive</b> sur cet ordinateur (« Google Drive », « OneDrive »… dans le menu de gauche),'
+    + ' puis un dossier <b>Carnet EPS</b> (« Nouveau dossier » pour le créer la première fois). Le logiciel du Drive doit être installé sur l’ordinateur'],
+};
 async function choisirDossierCle() {
-  const { resultat } = ouvrirModale('Dossier du carnet sur la clé', `
-    <p>Dans la fenêtre qui va s’ouvrir, va dans le dossier de ta clé qui contient <b>carnet-eps.json</b>
-      et le dossier <b>Sauvegardes</b>, puis clique sur <b>« Sélectionner un dossier »</b>.</p>
+  const [titre, ou] = CONSIGNES_DOSSIER[destinationActive()];
+  const { resultat } = ouvrirModale(titre, `
+    <p>Dans la fenêtre qui va s’ouvrir, ${ou}, puis clique sur <b>« Sélectionner un dossier »</b>.</p>
+    <p class="aide">On choisit bien un <b>dossier</b>, pas un fichier : l’appli y range elle-même <b>carnet-eps.json</b> (ton carnet)
+      et le dossier <b>Sauvegardes</b> (copies datées).</p>
     <p class="aide">Les fichiers n’y sont pas affichés, seulement les dossiers : c’est normal.
       N’entre pas dans « Sauvegardes ». L’appli s’en souviendra pour la suite.</p>`,
   boutonsModale('Choisir le dossier'));
@@ -2184,7 +2224,7 @@ async function choisirDossierCle() {
     && !(await confirmer(`Il n’y a pas de carnet dans « ${dossier.name} ». En commencer un nouveau dans ce dossier ?`, 'Oui, ici'))) {
     throw new Annule();
   }
-  await Cle.memoriser(dossier);
+  await Cle.memoriser(dossier, cleDossierDest());
   return dossier;
 }
 
@@ -2197,18 +2237,18 @@ function planifierSauvegardeAuto() {
   if (!Cle.accesDirect || !mdpSession || etatAuto === 'encours' || m.modifieLe <= m.dernierEnvoi) return;
   clearTimeout(minuteurAuto);
   minuteurAuto = setTimeout(async () => {
-    const dossier = await Cle.dossierMemorise();
+    const dossier = await Cle.dossierMemorise(cleDossierDest());
     if (!dossier || Cle.estDossierCopies(dossier) || (await dossier.queryPermission({ mode: 'readwrite' })) !== 'granted') return;
     etatAuto = 'encours';
     majPastille();
     try {
       await synchroniser(dossier, { silencieux: true });
       etatAuto = null;
-      notifAuto(`💾 Sauvegarde automatique sur la clé ✔ ${heure(Date.now())}`);
+      notifAuto(`💾 Enregistrement automatique ${destEnr().sur} ✔ ${heure(Date.now())}`);
     } catch (e) {
       console.warn('Sauvegarde automatique impossible :', e);
       etatAuto = 'erreur';
-      notifAuto('⚠ Sauvegarde automatique impossible : la clé est-elle branchée ?', true);
+      notifAuto(`⚠ Enregistrement automatique impossible : ${destEnr().verifier}.`, true);
     }
     majPastille();
     planifierSauvegardeAuto(); // des modifications faites pendant l'enregistrement
@@ -2217,45 +2257,97 @@ function planifierSauvegardeAuto() {
 
 // sauvegarde : fichier choisi dans « Aide et dépannage » (ex. ancienne copie datée) — voir importerTexte.
 async function importerFichier(fichier, { sauvegarde = false } = {}) {
-  const { n } = await importerTexte(await fichier.text(), { sauvegarde });
-  rendre();
-  toast(n ? `Import réussi ✔ ${n} élément${n > 1 ? 's' : ''} mis à jour.` : 'Import réussi ✔ Rien de nouveau.', 'ok');
+  return importerFichiers([fichier], { sauvegarde });
 }
 
-// Tablette : prépare le fichier chiffré, puis un bouton dédié l'envoie vers la clé
+// Tablette : on peut choisir plusieurs .json d'un coup (voire tout le dossier). Ils sont réunis du plus ancien au plus
+// récent (date écrite dans l'en-tête de chaque carnet) ; la réunion garde toujours la version la plus récente de chaque
+// information : choisir un fichier ancien en trop ne fait rien perdre. Les fichiers qui ne sont pas des carnets sont ignorés.
+async function importerFichiers(fichiers, { sauvegarde = false } = {}) {
+  const lus = [];
+  for (const f of fichiers) {
+    const texte = await f.text();
+    lus.push({ nom: f.name, texte, date: Cle.dateCarnet(texte) || new Date(f.lastModified).toISOString() });
+  }
+  lus.sort((a, b) => a.date.localeCompare(b.date));
+  let n = 0;
+  const repris = [], ignores = [];
+  for (const c of lus) {
+    try {
+      n += (await importerTexte(c.texte, { sauvegarde })).n;
+      repris.push(c);
+    } catch (e) {
+      if (e instanceof Annule) throw e;
+      ignores.push(c.nom); // pas un carnet de l'appli (ou version plus récente)
+    }
+  }
+  rendre();
+  if (!repris.length) throw new Error(`Aucun carnet lisible dans ${lus.length > 1 ? 'ces fichiers' : 'ce fichier'} : choisis un fichier carnet-eps….json.`);
+  const recent = repris[repris.length - 1];
+  toast(`Récupéré ✔ ${repris.length > 1 ? `${repris.length} fichiers réunis` : recent.nom}`
+    + ` · le plus récent du ${dateHeure(Date.parse(recent.date))}`
+    + `\n${n ? `${n} élément${n > 1 ? 's' : ''} mis à jour.` : 'Rien de nouveau : ce carnet était déjà à jour.'}`
+    + (ignores.length ? `\nIgnoré (pas un carnet) : ${ignores.join(', ')}` : ''), 'ok');
+}
+
+// Tablette : prépare le fichier chiffré, puis un bouton dédié l'envoie à l'endroit choisi (clé, dossier, Drive)
 // (la fenêtre d'enregistrement ou de partage doit partir directement d'un toucher de l'utilisateur).
 // Le fichier porte un nom unique (carnet-eps-tablette_date_heure.json) : il se pose à côté de carnet-eps.json,
-// sans remplacer ni renommer ; l'ordinateur le reprend tout seul à « Récupérer depuis la clé ».
-const APRES_DEPOT = '<br><span class="aide">Ne remplace rien et ne renomme rien : l’ordinateur reprendra ce fichier tout seul à « Récupérer depuis la clé ».</span>';
+// sans remplacer ni renommer ; l'ordinateur qui enregistre au même endroit le reprend tout seul.
+// CONSIGNES_TABLETTE[destination][mode] : où aller, selon ce que la tablette sait faire (cle.js › modeTablette).
 const CONSIGNES_TABLETTE = {
-  enregistrer: 'Touche le bouton ci-dessous : dans la fenêtre qui s’ouvre, va sur ta <b>clé USB</b>, dans le dossier du carnet (celui de <b>carnet-eps.json</b>), et enregistre.' + APRES_DEPOT,
-  partager: 'Touche le bouton ci-dessous, choisis <b>« Enregistrer dans Fichiers »</b>, puis ouvre ta clé USB, dossier du carnet (celui de <b>carnet-eps.json</b>).' + APRES_DEPOT,
-  telecharger: 'Touche le bouton ci-dessous : le fichier arrive dans <b>Téléchargements</b>. Avec l’appli <b>Mes fichiers</b>, déplace-le sur ta clé USB, '
-    + 'dans le dossier du carnet (celui de <b>carnet-eps.json</b>).' + APRES_DEPOT,
+  cle: {
+    enregistrer: 'dans la fenêtre qui s’ouvre, va sur ta <b>clé USB</b>, dans le dossier du carnet (celui de <b>carnet-eps.json</b>), et enregistre.',
+    partager: 'choisis <b>« Enregistrer dans Fichiers »</b>, puis ouvre ta <b>clé USB</b>, dossier du carnet (celui de <b>carnet-eps.json</b>).',
+    telecharger: 'le fichier arrive dans <b>Téléchargements</b>. Avec l’appli <b>Mes fichiers</b>, déplace-le sur ta <b>clé USB</b>, dans le dossier du carnet.',
+  },
+  dossier: {
+    enregistrer: 'dans la fenêtre qui s’ouvre, choisis un dossier de la tablette, par exemple <b>Documents › Carnet EPS</b>, et enregistre. '
+      + 'S’il demande de <b>remplacer</b> carnet-eps.json : oui, remplace (c’est la version à jour).',
+    partager: 'choisis <b>« Enregistrer dans Fichiers »</b>, puis <b>Sur mon iPad</b> › un dossier <b>Carnet EPS</b>. '
+      + 'S’il demande de <b>remplacer</b> carnet-eps.json : oui, <b>Remplacer</b> (c’est la version à jour).',
+    telecharger: 'le fichier arrive dans <b>Téléchargements</b>, sur la tablette. Tu peux effacer les plus anciens (carnet-eps (1).json…) avec l’appli <b>Mes fichiers</b>.',
+  },
+  // Copie de secours d'une tablette qui n'enregistre que sur elle-même : vers la clé ou un Drive, au choix.
+  ailleurs: {
+    enregistrer: 'dans la fenêtre qui s’ouvre, va sur ta <b>clé USB</b> ou ton <b>Drive</b>, dossier <b>Carnet EPS</b>, et enregistre.',
+    partager: 'choisis <b>« Enregistrer dans Fichiers »</b> puis ta <b>clé USB</b> ou ton <b>Drive</b> (ou directement l’appli de ton Drive), dossier <b>Carnet EPS</b>.',
+    telecharger: 'le fichier arrive dans <b>Téléchargements</b>. Avec l’appli <b>Mes fichiers</b>, déplace-le sur ta <b>clé USB</b>, ou importe-le dans l’appli de ton <b>Drive</b>.',
+  },
+  drive: {
+    enregistrer: 'dans la fenêtre qui s’ouvre, choisis ton <b>Drive</b> (Google Drive, OneDrive… dans le menu), dossier <b>Carnet EPS</b>, et enregistre.',
+    partager: 'choisis l’appli de ton <b>Drive</b> (ou « Enregistrer dans Fichiers » › ton Drive), puis le dossier <b>Carnet EPS</b>.',
+    telecharger: 'le fichier arrive dans <b>Téléchargements</b>. Ouvre l’appli de ton <b>Drive</b> › <b>+</b> › <b>Importer</b>, et choisis-le.',
+  },
 };
+const APRES_DEPOT = '<br><span class="aide">Ne remplace rien et ne renomme rien : chaque fichier a un nom différent (date et heure). '
+  + 'Un ordinateur qui enregistre au même endroit le reprend tout seul. Pour récupérer, tu peux choisir plusieurs fichiers d’un coup.</span>';
+const APRES_DOSSIER = '<br><span class="aide">Toujours le même nom (carnet-eps.json) : un seul fichier, toujours le plus récent. '
+  + 'Cette copie reste sur la tablette : elle ne passe pas sur l’ordinateur.</span>';
 
-// Copie de secours (Aide et dépannage) : mêmes étapes, consignes sans parler de carnet-eps.json ni de l'ordinateur.
-const CONSIGNES_SECOURS = {
-  enregistrer: 'Touche le bouton ci-dessous : dans la fenêtre qui s’ouvre, va sur ta <b>clé USB</b>, dans ton dossier du carnet, et enregistre.',
-  partager: 'Touche le bouton ci-dessous, choisis <b>« Enregistrer dans Fichiers »</b>, puis ouvre ta <b>clé USB</b> et ton dossier du carnet.',
-  telecharger: 'Touche le bouton ci-dessous : la copie arrive dans <b>Téléchargements</b>.<br>Ensuite, ouvre l’appli <b>Mes fichiers</b> '
-    + 'et <b>déplace</b> la copie dans ton dossier sur la clé USB.',
-};
-const APRES_SECOURS = '<br><span class="aide">Ne remplace et ne renomme rien : chaque copie a un nom différent (avec la date et l’heure).</span>';
-
+// ailleurs : copie de secours d'une tablette qui n'enregistre que sur elle-même → vers la clé ou un Drive.
 async function exporterTablette({ secours = false } = {}) {
   const texte = await Cle.chiffrer(Donnees.exporter(), await obtenirMdp(true));
-  const consigne = secours ? CONSIGNES_SECOURS[Cle.modeTablette] + APRES_SECOURS : CONSIGNES_TABLETTE[Cle.modeTablette];
-  const { d } = ouvrirModale(secours ? 'Copie de secours prête' : 'Fichier prêt', `<p>${consigne}</p>`,
-    '<span class="espace"></span><button type="button" data-fermer>Annuler</button><button type="button" class="primaire" data-partager>Enregistrer sur la clé</button>');
+  const dest = destinationActive(), ailleurs = secours && dest === 'dossier', x = destEnr();
+  const mode = Cle.modeTablettePour(ailleurs ? 'cle' : dest);
+  // Dossier de la tablette : toujours carnet-eps.json (la tablette propose de remplacer : pas d'accumulation).
+  const nomFixe = dest === 'dossier' && !ailleurs ? Cle.NOM_FICHIER : undefined;
+  const consigne = CONSIGNES_TABLETTE[ailleurs ? 'ailleurs' : dest][mode] + (nomFixe ? APRES_DOSSIER : APRES_DEPOT);
+  const libelle = ailleurs ? '📦 Enregistrer la copie' : `${x.icone} Enregistrer ${esc(x.sur)}`;
+  const { d } = ouvrirModale(secours ? 'Copie de secours prête' : 'Fichier prêt', `<p>Touche le bouton ci-dessous : ${consigne}</p>`,
+    `<span class="espace"></span><button type="button" data-fermer>Annuler</button><button type="button" class="primaire" data-partager>${libelle}</button>`);
   $('[data-partager]', d).addEventListener('click', () => {
-    Cle.enregistrerSurCle(texte).then(fait => {
+    Cle.enregistrerSurCle(texte, mode, nomFixe).then(fait => {
       if (!fait) return; // fenêtre fermée sans enregistrer : on peut réessayer
-      const envoye = texteChangements(Donnees.marquerEnvoi());
       d.fermer();
-      toast((Cle.modeTablette !== 'telecharger' ? 'Fichier enregistré sur la clé ✔'
-        : secours ? 'Copie dans Téléchargements ✔ — pense à la déplacer sur ta clé avec « Mes fichiers ».'
-          : 'Fichier dans Téléchargements ✔ — déplace-le sur la clé, à côté de carnet-eps.json (sans remplacer).')
+      if (ailleurs) { // (copie hors de la tablette : ne change pas l'état « enregistré » du carnet)
+        ui.copieAilleurs = Date.now();
+        memoriserUi();
+        return toast('📦 Copie de secours faite ✔ (garde-la sur ta clé ou ton Drive)', 'ok');
+      }
+      const envoye = texteChangements(Donnees.marquerEnvoi());
+      toast((mode !== 'telecharger' || dest === 'dossier' ? `Fichier enregistré ${x.sur} ✔`
+        : `Fichier dans Téléchargements ✔ — pense à le mettre ${x.sur} (voir la consigne).`)
         + (envoye ? '\n⬆ Envoyé : ' + envoye : ''), 'ok');
     }).catch(signalerErreur);
   });
@@ -2270,18 +2362,25 @@ function ouvrirMenuCle(ouvrir) {
   const menu = $('#menu-cle'), bouton = $('#btn-sauver');
   ouvrir ??= menu.hidden;
   if (ouvrir) {
-    const m = Donnees.meta();
+    const m = Donnees.meta(), x = destEnr();
     const etat = $('#menu-cle-etat');
     const attente = texteChangements(Donnees.enAttente()), dernier = m.dernierBilan && texteChangements(m.dernierBilan.envoye);
-    etat.textContent = !m.dernierEnvoi ? 'Ce carnet n’a encore jamais été enregistré sur une clé.'
-      : aEnregistrer() ? `🟠 Pas encore sur la clé${attente ? ' : ' + attente : ' : des modifications.'}`
-        : `✅ Tout est sur la clé (${dateHeure(m.dernierEnvoi)})${dernier ? `\nDernier envoi : ${dernier}` : ''}`;
+    etat.textContent = !m.dernierEnvoi ? 'Ce carnet n’est encore que dans ce navigateur : enregistre-le pour ne rien perdre.'
+      : aEnregistrer() ? `🟠 Pas encore enregistré ${x.sur}${attente ? ' : ' + attente : ' : des modifications.'}`
+        : `✅ Tout est enregistré ${x.sur} (${dateHeure(m.dernierEnvoi)})${dernier ? `\nDernier envoi : ${dernier}` : ''}`;
     etat.className = 'menu-cle-etat ' + (m.dernierEnvoi && !aEnregistrer() ? 'ok' : 'attente');
-    // Ordinateur : le bouton lit le dossier de la clé ; tablette : il ouvre directement le choix du fichier.
-    $('[data-menu-cle="recuperer"]', menu).hidden = !Cle.accesDirect;
+    // Ordinateur : « Enregistrer » lit aussi le dossier (ce qui vient des autres appareils) ; tablette : « Récupérer » à part.
+    const texte = cle => $(`[data-menu-texte="${cle}"]`, menu);
+    const choisi = !!ui.destination; // (pas encore choisi : la question est posée au premier enregistrement)
+    texte('enregistrer').textContent = choisi ? `Enregistrer ${x.sur}` : 'Enregistrer';
+    texte('recuperer').textContent = choisi ? `Récupérer ${x.depuis}` : 'Récupérer un carnet';
+    texte('icone').textContent = choisi ? x.icone : '📍';
+    texte('destination').textContent = choisi ? x.nom : 'Choisir l’endroit : clé, dossier ou Drive';
+    $('[data-menu-cle="destination"] small', menu).textContent = choisi ? 'Endroit choisi sur cet appareil — toucher pour changer' : 'Où enregistrer, sur cet appareil';
     $('[data-menu-cle-fichier]', menu).hidden = Cle.accesDirect;
-    $('[data-menu-cle="enregistrer"] small', menu).textContent =
-      Cle.accesDirect && mdpSession ? 'Automatique ici tant que la clé est branchée' : 'En partant';
+    $('#menu-cle-forme').innerHTML = htmlFormeSauvegarde(); // dossier (ordinateur) ou fichiers .json (tablette)
+    $('[data-menu-cle="enregistrer"] small', menu).textContent = !Cle.accesDirect ? 'En partant'
+      : mdpSession ? 'Automatique ici · récupère aussi le travail des autres appareils' : 'Et récupère le travail des autres appareils';
     // Juste sous la barre (sa hauteur varie avec la largeur de l'écran).
     menu.style.top = $('.barre').getBoundingClientRect().bottom + 6 + 'px';
   }
@@ -2303,13 +2402,14 @@ $('#menu-cle').addEventListener('click', e => {
   if (!choix) return;
   ouvrirMenuCle(false);
   if (choix === 'aide') return lancer(panneauCle);
+  if (choix === 'destination') return lancer(choisirDestination); // (enregistrement.js)
   lancer(() => actionCle(sauvegarder));
 });
 $('#menu-cle').addEventListener('change', e => {
-  const f = e.target.matches('[data-importer]') && e.target.files[0];
+  const fichiers = e.target.matches('[data-importer]') ? [...e.target.files] : [];
   e.target.value = ''; // pour pouvoir rechoisir le même fichier la fois suivante
   ouvrirMenuCle(false);
-  if (f) lancer(() => actionCle(() => importerFichier(f)));
+  if (fichiers.length) lancer(() => actionCle(() => importerFichiers(fichiers)));
 });
 // Fermeture : toucher ailleurs, ou Échap.
 document.addEventListener('click', e => {
@@ -2325,18 +2425,19 @@ document.addEventListener('keydown', e => {
 // les mêmes fonctions que le menu 🔑 (sauvegarder, importerFichier) : mêmes garde-fous (réunion sans rien effacer,
 // mot de passe vérifié, dossier « Sauvegardes » refusé…). Le reste est replié dans « Plus d'options ».
 async function panneauCle() {
-  const dossier = await Cle.dossierMemorise();
+  const dossier = await Cle.dossierMemorise(cleDossierDest());
   const m = Donnees.meta();
   const derniere = !m.dernierEnvoi ? 'aucune pour l’instant'
     : quandCourt(m.dernierEnvoi).replace(/^auj\./, 'aujourd’hui') + (aEnregistrer() ? ' — des modifications ont été faites depuis' : ' ✔');
   const corps = `
     <section class="mes-donnees">
       <h3>🆘 Mes données</h3>
-      <p class="aide">Dernière copie de secours : <b>${esc(derniere)}</b></p>
+      <p class="aide">Dernier enregistrement (${esc(destEnr().nom)}) : <b>${esc(derniere)}</b></p>
+      ${typeof htmlEtatNavigateur === 'function' ? htmlEtatNavigateur() : ''}
       <button type="button" class="carte-secours" data-cle="secours">
         <span class="secours-icone" aria-hidden="true">📦</span>
         <span class="secours-texte"><b>Faire une copie de secours</b>
-          <small>Une copie de tout ton carnet, protégée par ton mot de passe, à garder sur ta clé USB.</small></span>
+          <small>Une copie de tout ton carnet, protégée par ton mot de passe, ${esc(destEnr().sur)}.</small></span>
       </button>
       <label class="bouton carte-secours">
         <span class="secours-icone" aria-hidden="true">♻</span>
@@ -2350,6 +2451,8 @@ async function panneauCle() {
     <details class="plus-options">
       <summary>Plus d’options</summary>
       <div class="options">
+        <p class="aide">Endroit choisi sur cet appareil : <b>${destEnr().icone} ${esc(destEnr().nom)}</b></p>
+        <button type="button" data-cle="destination">Changer d’endroit (clé, dossier, Drive)</button>
         ${dossier ? `<p class="aide">Dossier du carnet sur cet ordinateur : <b>${esc(dossier.name)}</b></p>
           <button type="button" data-cle="changer">Changer de dossier</button>` : ''}
         ${mdpSession || m.temoinMdp ? `<button type="button" data-cle="verrouiller">Oublier le mot de passe sur cet appareil</button>
@@ -2375,6 +2478,7 @@ async function panneauCle() {
       // (Même enregistrement que « Enregistrer sur la clé » ; sur tablette, consignes simplifiées.)
       case 'secours': d.fermer(); return lancer(() => actionCle(() => (Cle.accesDirect ? sauvegarder() : exporterTablette({ secours: true }))));
       case 'maj-appli': return lancer(forcerMiseAJour);
+      case 'destination': d.fermer(); return lancer(choisirDestination);
       case 'changer': return occupe(async () => synchroniser(await choisirDossierCle(), { copie: true }));
       case 'verrouiller':
         mdpSession = null;
@@ -2392,21 +2496,23 @@ async function panneauCle() {
 /* ---------- Guide : le principe de la clé ---------- */
 
 async function afficherGuide() {
-  const { resultat } = ouvrirModale('Comment ça marche : la clé USB', `
+  const x = destEnr();
+  const { resultat } = ouvrirModale('Comment ça marche : enregistrer ton carnet', `
     <div class="guide">
       <div class="schema-cle" aria-hidden="true">
         <span class="appareil">💻 Ordinateur</span><span class="fleche">⇄</span>
-        <span class="appareil cle">🔑 Clé USB</span><span class="fleche">⇄</span>
+        <span class="appareil cle">${x.icone} ${esc(x.nom)}</span><span class="fleche">⇄</span>
         <span class="appareil">📱 Tablette</span>
       </div>
-      <p>Chaque appareil garde <b>sa propre copie</b> du carnet. La clé sert à <b>faire passer</b> le carnet d’un appareil à l’autre
-        (et de sauvegarde, chiffrée par ton mot de passe).</p>
-      <h3>Deux gestes à retenir (bouton 🔑 en haut)</h3>
+      <p>Chaque appareil garde <b>sa propre copie</b> du carnet, dans le navigateur. Le bouton <b>Enregistrer</b> l’écrit aussi,
+        chiffré par ton mot de passe, à l’endroit choisi sur cet appareil : <b>clé USB</b>, <b>dossier de l’appareil</b> ou <b>Drive</b>
+        (ici : ${x.icone} ${esc(x.nom)}). C’est ce qui fait <b>passer</b> le carnet d’un appareil à l’autre, et ta sauvegarde.</p>
+      <h3>Deux gestes à retenir (bouton « Enregistrer » en haut)</h3>
       <ol class="gestes">
-        <li><b>⬇ En arrivant</b> sur un appareil : <b>Récupérer depuis la clé</b>.<br>
-          <span class="aide">Tu retrouves ce que tu as fait sur l’autre appareil.</span></li>
-        <li><b>⬆ En partant</b> : <b>Enregistrer sur la clé</b>.<br>
-          <span class="aide">Sur ordinateur, c’est automatique tant que la clé est branchée. Sur tablette, le bouton 🔑 devient orange et clignote tant qu’il reste quelque chose à enregistrer.</span></li>
+        <li><b>⬇ En arrivant</b> sur un appareil : <b>Récupérer</b> (le bandeau « Ouvrir mon carnet » le propose au lancement).<br>
+          <span class="aide">Tu retrouves ce que tu as fait sur l’autre appareil. Sur ordinateur, l’appli se souvient du dossier.</span></li>
+        <li><b>⬆ En partant</b> : <b>Enregistrer</b>.<br>
+          <span class="aide">Sur ordinateur, c’est automatique une fois le carnet ouvert. Sur tablette, le bouton devient orange et clignote tant qu’il reste quelque chose à enregistrer.</span></li>
       </ol>
       <h3>Bon à savoir</h3>
       <ul class="bon-a-savoir">
@@ -2414,16 +2520,16 @@ async function afficherGuide() {
           (ex. une remarque saisie sur la tablette et une dispense saisie sur l’ordinateur pour le même élève sont gardées toutes les deux).
           Seule une même information modifiée des deux côtés (la même note, le même champ) garde sa version la plus récente.</li>
         <li>Oublié de récupérer avant de travailler ? <b>Pas grave</b> : récupère maintenant, tout sera réuni.</li>
-        <li><b>Le même mot de passe sur tous tes appareils.</b> Note-le bien : s’il est perdu, le carnet de la clé est illisible, pour toi aussi.</li>
+        <li><b>Le même mot de passe sur tous tes appareils.</b> Note-le bien : s’il est perdu, le carnet enregistré est illisible, pour toi aussi.</li>
         <li>Sur la tablette, le fichier enregistré porte un nom du type <b>carnet-eps-tablette_date_heure.json</b> :
-          pose-le sur la clé <b>à côté</b> de carnet-eps.json, sans rien remplacer ni renommer. L’ordinateur le reprend tout seul,
-          puis le retire de la clé (son contenu est alors dans carnet-eps.json).</li>
-        <li>Sur la clé, le carnet est le fichier <b>carnet-eps.json</b> : garde-le <b>toujours au même endroit</b>, ne le renomme pas.
+          pose-le <b>à côté</b> de carnet-eps.json (même clé, même dossier ou même Drive), sans rien remplacer ni renommer.
+          L’ordinateur le reprend tout seul, puis le retire (son contenu est alors dans carnet-eps.json).</li>
+        <li>Le carnet est le fichier <b>carnet-eps.json</b> : garde-le <b>toujours au même endroit</b>, ne le renomme pas.
           Le dossier « Sauvegardes » à côté contient des copies datées faites par l’ordinateur.</li>
-        <li>Sur un ordinateur qui n’est pas le tien : avant de partir, enregistre sur la clé puis efface les données du site dans le navigateur.</li>
+        <li>Sur un ordinateur qui n’est pas le tien : avant de partir, enregistre puis efface les données du site dans le navigateur.</li>
       </ul>
     </div>`,
-  '<span class="espace"></span><button type="button" data-cle-guide>🔑 Ouvrir Ma clé</button><button value="ok" class="primaire">J’ai compris</button>', 'modale-large');
+  `<span class="espace"></span><button type="button" data-cle-guide>${x.icone} Ouvrir le menu Enregistrer</button><button value="ok" class="primaire">J’ai compris</button>`, 'modale-large');
   const r = await resultat;
   if (!ui.guideVu) { ui.guideVu = true; memoriserUi(); }
   return r;
@@ -2602,9 +2708,10 @@ document.addEventListener('keydown', e => {
 });
 
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-action],[data-classe],[data-modif-classe],[data-eval-entete],[data-supprimer-eleve],button[data-vue],[data-editer-dispense],[data-replier-dispense],[data-editer-adaptation],[data-editer-besoin],[data-voir-besoin],[data-monter],[data-descendre],[data-seance-entete],[data-contacts]');
+  const t = e.target.closest('[data-action],[data-classe],[data-modif-classe],[data-eval-entete],[data-supprimer-eleve],button[data-vue],[data-editer-dispense],[data-replier-dispense],[data-editer-adaptation],[data-editer-besoin],[data-voir-besoin],[data-monter],[data-descendre],[data-seance-entete],[data-contacts],[data-carte-eleve]');
   if (!t || t.closest('dialog')) return;
   const ds = t.dataset;
+  if (ds.carteEleve) return lancer(() => ficheNotes(ds.carteEleve)); // carte de l'onglet Élèves (eleves.js)
   if (ds.contacts) return lancer(() => ListeClasse.voir(ds.contacts));
   if (ds.seanceEntete) return lancer(() => editerSeance(ds.seanceEntete));
   if (ds.monter) return deplacerEleve(ds.monter, -1);
@@ -2833,7 +2940,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) rapp
     await Donnees.charger();
   } catch (e) {
     console.error(e);
-    toast('Impossible de lire les données de cet appareil. Restaure ton carnet depuis la clé (bouton 🔑).', 'erreur');
+    toast('Impossible de lire les données de cet appareil. Récupère ton carnet là où il est enregistré (bouton « Enregistrer »).', 'erreur');
     await Donnees.charger().catch(() => {});
   }
   migrerTout();
@@ -2844,9 +2951,16 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) rapp
   rendre();
   if (typeof verifierVerrouDemarrage === 'function') verifierVerrouDemarrage(); // 🔒 fermée depuis longtemps : verrouillée
   rappelerCle();
-  // Premier lancement sur cet appareil : quelques réglages pour démarrer, puis le principe de la clé.
-  if (!enModeEleve()) lancer(async () => { await premierLancement(); if (!ui.guideVu) await afficherGuide(); });
-  navigator.storage?.persist?.().catch(() => {});
+  // Premier lancement sur cet appareil : quelques réglages pour démarrer, puis le principe de l'enregistrement.
+  // Ensuite : bandeau « Ouvrir mon carnet » pour aller chercher le carnet là où il est enregistré (enregistrement.js).
+  if (!enModeEleve()) {
+    lancer(async () => {
+      await premierLancement();
+      if (!ui.guideVu) await afficherGuide();
+      if (typeof afficherBandeauRecuperer === 'function') await afficherBandeauRecuperer();
+    });
+  }
+  // (Copie du navigateur rendue durable : enregistrement.js › demanderStockageDurable.)
   enregistrerServiceWorker();
   surveillerMisesAJour();
 })();

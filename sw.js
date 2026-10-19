@@ -2,10 +2,10 @@
 // Stratégie « réseau d'abord » : tant que le serveur répond, on sert toujours les fichiers les plus récents
 // (les mises à jour s'appliquent donc d'elles-mêmes) ; sinon on se rabat sur la copie en cache (hors ligne).
 // Pour publier une mise à jour : augmenter VERSION (et VERSION_APP dans app.js).
-const VERSION = '0.103.1';
+const VERSION = '0.108.0';
 const CACHE = 'carnet-eps-' + VERSION;
 const FICHIERS = [
-  './', 'index.html', 'style.css', 'compat.js', 'donnees.js', 'discipline.js', 'cle.js', 'referentiel.js', 'tableur.js', 'entrainement.js', 'notesexcel.js', 'listeclasse.js', 'reglages.js', 'outils.js', 'combine.js', 'natation.js', 'asns.js', 'videodelay.js', 'tableau.js', 'boxe.js', 'ece.js', 'edtpdf.js', 'trombi.js', 'agenda.js', 'fichenotes.js', 'appel.js', 'exemple.js', 'appreciations.js', 'baremes.js', 'importbareme.js', 'verrou.js', 'app.js',
+  './', 'index.html', 'style.css', 'compat.js', 'donnees.js', 'discipline.js', 'cle.js', 'enregistrement.js', 'referentiel.js', 'tableur.js', 'entrainement.js', 'notesexcel.js', 'listeclasse.js', 'reglages.js', 'onglets.js', 'outils.js', 'combine.js', 'natation.js', 'asns.js', 'videodelay.js', 'tableau.js', 'boxe.js', 'ece.js', 'edtpdf.js', 'trombi.js', 'agenda.js', 'fichenotes.js', 'eleves.js', 'appel.js', 'exemple.js', 'appreciations.js', 'baremes.js', 'importbareme.js', 'verrou.js', 'app.js',
   'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png',
 ];
 

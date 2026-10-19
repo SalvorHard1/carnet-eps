@@ -210,6 +210,47 @@ main { flex: 1; min-width: 0; overflow: auto; padding: 16px; padding-bottom: cal
   .barre .sauver { padding: 8px 10px; }
 }
 
+/* 🗂 Onglets sur tablette et téléphone (onglets.js) : rideaux, favoris + « Plus », ou barre en bas. */
+.onglets-compact { display: flex; align-items: center; gap: 4px; margin-left: 6px; }
+.onglets-compact button { opacity: .85; white-space: nowrap; }
+.onglets-compact button.actif { background: rgba(255, 255, 255, .22); opacity: 1; font-weight: 600; }
+.onglets-compact .chevron { font-size: 12px; opacity: .9; }
+.groupe-onglets { display: inline-flex; align-items: stretch; }
+.groupe-onglets:not(.actif) > button[data-vue] { padding-right: 4px; border-radius: 10px 0 0 10px; }
+.groupe-onglets:not(.actif) > button[data-rideau] { padding: 8px 10px 8px 6px; border-radius: 0 10px 10px 0; }
+.rideau-onglets {
+  position: fixed; left: var(--x, 8px); top: var(--y, 60px); z-index: 45; min-width: 210px;
+  display: flex; flex-direction: column; padding: 6px; border-radius: 14px;
+  background: var(--surface); color: var(--texte); border: 1px solid var(--bord); box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
+  transform-origin: top; animation: rideau .16s ease-out;
+}
+@keyframes rideau { from { opacity: 0; transform: scaleY(.6); } }
+.rideau-titre { padding: 6px 12px 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--texte2); }
+.rideau-onglets button { justify-content: flex-start; gap: 10px; border: 0; background: none; min-height: 48px; font-size: 16px; }
+.rideau-onglets button.actif { background: var(--accent-doux); font-weight: 600; }
+.rideau-onglets .coche { margin-left: auto; color: var(--accent); font-weight: 700; }
+.onglets-bas {
+  display: flex; flex: none; gap: 2px; padding: 4px 4px max(4px, env(safe-area-inset-bottom));
+  background: var(--surface); border-top: 1px solid var(--bord);
+}
+.onglets-bas button {
+  flex: 1 1 0; min-width: 0; flex-direction: column; gap: 2px; min-height: 52px; padding: 4px 2px;
+  border: 0; border-radius: 10px; background: none; font-size: 12px; color: var(--texte2);
+}
+.onglets-bas .icone-onglet { font-size: 20px; line-height: 1; }
+.onglets-bas .nom-onglet { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.onglets-bas button.actif { color: var(--accent); font-weight: 700; background: var(--accent-doux); }
+body[data-disposition="bas"] { --bas: 61px; }
+body[data-disposition="bas"] .notif-auto { bottom: calc(16px + var(--bas) + env(safe-area-inset-bottom)); }
+.favoris-onglets { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.modale .favoris-onglets label.case { flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; }
+@media (max-width: 420px) {
+  .onglets-compact { margin-left: 0; gap: 2px; }
+  .onglets-compact button { padding: 8px 6px; font-size: 14px; }
+  .groupe-onglets:not(.actif) > button[data-rideau] { padding: 8px 6px 8px 2px; }
+}
+@media (prefers-reduced-motion: reduce) { .rideau-onglets { animation: none; } }
+
 .outils { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
 .outils h2 { margin: 0 8px 0 0; font-size: 22px; }
 /* Écrans d'accueil (« Bienvenue », « Pas encore d'élèves »…) : réservé aux <div> de premier niveau de la vue */
@@ -218,7 +259,7 @@ main { flex: 1; min-width: 0; overflow: auto; padding: 16px; padding-bottom: cal
 
 /* Grille de notes */
 .grille-scroll {
-  overflow: auto; max-height: calc((100dvh - 48px) / var(--zoom) - 142px); /* barre du haut (48px) non agrandie ; le reste suit la taille du texte réglable */
+  overflow: auto; max-height: calc((100dvh - 48px - var(--bas, 0px)) / var(--zoom) - 142px); /* barre du haut (48px) non agrandie (ni celle du bas, --bas) ; le reste suit la taille du texte réglable */
   background: var(--surface); border: 1px solid var(--bord); border-radius: 12px;
 }
 .grille { border-collapse: separate; border-spacing: 0; }
@@ -766,7 +807,7 @@ button.badge-disp:hover { filter: brightness(1.1); }
   .legende-niveaux::before { content: 'Degrés :'; }
 
   /* Grille : colonne des noms étroite, nom sur deux lignes si besoin */
-  .grille-scroll { max-height: calc((100dvh - 48px) / var(--zoom) - 102px); border-radius: 10px; }
+  .grille-scroll { max-height: calc((100dvh - 48px - var(--bas, 0px)) / var(--zoom) - 102px); border-radius: 10px; }
   .grille .col-nom { min-width: 0; max-width: 118px; white-space: normal; padding: 4px 8px; font-size: 13px; line-height: 1.2; }
   .grille .col-nom .badge-pai, .grille .col-nom .badge-bep, .grille .col-nom .badge-disp { margin: 2px 4px 0 0; font-size: 10px; }
   .grille thead th { min-width: 78px; max-width: 120px; padding: 6px; }
@@ -1122,7 +1163,7 @@ body[data-densite="aeree"] .tableau-eleves input, body[data-densite="aeree"] .ta
   .bulle-nom { font-size: 13px; }
   .bulle-info { display: none; }
 }/* Onglet Outils : point qui signale un minuteur en marche */
-#onglets button.minuteur-actif::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #ffb627; margin-left: 4px; animation: clignote .8s ease-in-out infinite alternate; }
+#onglets button.minuteur-actif::after, #onglets-compact button.minuteur-actif::after, #onglets-bas button.minuteur-actif .nom-onglet::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #ffb627; margin-left: 4px; animation: clignote .8s ease-in-out infinite alternate; }
 
 /* En-tête d'un outil */
 .outil-entete .retour-outils { font-weight: 600; }
@@ -1130,6 +1171,7 @@ body[data-densite="aeree"] .tableau-eleves input, body[data-densite="aeree"] .ta
 
 /* 🎓 Mode élève : seulement la zone des outils (onglets, classes, clé, réglages et version cachés). */
 body.mode-eleve #btn-menu, body.mode-eleve .version-appli, body.mode-eleve #onglets, body.mode-eleve .groupe-sauvegarde,
+body.mode-eleve #onglets-compact, body.mode-eleve #onglets-bas, body.mode-eleve #rideau-onglets,
 body.mode-eleve #classes, body.mode-eleve #voile, body.mode-eleve #menu-cle, body.mode-eleve #saisie { display: none !important; }
 .bandeau-eleve { padding: 10px 14px; border-radius: 12px; background: var(--accent-doux); border: 1px solid var(--accent); }
 .cases-mode-eleve { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 4px 12px; }
@@ -1911,3 +1953,107 @@ body[data-densite="compacte"] .grille .photo-grille { width: 22px; height: 22px;
 .relu-appr { color: #b26a00; }
 .relu-appr.ok { color: var(--accent); }
 @media print { .relecture-appr { display: none; } }
+
+/* 👥 Onglet Élèves, mode « Consulter » (eleves.js) : interrupteur, bandeau de la classe, filtres, cartes. */
+.mode-eleves { display: inline-flex; border: 1px solid var(--bord); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.mode-eleves button { border: 0; border-radius: 0; background: none; color: var(--texte2); font-weight: 600; }
+.mode-eleves button + button { border-left: 1px solid var(--bord); }
+.mode-eleves button.actif { background: var(--accent-doux); color: var(--accent); }
+.bandeau-classe { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.tuile-classe {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 0; min-height: 0;
+  padding: 8px 12px; border: 1px solid var(--bord); border-radius: 12px; background: var(--surface); text-align: left;
+}
+.tuile-classe small { font-size: 12px; color: var(--texte2); }
+.tuile-classe b { font-size: 22px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+button.tuile-classe:hover { border-color: var(--accent); }
+.tuile-classe.actif { border-color: var(--accent); background: var(--accent-doux); }
+.tuile-classe.zero b { color: var(--texte2); font-weight: 600; }
+.filtres-eleves { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.filtres-eleves button { min-height: 36px; padding: 4px 14px; border-radius: 18px; font-size: 14px; color: var(--texte2); }
+.filtres-eleves button.actif { background: var(--accent); border-color: var(--accent); color: var(--accent-texte); font-weight: 600; }
+.nb-filtre { font-size: 12px; font-weight: 700; opacity: .75; }
+.vide-filtre { padding: 24px 0; text-align: center; }
+.cartes-eleves { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.carte-eleve {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 8px 10px;
+  background: var(--surface); border: 1px solid var(--bord); border-radius: 14px; text-align: center; cursor: pointer;
+  -webkit-user-select: none; user-select: none; transition: transform .12s, box-shadow .12s, border-color .12s;
+}
+.carte-eleve:hover { border-color: var(--accent); box-shadow: 0 4px 14px rgba(0, 0, 0, .1); }
+.carte-eleve:active { transform: scale(.97); }
+.carte-eleve:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.carte-eleve[class*="lisere-"] { border-left-width: 5px; }
+.carte-eleve.lisere-encours { border-left-color: #2a6fdb; }
+.carte-eleve.lisere-bientot { border-left-color: #f28c18; }
+.carte-eleve.lisere-alerte { border-left-color: #d62828; }
+.num-carte { position: absolute; top: 6px; left: 9px; font-size: 11px; font-weight: 700; color: var(--texte2); font-variant-numeric: tabular-nums; }
+.avatar-eleve {
+  width: 56px; height: 56px; border-radius: 50%; margin-bottom: 4px; display: flex; align-items: center; justify-content: center;
+  font-size: 19px; font-weight: 700; letter-spacing: .02em; background: var(--surface2); color: var(--texte2); flex: none;
+}
+img.avatar-eleve { object-fit: cover; object-position: center 20%; }
+.avatar-eleve.fille { background: #fbe3ee; color: #9b2c5c; }
+.avatar-eleve.garcon { background: #e1edfb; color: #1d4f8c; }
+.prenom-carte { font-weight: 700; font-size: 15px; line-height: 1.2; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nom-carte { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--texte2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.etiquettes-carte { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; min-height: 22px; margin-top: 4px; }
+.etiquettes-carte > * { margin: 0 !important; }
+.etiquettes-carte .alerte-abs { min-height: 0; }
+.remarque-carte { font-size: 14px; line-height: 1.4; }
+.stats-carte { display: flex; justify-content: center; gap: 12px; width: 100%; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--bord); font-size: 12px; color: var(--texte2); }
+.stats-carte b { color: var(--texte); font-size: 14px; }
+.tendance { font-weight: 800; }
+.tendance.hausse { color: #1b7a3d; }
+.tendance.baisse { color: #d62828; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .avatar-eleve.fille { background: #4a2236; color: #f4b8d1; }
+  :root:not([data-theme="light"]) .avatar-eleve.garcon { background: #1f3550; color: #a9cbf2; }
+  :root:not([data-theme="light"]) .tendance.hausse { color: #7dd897; }
+  :root:not([data-theme="light"]) .tendance.baisse { color: #ff8a80; }
+}
+:root[data-theme="dark"] .avatar-eleve.fille { background: #4a2236; color: #f4b8d1; }
+:root[data-theme="dark"] .avatar-eleve.garcon { background: #1f3550; color: #a9cbf2; }
+:root[data-theme="dark"] .tendance.hausse { color: #7dd897; }
+:root[data-theme="dark"] .tendance.baisse { color: #ff8a80; }
+@media (max-width: 760px) {
+  .bandeau-classe { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .bandeau-classe .tuile-classe:nth-child(-n+2) { grid-column: span 1; }
+  .cartes-eleves { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+}
+@media (max-width: 560px) { .bandeau-classe { display: none; } } /* téléphone : les filtres donnent déjà les nombres */
+@media (max-width: 420px) {
+  .cartes-eleves { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .avatar-eleve { width: 48px; height: 48px; font-size: 17px; }
+}
+@media (prefers-reduced-motion: reduce) { .carte-eleve { transition: none; } }
+
+/* 💾 Enregistrement (enregistrement.js) : bandeau « Ouvrir mon carnet », choix de l'endroit, avertissement Drive. */
+.bandeau-recup {
+  flex: none; display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+  background: var(--accent-doux); border-bottom: 1px solid var(--accent); color: var(--texte);
+}
+.bandeau-recup .icone-destination { font-size: 24px; }
+.texte-recup { flex: 1; min-width: 0; line-height: 1.35; }
+.texte-recup small { display: block; color: var(--texte2); font-size: 12px; }
+.bandeau-recup .primaire { flex: none; }
+.bandeau-recup .icone-petit { flex: none; min-height: 36px; border: 0; background: none; color: var(--texte2); }
+@media (max-width: 560px) { .texte-recup small { display: none; } .bandeau-recup { gap: 8px; padding: 6px 8px; } }
+body.mode-eleve .bandeau-recup { display: none; }
+.choix-destination { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.modale label.carte-destination {
+  display: flex; flex-direction: row; align-items: center; gap: 12px; padding: 10px 12px; cursor: pointer;
+  border: 1.5px solid var(--bord); border-radius: 12px; background: var(--surface);
+}
+.modale label.carte-destination:has(input:checked) { border-color: var(--accent); background: var(--accent-doux); }
+.carte-destination input { accent-color: var(--accent); width: 20px; height: 20px; flex: none; }
+.carte-destination .icone-destination { font-size: 26px; flex: none; }
+.carte-destination small { display: block; color: var(--texte2); font-size: 13px; font-weight: 400; margin-top: 2px; }
+.avertissement-drive { padding: 10px 14px; border-radius: 12px; border: 1px solid #f28c18; background: color-mix(in srgb, #f28c18 12%, var(--surface)); }
+.avertissement-drive p { margin: 0 0 8px; }
+.modale .avertissement-drive label.case { flex-direction: row; align-items: center; gap: 8px; font-weight: 700; }
+.deja-carnet { font-weight: 600; }
+.forme-sauvegarde { margin: 6px 0; padding: 8px 12px; border-radius: 10px; background: var(--surface2); font-size: 13px; line-height: 1.45; color: var(--texte); }
+.menu-cle .forme-sauvegarde { margin: 8px 4px 2px; font-size: 12px; }
+.arbre-sauvegarde { display: block; margin: 4px 0; padding-left: 10px; border-left: 3px solid var(--accent); font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+.arbre-sauvegarde small { font-family: system-ui, sans-serif; color: var(--texte2); }

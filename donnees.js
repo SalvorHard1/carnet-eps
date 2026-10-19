@@ -257,6 +257,20 @@ const Donnees = (() => {
 
   const noteComplete = (evalId, eleveId, attendu) => db.notes[cleNote(evalId, eleveId, attendu)] || null;
 
+  // Antidate (heure 1) les éléments dont l'identifiant commence par `prefixe` : à la fusion, n'importe quelle autre
+  // version l'emporte (une suppression faite sur un autre appareil, comme la version qu'il a). Sert à la classe exemple
+  // créée d'office au premier lancement, pour qu'elle ne revienne pas sur les appareils où on l'a supprimée.
+  function antidater(prefixe) {
+    for (const c of COLLECTIONS) {
+      for (const o of Object.values(db[c])) {
+        if (!o.id.startsWith(prefixe) || o.supprime) continue;
+        o.maj = 1;
+        if (o.majChamps) { for (const f of Object.keys(o.majChamps)) o.majChamps[f] = 1; o.majChampsPour = 1; }
+      }
+    }
+    enregistrer();
+  }
+
   // Intègre un carnet venu d'un autre appareil. Renvoie le nombre d'éléments récupérés.
   function fusionner(autre) {
     if (!autre || autre.schema !== 1 || COLLECTIONS_OBLIGATOIRES.some(c => typeof autre[c] !== 'object')) {
@@ -303,7 +317,7 @@ const Donnees = (() => {
 
   return {
     CLE_STOCKAGE, charger, nouvelId, ecrire, supprimer, get, liste, note, noteComplete, ecrireNote,
-    fusionner, exporter, marquerEnvoi, reglerMeta, enAttente, fusionnerFiche, // (fusionnerFiche : exposée pour les tests)
+    fusionner, exporter, marquerEnvoi, reglerMeta, enAttente, fusionnerFiche, antidater, // (fusionnerFiche : exposée pour les tests)
     meta: () => db?.meta ?? vide().meta,
     surChangement: f => auditeurs.push(f),
     surAutreOnglet: f => canal?.addEventListener('message', f),

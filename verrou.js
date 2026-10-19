@@ -131,6 +131,8 @@ async function deverrouiller(d) {
   d.close();
   d.remove();
   noterActivite();
+  // Ordinateur, dossier déjà autorisé : le carnet est récupéré tout seul (enregistrement.js).
+  if (typeof recupererAuto === 'function') recupererAuto();
 }
 
 // Une fenêtre qui s'ouvre pendant le verrouillage passe sous l'écran verrouillé (appelé par ouvrirModale).

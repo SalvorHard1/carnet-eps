@@ -98,8 +98,9 @@ const Cle = (() => {
     });
   }
 
-  const memoriser = dossier => idb('readwrite', s => s.put(dossier, 'dossier'));
-  const dossierMemorise = () => (accesDirect ? idb('readonly', s => s.get('dossier')).catch(() => null) : Promise.resolve(null));
+  // Un dossier retenu par destination (enregistrement.js) : « dossier » = la clé (nom d'origine), « dossier-drive »…
+  const memoriser = (dossier, cle = 'dossier') => idb('readwrite', s => s.put(dossier, cle));
+  const dossierMemorise = (cle = 'dossier') => (accesDirect ? idb('readonly', s => s.get(cle)).catch(() => null) : Promise.resolve(null));
 
   const choisirDossier = () => window.showDirectoryPicker({ id: 'carnet-eps', mode: 'readwrite' });
 
@@ -221,6 +222,9 @@ const Cle = (() => {
   const android = /Android/i.test(navigator.userAgent);
   const modeTablette = typeof window.showSaveFilePicker === 'function' ? 'enregistrer'
     : !android && typeof navigator.canShare === 'function' ? 'partager' : 'telecharger';
+  // Vers un Drive, Android propose l'appli Drive dans son menu de partage : on s'en sert (pas pour la clé).
+  const modeTablettePour = destination => (modeTablette === 'telecharger' && destination === 'drive'
+    && typeof navigator.canShare === 'function' ? 'partager' : modeTablette);
 
   // Nom unique pour le fichier de la tablette : il se pose à côté de carnet-eps.json, sans rien remplacer
   // ni renommer, et l'ordinateur le réunit tout seul au carnet (une seule fois), puis le retire de la clé.
@@ -233,9 +237,9 @@ const Cle = (() => {
   }
 
   // Renvoie false si l'utilisateur a fermé la fenêtre sans enregistrer.
-  async function enregistrerSurCle(texte) {
-    const nom = nomFichierTablette();
-    if (modeTablette === 'enregistrer') {
+  // nom : unique par défaut (repris par l'ordinateur) ; « carnet-eps.json » pour un dossier de la tablette (on remplace).
+  async function enregistrerSurCle(texte, mode = modeTablette, nom = nomFichierTablette()) {
+    if (mode === 'enregistrer') {
       let h;
       try {
         h = await window.showSaveFilePicker({
@@ -249,14 +253,19 @@ const Cle = (() => {
       await ecrire(h, texte);
       return true;
     }
-    await partagerOuTelecharger(texte, nom);
+    try {
+      await partagerOuTelecharger(texte, nom, mode);
+    } catch (e) {
+      if (e.name === 'AbortError') return false; // feuille de partage fermée sans choisir
+      throw e;
+    }
     return true;
   }
 
-  // Feuille de partage (iPad), sinon simple téléchargement.
-  function partagerOuTelecharger(texte, nom = NOM_FICHIER) {
+  // Feuille de partage (iPad, Drive sur Android), sinon simple téléchargement.
+  function partagerOuTelecharger(texte, nom = NOM_FICHIER, mode = modeTablette) {
     const fichier = new File([texte], nom, { type: 'application/json' });
-    if (modeTablette === 'partager' && navigator.canShare?.({ files: [fichier] })) return navigator.share({ files: [fichier] });
+    if (mode === 'partager' && navigator.canShare?.({ files: [fichier] })) return navigator.share({ files: [fichier] });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(fichier);
     a.download = nom;
@@ -267,6 +276,6 @@ const Cle = (() => {
 
   return {
     NOM_FICHIER, accesDirect, ErreurMdp, chiffrer, dechiffrer, creerTemoin, verifierTemoin, memoriser, dossierMemorise, choisirDossier, contientCarnet, estDossierCopies,
-    fichierCarnet, dateCarnet, autresCarnets, copieDatee, copiesDatees, rechiffrer, nettoyerCopies, autoriser, lire, ecrire, partagerOuTelecharger, enregistrerSurCle, estFichierTablette, modeTablette,
+    fichierCarnet, dateCarnet, autresCarnets, copieDatee, copiesDatees, rechiffrer, nettoyerCopies, autoriser, lire, ecrire, partagerOuTelecharger, enregistrerSurCle, estFichierTablette, modeTablette, modeTablettePour,
   };
 })();

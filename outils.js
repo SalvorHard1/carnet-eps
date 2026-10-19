@@ -161,7 +161,9 @@ let tic = null;
 function relancerTic() {
   if (minuteursActifs()) tic ??= setInterval(tique, 100);
   else if (tic) { clearInterval(tic); tic = null; }
-  document.querySelector('#onglets [data-vue="outils"]')?.classList.toggle('minuteur-actif', minuteursActifs());
+  // (barre complète, rideaux ou barre du bas : voir onglets.js)
+  document.querySelectorAll('#onglets [data-vue="outils"], #onglets-compact [data-vue="outils"], #onglets-bas [data-vue="outils"]')
+    .forEach(b => b.classList.toggle('minuteur-actif', minuteursActifs()));
   majVeille();
 }
 
@@ -1504,7 +1506,7 @@ function appliquerModeEleve() {
 
 // En mode élève, rien en dehors de la zone des outils ne répond (en plus d'être caché).
 document.addEventListener('click', e => {
-  if (!enModeEleve() || !e.target.closest?.('header, aside, #voile, #menu-cle, #saisie')) return;
+  if (!enModeEleve() || !e.target.closest?.('header, aside, #voile, #menu-cle, #saisie, #onglets-bas, #rideau-onglets')) return;
   e.stopPropagation();
   e.preventDefault();
 }, true);
