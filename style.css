@@ -60,7 +60,9 @@
   color-scheme: dark;
 }
 
-* { box-sizing: border-box; }
+/* touch-action : pas de zoom au double-toucher (iPad), le pincement reste possible. Les règles plus précises
+   (touch-action: none du tableau, des pions…) l'emportent toujours. */
+* { box-sizing: border-box; touch-action: manipulation; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
 body {
@@ -907,6 +909,20 @@ button.badge-disp:hover { filter: brightness(1.1); }
 :root[data-theme="dark"] .grille .col-nom.alerte-orange .nom-eleve { color: #ffb15c; }
 :root[data-theme="dark"] .grille .col-nom.alerte-rouge .nom-eleve { color: #ff8a7d; }
 @media (max-width: 700px) { .grille .col-nom .alerte-abs { margin: 2px 4px 0 0; font-size: 10px; } }
+/* Colonne des noms (Notes, Leçons) : grand écran = étiquettes à la suite du nom, en entier.
+   Tablette (même règle que onglets.js) = étiquettes courtes sous le nom, colonne étroite. */
+.badge-disp .forme-courte, .badge-adapte-grille .forme-courte { display: none; }
+@media (max-width: 1199px), (hover: none) and (pointer: coarse) {
+  /* Retrait suspendu : un nom sur deux lignes et les étiquettes s'alignent sous le nom, pas sous le numéro. */
+  .grille .col-nom { min-width: 170px; width: 170px; max-width: 170px; white-space: normal; padding: 4px 8px 4px 36px; text-indent: -28px; line-height: 1.25; }
+  .grille .col-nom .etiquettes-nom { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; text-indent: 0; }
+  .grille .col-nom .etiquettes-nom > * { margin: 0; padding: 1px 5px; font-size: 10px; line-height: 1.4; }
+  .grille .col-nom .forme-longue { display: none; }
+  .grille .col-nom .forme-courte { display: inline; }
+}
+@media (max-width: 700px) {
+  .grille .col-nom { min-width: 118px; width: 118px; max-width: 118px; padding-left: 28px; text-indent: -20px; }
+}
 .liste-absences { padding-left: 20px; margin: 8px 0 12px; }
 .liste-absences li { margin: 4px 0; }
 /* ================= Réglages du carnet (⚙) ================= */
@@ -1619,6 +1635,8 @@ dialog.ecran-verrou::backdrop { background: var(--fond); }
 .carte-verrou button { width: 100%; }
 .erreur-verrou { color: #d64545; font-weight: 700; }
 body.mode-eleve .btn-verrou { display: none; }
+/* 🔒 de la barre : émoji centré dans son bouton, à la hauteur du texte des onglets (sur tablette il tombait trop bas). */
+.barre .btn-verrou { font-size: 20px; line-height: 1; padding: 0 10px; align-self: stretch; }
 /* 🎥 Vidéo-delay (videodelay.js) */
 .acces-video { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 380px; margin: 20px auto; text-align: center; }
 .acces-video input { width: 100%; min-height: 48px; font-size: 18px; text-align: center; }

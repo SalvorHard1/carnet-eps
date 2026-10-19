@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.108.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.109.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -272,9 +272,13 @@ function statutDispense(el) {
 }
 
 // Dans la grille de notes : dispenses en cours, qui se terminent ou à venir (pas celles terminées).
+// Sur tablette, seule la forme courte s'affiche (« DISP », ou « DISP J-3 » quand la fin approche).
 function badgeDispenseGrille(el) {
   const s = statutDispense(el);
-  return s && s.code !== 'finie' ? ` <span class="badge-disp ${s.code}">${esc(s.court)}</span>` : '';
+  if (!s || s.code === 'finie') return '';
+  const court = s.code === 'bientot' ? s.court : 'DISP';
+  return ` <span class="badge-disp ${s.code}" title="${esc(s.texte)}">${court === s.court ? esc(court)
+    : `<span class="forme-longue">${esc(s.court)}</span><span class="forme-courte">${court}</span>`}</span>`;
 }
 
 // Dans la liste des élèves, les dates ne restent dépliées que tant que la fin n'est pas saisie
@@ -734,12 +738,14 @@ function celluleNom(el, i) {
     el.remarque, statutDispense(el)?.texte,
     el.adapte ? 'Pratique adaptée : ' + (el.adaptation || '(particularités non précisées)') : '',
   ].filter(Boolean).join('\n');
-  return `<th class="col-nom${alerte.niveau ? ' alerte-' + alerte.niveau : ''}" data-nom-eleve="${el.id}" title="${esc(infos)}"><span class="num-eleve">${i + 1}</span>${Trombi.mini(el, 'mini-photo photo-grille')}<span class="nom-eleve">${esc(el.nom)} ${esc(el.prenom)}</span>`
-    + badgeAlerte(el, alerte) + badgeTenue(el, tenue)
+  // Étiquettes regroupées : à la suite du nom sur grand écran, en dessous (et en court) sur tablette.
+  const etiquettes = badgeAlerte(el, alerte) + badgeTenue(el, tenue)
     + (aPai(el) ? ` <button class="badge-pai" data-voir-besoin="pai" data-id="${el.id}" title="Voir le PAI">PAI</button>` : '')
     + (el.bep ? ` <button class="badge-bep" data-voir-besoin="bep" data-id="${el.id}" title="Voir le BEP">BEP</button>` : '')
     + badgeDispenseGrille(el)
-    + (el.adapte ? ' <span class="badge-adapte-grille">ADAPTÉ</span>' : '')
+    + (el.adapte ? ' <span class="badge-adapte-grille" title="Pratique adaptée"><span class="forme-longue">ADAPTÉ</span><span class="forme-courte">AD</span></span>' : '');
+  return `<th class="col-nom${alerte.niveau ? ' alerte-' + alerte.niveau : ''}" data-nom-eleve="${el.id}" title="${esc(infos)}"><span class="num-eleve">${i + 1}</span>${Trombi.mini(el, 'mini-photo photo-grille')}<span class="nom-eleve">${esc(el.nom)} ${esc(el.prenom)}</span>`
+    + (etiquettes ? `<span class="etiquettes-nom">${etiquettes}</span>` : '')
     + '</th>';
 }
 

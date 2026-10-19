@@ -121,6 +121,23 @@ function son(freq = 880, duree = 0.15, fois = 1) {
     }
   } catch { /* pas de son sur cet appareil */ }
 }
+// iPad (Safari) : le son ne marche que si l'appareil audio a été ouvert pendant un toucher.
+// On l'ouvre au premier toucher, sans bruit, pour que les bips de fin de minuteur s'entendent ensuite.
+function debloquerSon() {
+  try {
+    audio ||= new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state !== 'running') audio.resume?.();
+    const s = audio.createBufferSource();
+    s.buffer = audio.createBuffer(1, 1, 22050);
+    s.connect(audio.destination);
+    s.start(0);
+  } catch { /* pas de son sur cet appareil */ }
+}
+// (À chaque toucher tant que le son n'est pas actif : Safari le suspend aussi quand l'appli passe en arrière-plan.
+//  Seulement dans les Outils : ailleurs, inutile de prendre la main sur le son, la musique d'une autre appli continue.)
+document.addEventListener('touchend', () => {
+  if (ui.vue === 'outils' && (!audio || audio.state !== 'running')) debloquerSon();
+}, { passive: true });
 const bipCourt = () => son(880, 0.12);
 const bipChangement = () => son(660, 0.5);
 const bipFin = () => son(990, 0.25, 3);

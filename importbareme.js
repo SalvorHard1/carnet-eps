@@ -802,17 +802,18 @@ const PTS_NOM = /\(\s*(\d+(?:[.,]\d+)?)\s*(?:pts?|points?)\s*\)|(\d+(?:[.,]\d+)?
 // Nom d'une rubrique ou d'un critère : sans ses points, sur une ligne ; MOTS EN CAPITALES → Mots en capitales.
 const nomPropre = t => String(t).replace(PTS_NOM, ' ').replace(/\(\s*\)/g, '').replace(/(\p{L})-\s*\n\s*(?=\p{Ll})/gu, '$1-')
   .replace(/(\d)\s+(ème|eme|e|è|er|re)\b/g, '$1$2').replace(/\s*\n\s*/g, ' ').replace(/(^|[\s(])([LDJNSCMTldjnscmt]|[Qq]u)[’']\s+/g, '$1$2’').replace(/\s+\/\s*$/, '')
-  .replace(/\s+/g, ' ').trim().replace(CAPITALES, sansCapitales).replace(/^[\s/:–-]+|[\s/:–-]+$/g, '')
+  .replace(/\s+/g, ' ').trim().replace(CAPITALES, (_, avant, m) => avant + sansCapitales(m)).replace(/^[\s/:–-]+|[\s/:–-]+$/g, '')
   .replace(/^\(([A-Z]\d[^)]{0,20})\)\s*(.{3,})$/, '$2 ($1)');
 // Suite de MOTS EN CAPITALES → « Mots en capitales » (pas les sigles : APSA, AFC4, NPD ; un nom d'APSA seul : « STEP » → « Step »).
-const CAPITALES = /(?<![\p{L}\d])\p{Lu}[\p{Lu}'’-]*(?:[ /–-]+\p{Lu}[\p{Lu}'’-]*)*(?![\p{L}\d])/gu;
+// (Pas de « (?<! » : iPad avant iPadOS 16.4 refuserait tout le fichier. Le caractère d'avant est capturé puis remis.)
+const CAPITALES = /(^|[^\p{L}\d])(\p{Lu}[\p{Lu}'’-]*(?:[ /–-]+\p{Lu}[\p{Lu}'’-]*)*)(?![\p{L}\d])/gu;
 function sansCapitales(m) {
   const mots = m.split(/[ /–-]+/).filter(Boolean), lettres = m.replace(/[^\p{L}]/gu, '');
   const apsa = typeof APSA_BAREMES !== 'undefined' && APSA_BAREMES.some(a => saImp(a) === saImp(m));
   if (!apsa && mots.length < 2 && lettres.length < 5) return m;
   if (mots.length >= 2 && mots.every(x => x.length <= 4) && !apsa) return m; // (« CA AFC », sigles côte à côte)
   // (Les sigles gardent leurs capitales : « INVESTISSEMENT EN EPS » → « Investissement en EPS ».)
-  const bas = m.toLowerCase().replace(/(?<![\p{L}])(eps|apsa|afc\d?|aflp?\d?|dnb|asns|vma|cms|epi)(?![\p{L}])/gu, s => s.toUpperCase());
+  const bas = m.toLowerCase().replace(/(^|[^\p{L}])(eps|apsa|afc\d?|aflp?\d?|dnb|asns|vma|cms|epi)(?![\p{L}])/gu, (_, avant, s) => avant + s.toUpperCase());
   return bas[0].toUpperCase() + bas.slice(1);
 }
 const ptsAnnonces = t => { const m = [...String(t).matchAll(PTS_NOM)].at(-1); return m ? nbImp(m[1] || m[2]) : null; };
