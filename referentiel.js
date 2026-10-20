@@ -246,6 +246,58 @@ const REFERENTIEL = (() => {
           'Identifier par l’histoire des sciences et des techniques comment se construit un savoir scientifique.',
         ])],
       },
+      // Domaines du socle de chaque groupe de compétences (tableau du programme, BO).
+      socle: { C1: ['D4', 'D2', 'D1'], C2: ['D4'], C3: ['D2'], C4: ['D1', 'D4'], C5: ['D2'], C6: ['D3', 'D4', 'D5'], C7: ['D5', 'D4'] },
+    },
+    // Sciences et technologie, 6e (cycle 3) : programme du BO n° 25 du 22 juin 2023, compétences travaillées.
+    sciTechCycle3: {
+      nom: 'Sciences et technologie — 6e (cycle 3)', code: '', toutes: true,
+      champs: {
+        C1: ['Pratiquer des démarches scientifiques et technologiques', num('C1', [
+          'Formuler une question ou un problème scientifique ou technologique.',
+          'Formuler des hypothèses fondées et qui peuvent être éprouvées.',
+          'Concevoir et mettre en œuvre des expériences ou d’autres stratégies de résolution pour tester ces hypothèses.',
+          'Proposer et/ou suivre un protocole expérimental.',
+          'Participer à l’élaboration et à la conduite d’un projet.',
+          'Utiliser des instruments d’observation, de mesure, des techniques de préparation, de collecte.',
+          'Exploiter des documents de natures variées et évaluer leur fiabilité.',
+          'Modéliser des phénomènes naturels.',
+          'Étudier les phénomènes naturels en mobilisant des grandeurs physiques et en réalisant des calculs.',
+          'Interpréter des résultats de façon raisonnée et en tirer des conclusions en mobilisant des arguments scientifiques.',
+          'Communiquer sur les démarches, les résultats et les choix en argumentant.',
+        ])],
+        C2: ['Concevoir, créer, réaliser', num('C2', [
+          'Imaginer un objet technique en réponse à un besoin.',
+          'Associer des solutions technologiques à des fonctions techniques.',
+          'Concevoir et réaliser une maquette pour modéliser un phénomène naturel ou un objet technique.',
+        ])],
+        C3: ['Pratiquer des langages', num('C3', [
+          'Rendre compte de ses activités en utilisant un vocabulaire précis et des formes langagières spécifiques des sciences et des techniques.',
+          'Exploiter un document constitué de divers supports (texte, schéma, graphique, tableau, algorithme simple, carte heuristique).',
+          'Utiliser différents modes de représentation (schéma, dessin, croquis, tableau, graphique, texte, etc.) et passer d’une représentation à une autre.',
+          'Expliquer un phénomène à l’oral et à l’écrit.',
+        ])],
+        C4: ['Mobiliser des outils numériques', num('C4', [
+          'Utiliser des outils numériques pour : communiquer des résultats ; faire des recherches ; traiter des données ; simuler des phénomènes.',
+          'Appliquer les principes de l’algorithmique et de la programmation par blocs pour écrire ou comprendre un code simple.',
+          'Modifier ou paramétrer le fonctionnement d’un objet communicant.',
+        ])],
+        C5: ['Adopter un comportement éthique et responsable', num('C5', [
+          'Relier des connaissances acquises en sciences et technologie à des questions de santé, de sécurité et d’environnement.',
+          'Comprendre et expliquer des décisions collectives et responsables.',
+        ])],
+        C6: ['Se situer dans l’espace et dans le temps', num('C6', [
+          'Maîtriser les notions d’échelles spatiale et temporelle et en citer quelques ordres de grandeur caractéristiques.',
+          'Identifier comment se construit un savoir scientifique en lien avec un contexte historique, géographique, économique et culturel.',
+        ])],
+        C7: ['Faire preuve d’esprit critique', num('C7', [
+          'Identifier des sources d’informations fiables.',
+          'Vérifier l’existence de preuves et en évaluer la qualité.',
+          'Évaluer la pertinence des arguments et/ou identifier des arguments fallacieux.',
+          'Distinguer ce qui relève d’une croyance de ce qui constitue un savoir scientifique.',
+        ])],
+      },
+      socle: { C1: ['D2', 'D4'], C2: ['D4'], C3: ['D1'], C4: ['D2'], C5: ['D3', 'D5'], C6: ['D5'], C7: ['D2', 'D4'] },
     },
   };
 
@@ -263,7 +315,7 @@ const REFERENTIEL = (() => {
     }
     const refsMasques = new Set(perso.refsMasques || []);
     for (const [refId, r] of Object.entries(sources)) {
-      refs[refId] = { id: refId, nom: r.nom, perso: !!r.perso, toutes: !!r.toutes, masque: refsMasques.has(refId), champs: {} };
+      refs[refId] = { id: refId, nom: r.nom, perso: !!r.perso, toutes: !!r.toutes, masque: refsMasques.has(refId), champs: {}, ...(r.socle ? { socle: r.socle } : {}) };
       for (const [ca, [titre, liste]] of Object.entries(r.champs)) {
         const attendus = liste.map((a, i) => {
           const [code, texte] = Array.isArray(a) ? a : [r.code + (i + 1), a];

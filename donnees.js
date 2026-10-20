@@ -8,7 +8,8 @@ const Donnees = (() => {
   // absentes des fichiers plus anciens.
   // `documents` (fichiers joints aux séances) en v0.30, `suivis` (observations du prof par élève et par APSA) en v0.33,
   // `agenda` (séquences, conseils de classe, événements de l'année) en v0.49, `baremes` (bibliothèque de barèmes) en v0.88.
-  const COLLECTIONS = ['classes', 'eleves', 'evals', 'notes', 'seances', 'reglages', 'documents', 'suivis', 'agenda', 'baremes'];
+  // (modeles : banque de séances réutilisables, sans données d'élèves — tp.js.)
+  const COLLECTIONS = ['classes', 'eleves', 'evals', 'notes', 'seances', 'reglages', 'documents', 'suivis', 'agenda', 'baremes', 'modeles'];
   const COLLECTIONS_OBLIGATOIRES = ['classes', 'eleves', 'evals', 'notes'];
   const auditeurs = [];
   let db;
@@ -134,7 +135,7 @@ const Donnees = (() => {
      Fiches des anciennes versions (sans `majChamps`) : tous leurs champs datent de `maj`, comme avant.
      Un champ absent et jamais daté (jamais rempli de ce côté) ne fait jamais disparaître le champ de l'autre côté. */
 
-  const PAR_CHAMP = new Set(['classes', 'eleves', 'evals', 'seances', 'reglages', 'suivis', 'agenda', 'baremes']);
+  const PAR_CHAMP = new Set(['classes', 'eleves', 'evals', 'seances', 'reglages', 'suivis', 'agenda', 'baremes', 'modeles']);
   const TECHNIQUES = new Set(['id', 'maj', 'majChamps', 'majChampsPour', 'supprime']);
   const memeValeur = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
   const present = (o, f) => Object.prototype.hasOwnProperty.call(o, f) && o[f] !== undefined;

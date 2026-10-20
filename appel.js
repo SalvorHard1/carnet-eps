@@ -8,8 +8,11 @@
 
 const ID_PRESENCE = 'presence';
 // [code, icône, nom] ; nom null : celui des statuts de leçon (STATUTS_ENT, renommable dans les réglages).
+// (TEN : oubli de tenue en EPS, de matériel en SVT. « Blessé » seulement si la discipline l'utilise.)
 const ETATS_APPEL = [['present', '✅', 'Présent'], ['ABS', '❌', 'Absent'], ['RET', '⏰', 'Retard'], ['TEN', '👕', 'Oubli de tenue'],
   ['MAL', '🤒', null], ['BLE', '🩹', null], ['AUT', '🔹', null]];
+const etatsAppel = () => ETATS_APPEL.filter(([k]) => k !== 'BLE' || codeDeLaDiscipline('BLE'))
+  .map(x => (x[0] === 'TEN' ? ['TEN', mot('iconeTenue'), 'O' + oubliTenue().slice(1)] : x));
 const nomEtatAppel = ([k, , nom]) => nom || STATUTS_ENT[k] || k;
 // Statuts de toute la leçon posés depuis l'appel (les autres, DISP…, viennent de l'onglet Leçons).
 // (« Retard » n'en est pas un : l'élève est présent, arrivé en retard → « Retard » dans la colonne Présence.)
@@ -24,7 +27,7 @@ function seanceAppel(c, date, creer = false) {
   let s = duJour.find(x => x.indicateurs.some(i => i.id === ID_PRESENCE)) || duJour[0] || null;
   if (!s && !creer) return null;
   if (!s) {
-    s = Donnees.ecrire('seances', { id: Donnees.nouvelId(), classeId: c.id, cree: Date.now(), titre: `Leçon du ${dateCourte(date)}`, apsa: '', ca: '',
+    s = Donnees.ecrire('seances', { id: Donnees.nouvelId(), classeId: c.id, cree: Date.now(), titre: `${mot('lecon')[0].toUpperCase() + mot('lecon').slice(1)} du ${dateCourte(date)}`, apsa: '', ca: '',
       date, indicateurs: [{ id: ID_PRESENCE, nom: 'Présence', type: 'choix', options: ['Présent', 'Retard'] }], documents: [] });
   } else if (creer && !s.indicateurs.some(i => i.id === ID_PRESENCE)) {
     s = Donnees.ecrire('seances', { ...s, indicateurs: [{ id: ID_PRESENCE, nom: 'Présence', type: 'choix', options: ['Présent', 'Retard'] }, ...s.indicateurs] });
@@ -47,7 +50,7 @@ function htmlAppel(c) {
     return `<div class="vide"><h2>${esc(c.nom)}</h2><p>Pas encore d’élèves dans cette classe.</p>
       <button class="primaire" data-action="vue-eleves">Ajouter des élèves</button></div>`;
   }
-  const date = dateAppel(), s = seanceAppel(c, date);
+  const date = dateAppel(), s = seanceAppel(c, date), boutons = etatsAppel();
   const etats = new Map(eleves.map(el => [el.id, etatAppel(s, el)]));
   const nb = e => [...etats.values()].filter(x => x === e).length;
   const autres = [...etats.values()].filter(x => x && !['present', 'RET', ...CODES_APPEL].includes(x)).length, reste = nb('');
@@ -63,21 +66,21 @@ function htmlAppel(c) {
       <span class="pastille-appel present">✅ <b>${nb('present')}</b> présent${nb('present') > 1 ? 's' : ''}</span>
       <span class="pastille-appel ABS">❌ <b>${nb('ABS')}</b> absent${nb('ABS') > 1 ? 's' : ''}</span>
       <span class="pastille-appel RET">⏰ <b>${nb('RET')}</b> retard${nb('RET') > 1 ? 's' : ''}</span>
-      <span class="pastille-appel TEN">👕 <b>${nb('TEN')}</b> oubli${nb('TEN') > 1 ? 's' : ''} de tenue</span>
-      ${ETATS_APPEL.filter(([k]) => ['MAL', 'BLE', 'AUT'].includes(k) && nb(k)).map(x =>
+      <span class="pastille-appel TEN">${mot('iconeTenue')} <b>${nb('TEN')}</b> ${oubliTenue(nb('TEN'))}</span>
+      ${etatsAppel().filter(([k]) => ['MAL', 'BLE', 'AUT'].includes(k) && nb(k)).map(x =>
         `<span class="pastille-appel ${x[0]}">${x[1]} <b>${nb(x[0])}</b> ${esc(nomEtatAppel(x).toLocaleLowerCase('fr'))}</span>`).join('')}
       ${autres ? `<span class="pastille-appel">${autres} autre${autres > 1 ? 's' : ''} statut${autres > 1 ? 's' : ''} (dispensé…)</span>` : ''}
       ${reste ? `<span class="aide">${reste} à pointer</span>` : '<span class="aide">✔ Appel terminé</span>'}
     </div>
-    <p class="aide">${s ? `Enregistré dans la leçon <b>« ${esc(s.titre)} »</b> du ${esc(dateCourte(date))} (onglet ${esc(mot('lecons'))}).`
-    : `Au premier toucher, une leçon « Leçon du ${esc(dateCourte(date))} » est créée (ou celle de ce jour est complétée).`}</p>
+    <p class="aide">${s ? `Enregistré dans la ${esc(motMin('lecon'))} <b>« ${esc(s.titre)} »</b> du ${esc(dateCourte(date))} (onglet ${esc(mot('lecons'))}).`
+    : `Au premier toucher, une ${esc(motMin('lecon'))} « ${esc(mot('lecon')[0].toUpperCase() + mot('lecon').slice(1))} du ${esc(dateCourte(date))} » est créée (ou celle de ce jour est complétée).`}</p>
     <ul class="liste-appel">${eleves.map(el => {
       const e = etats.get(el.id), disp = dispenseLe(el, date);
       return `<li class="ligne-appel${e ? ' etat-' + e : ''}">
         <span class="nom-appel">${Trombi.mini(el)}<b>${esc(el.nom)}</b> ${esc(el.prenom)}${disp ? ' <span class="badge-disp encours">dispensé</span>' : ''}
           ${badgeAlerte(el, absencesEleve(el))}${badgeTenue(el, oublisTenue(el))}
           ${e &&!['present', 'RET', ...CODES_APPEL].includes(e) ? `<span class="aide">· ${esc(STATUTS_ENT[e] || e)}</span>` : ''}</span>
-        <span class="boutons-appel" role="group" aria-label="Appel de ${esc(el.nom)} ${esc(el.prenom)}">${ETATS_APPEL.map(x => {
+        <span class="boutons-appel" role="group" aria-label="Appel de ${esc(el.nom)} ${esc(el.prenom)}">${boutons.map(x => {
           const [k, icone] = x, nom = esc(nomEtatAppel(x));
           return `<button class="bouton-appel b-${k}${e === k ? ' choisi' : ''}" data-appel="marquer" data-arg="${el.id}|${k}" aria-pressed="${e === k}" title="${nom}">${icone}<span class="libelle-appel">${nom}</span></button>`;
         }).join('')}</span>

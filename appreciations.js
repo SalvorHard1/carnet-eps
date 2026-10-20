@@ -305,7 +305,7 @@ function analyserAppr(el, periode, eleves) {
     // Blessé / malade : signalé pour mémoire, sans baisser le niveau (ce n'est pas un manque d'engagement).
     const sante = typeof bilanLecons === 'function' ? bilanLecons(el, periode).sante : 0;
     const santeNotes = evals.filter(e => ['BLE', 'MAL'].includes(Donnees.note(e.id, el.id))).length;
-    if (sante + santeNotes) morceaux.push(`blessé / malade : ${sante + santeNotes} fois (${mot('lecons').toLocaleLowerCase('fr')} et évaluations), sans effet sur ce niveau`);
+    if (sante + santeNotes) morceaux.push(`${motifsSante()} : ${sante + santeNotes} fois (${mot('lecons').toLocaleLowerCase('fr')} et évaluations), sans effet sur ce niveau`);
     if (mots.plus || mots.moins) {
       morceaux.push('observations : ' + mots.trouves.join(', ')); saisi.attitude = true;
       n = Math.max(1, Math.min(4, (n ?? 3) + Math.sign(mots.plus - mots.moins) * (Math.abs(mots.plus - mots.moins) >= 2 ? 2 : 1)));
@@ -822,15 +822,28 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   const retirees = [];
   const longueur = () => finir(morceaux).length;
   if (longueur() > r.longueur) morceaux = construire(true);
-  // Le moins important d'abord (à importance égale, le plus loin dans l'ordre) ; le texte est refait à chaque
-  // retrait, pour que le prénom soit toujours cité avant « il / elle ».
+  // Le moins important d'abord (à importance égale, le plus loin dans l'ordre ; entre points de vigilance, la difficulté
+  // la moins grave, et le comportement en dernier : il vient des observations écrites par l'enseignant) ;
+  // le texte est refait à chaque retrait, pour que le prénom soit toujours cité avant « il / elle ».
   while (longueur() > r.longueur && morceaux.length > 1) {
     const rubriques = morceaux.filter(m => m.cle !== 'objectif' && m.cle !== 'bilan');
     const moindre = rubriques.length ? Math.min(...rubriques.map(m => m.importance)) : null;
-    const cle = moindre !== null ? rubriques.findLast(m => m.importance === moindre).cle : morceaux.find(m => m.cle === 'bilan')?.cle;
+    let candidates = rubriques.filter(m => m.importance === moindre);
+    if (moindre === 5) {
+      const leger = Math.max(...candidates.map(m => niv[m.cle] || 0));
+      candidates = candidates.filter(m => (niv[m.cle] || 0) === leger);
+      if (candidates.length > 1) candidates = candidates.filter(m => m.cle !== 'comportement');
+    }
+    const cle = moindre !== null ? candidates.at(-1).cle : morceaux.find(m => m.cle === 'bilan')?.cle;
     if (!cle) break;
     retirees.push(cle);
     morceaux = construire(true, retirees);
+  }
+  // Puis on remet ce qui tient encore dans la longueur (le dernier retiré, le plus important, en premier) :
+  // retirer une longue phrase peut libérer la place d'une plus courte.
+  for (const cle of [...retirees].reverse()) {
+    const sans = retirees.filter(k => k !== cle), avecElle = construire(true, sans);
+    if (finir(avecElle).length <= r.longueur) { retirees.splice(retirees.indexOf(cle), 1); morceaux = avecElle; }
   }
   // Toujours commencer par le prénom (style télégraphique : « Léa : investissement sérieux. … »).
   let texte = finir(morceaux);

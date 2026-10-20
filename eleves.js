@@ -56,8 +56,8 @@ function htmlCarteEleve(el, i, periode) {
       <span class="etiquettes-carte">${etiquettes}</span>
       <span class="stats-carte">
         <span title="Moyenne sur 20${periode === 'annee' ? ' de l’année' : ''}">${notes.moy === null ? '<span class="aide">pas de note</span>'
-          : `<b>${fmt1(notes.moy)}</b>${notes.fleche ? ` <span class="tendance ${notes.sens}" title="Notes en ${notes.sens === 'hausse' ? 'hausse' : notes.sens === 'baisse' ? 'baisse' : 'stables'}">${notes.fleche}</span>` : ''}`}</span>
-        <span title="Jours absent, blessé ou malade au ${esc(abs.periode?.code || 'trimestre')}">${abs.n} abs</span>
+          : `<b>${fmt1(notes.moy)}</b>${notes.fleche ? ` <span class="tendance ${notes.sens}" title="Notes ${notes.sens === 'hausse' ? 'en hausse' : notes.sens === 'baisse' ? 'en baisse' : 'stables'}">${notes.fleche}</span>` : ''}`}</span>
+        <span title="Jours ${motifsAbsence()} au ${esc(abs.periode?.code || 'trimestre')}">${abs.n} abs</span>
       </span>
     </div>`;
 }
@@ -69,7 +69,8 @@ function htmlBandeauClasse(eleves) {
   const tuiles = [
     ['Élèves', eleves.length, ''],
     ['Filles / garçons', `${filles} / ${garcons}`, ''],
-    ['Dispensés', nb(dispenseActive), 'dispenses'],
+    // (Dispenses : en EPS ; ailleurs seulement si un élève en a une.)
+    ...(codeDeLaDiscipline('DISP') || nb(dispenseActive) ? [['Dispensés', nb(dispenseActive), 'dispenses']] : []),
     ['PAI / BEP', nb(FILTRES_ELEVES.besoins[1]), 'besoins'],
     ['À surveiller', nb(FILTRES_ELEVES.alertes[1]), 'alertes'],
   ];

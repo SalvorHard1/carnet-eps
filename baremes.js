@@ -154,6 +154,77 @@ function modeleFourni(apsa, niveau) {
   return { titre: `${apsa} — ${NIVEAUX_BAREME[niveau]}`, apsa, niveau, pas: 0.5, blocs: B };
 }
 
+/* ---------- Barèmes des autres disciplines ----------
+   En EPS : les APSA et modeleFourni() ci-dessus. Ailleurs, la bibliothèque de la discipline :
+   SVT = un modèle par type d'épreuve (compte rendu de TP, schéma, ECE…), rangé par famille (TP, écrit, oral) au lieu
+   des champs d'apprentissage. Chiffres indicatifs, sur 20, à adapter. (Le champ `apsa` du barème = le type d'épreuve.) */
+
+// Descriptifs des 4 degrés pour une compétence de SVT.
+const DESC_SVT = ['Non réalisé ou erroné', 'Réalisé en partie, avec des erreurs', 'Réalisé correctement, quelques imprécisions', 'Réalisé de façon complète, précise et rigoureuse'];
+const degresSvt = (titre, criteres) => blocDegres(titre, criteres, DESC_SVT);
+// Paliers de l'ECE (guide de l'IGÉSR, comme l'outil 🔬 ECE) : [lettre, points, descriptif].
+const paliersEce = (titre, paliers) => blocEcart(titre, paliers.map(([l, pts, t]) => [`${l} — ${t}`, pts]));
+
+const BAREMES_DISCIPLINES = {
+  svt: {
+    niveaux: { college: 'Collège (cycle 4)', lycee: 'Lycée' },
+    familles: { TP: 'CA2', Écrit: 'CA4', Oral: 'CA3' }, // (couleur de la carte : celle d'un champ d'apprentissage)
+    nomFamille: 'Type',
+    modeles: [
+      { nom: 'Compte rendu de TP', famille: 'TP', fabrique: () => [
+        degresSvt('Démarche', [['Formuler le problème et une hypothèse', 3], ['Suivre ou concevoir un protocole adapté', 3]]),
+        degresSvt('Résultats', [['Présenter les résultats (tableau, graphique, schéma, photo légendée)', 4]]),
+        degresSvt('Interprétation et conclusion', [['Interpréter les résultats', 4], ['Conclure en répondant au problème posé', 3]]),
+        blocCriteres('Communication', [['Titre, unités, légendes', 1.5], ['Vocabulaire scientifique, expression correcte', 1.5]])] },
+      { nom: 'Schéma d’observation', famille: 'TP', fabrique: () => [
+        blocCriteres('Présentation', [['Titre précis (objet observé, technique, grossissement)', 2], ['Tracé au crayon, net, sans hachures', 2],
+          ['Traits de légende à la règle, horizontaux, sans croisement', 2]]),
+        degresSvt('Fidélité', [['Formes et proportions fidèles à l’observation', 6]]),
+        degresSvt('Légendes', [['Légendes exactes et complètes', 6]]),
+        blocCriteres('Échelle', [['Échelle ou grossissement indiqué', 2]])] },
+      { nom: 'Manipulation (évaluation pratique)', famille: 'TP', fabrique: () => [
+        blocCriteres('Sécurité', [['Blouse, gants et lunettes si nécessaire', 1], ['Poste de travail propre et rangé', 1]]),
+        degresSvt('Gestes techniques', [['Réaliser la préparation ou le montage', 6], ['Utiliser le matériel (microscope, verrerie, logiciel)', 4]]),
+        degresSvt('Résultat', [['Obtenir un résultat exploitable', 4]]),
+        degresSvt('Autonomie', [['Suivre le protocole sans aide', 4]])] },
+      { nom: 'ECE', famille: 'TP', niveaux: ['lycee'], fabrique: () => [
+        paliersEce('Pratique — réalisation', [['A', 9, 'autonome, résultat exploitable'], ['B', 6, 'aides mineures'], ['C', 3, 'aide majeure'], ['D', 0, 'rien d’exploitable']]),
+        paliersEce('Étape spécifique', [['A', 3, 'réussie seul'], ['B', 2, 'réussie avec une aide'], ['C', 1, 'réussie avec plusieurs aides'], ['D', 0, 'non réussie']]),
+        paliersEce('Communication des résultats', [['A', 5, 'les trois critères'], ['B', 3, 'deux critères'], ['C', 1, 'un critère'], ['D', 0, 'aucun critère']]),
+        paliersEce('Conclusion', [['A', 3, 'exploitation complète et argumentée'], ['B', 2, 'exploitation partielle'], ['C', 1, 'exploitation très incomplète'], ['D', 0, 'absente ou erronée']]),
+        blocTexte('Conditions', 'Épreuve d’1 h. Note sur 20, ramenée sur 5 au bac. L’outil 🔬 ECE (onglet Outils) fait le calcul pendant l’épreuve.')] },
+      { nom: 'Tâche complexe', famille: 'Écrit', fabrique: () => [
+        degresSvt('Extraire les informations', [['Prélever les informations utiles dans les documents', 5]]),
+        degresSvt('Raisonner', [['Mettre en relation les informations et les connaissances', 6]]),
+        degresSvt('Conclure', [['Répondre au problème posé de façon argumentée', 5]]),
+        blocCriteres('Communication', [['Réponse structurée, vocabulaire scientifique', 2], ['Schéma bilan ou illustration pertinente', 2]])] },
+      { nom: 'Restitution de connaissances', famille: 'Écrit', fabrique: niveau => [
+        degresSvt('Connaissances', [['Notions exactes et complètes', 8]]),
+        degresSvt('Organisation', [[niveau === 'lycee' ? 'Introduction, plan, conclusion : exposé logique' : 'Réponse organisée et logique', 4]]),
+        degresSvt('Schéma', [['Schéma juste, titré et légendé', 4]]),
+        blocCriteres('Expression', [['Vocabulaire scientifique précis', 2], ['Orthographe et syntaxe correctes', 2]])] },
+      { nom: 'Exposé oral', famille: 'Oral', fabrique: () => [
+        degresSvt('Contenu scientifique', [['Notions justes, sources citées', 6]]),
+        degresSvt('Organisation', [['Plan clair, durée respectée', 4]]),
+        degresSvt('Expression orale', [['Voix, regard, détaché de ses notes', 4]]),
+        degresSvt('Support', [['Support lisible, illustrations utiles', 3]]),
+        blocCriteres('Échanges', [['Répond aux questions avec justesse', 3]])] },
+    ],
+  },
+};
+const baremesDiscipline = () => BAREMES_DISCIPLINES[disciplineActive()] || null;
+// Activités (EPS) ou types d'épreuve (SVT) qui ont un modèle fourni, et niveaux proposés.
+const apsaBaremes = () => baremesDiscipline()?.modeles.map(m => m.nom) || APSA_BAREMES;
+const niveauxBareme = () => baremesDiscipline()?.niveaux || NIVEAUX_BAREME;
+const nomNiveauBareme = n => niveauxBareme()[n] || NIVEAUX_BAREME[n] || '';
+// Modèles fournis existants : [{ apsa, niveau }] (en SVT, l'ECE n'existe qu'au lycée).
+const modelesFournisListe = () => apsaBaremes().flatMap(a => Object.keys(niveauxBareme())
+  .filter(n => !baremesDiscipline() || (baremesDiscipline().modeles.find(m => m.nom === a).niveaux || [n]).includes(n)).map(n => ({ apsa: a, niveau: n })));
+function modeleDeLaDiscipline(apsa, niveau) {
+  const m = baremesDiscipline()?.modeles.find(x => x.nom === apsa);
+  return m ? { titre: `${apsa} — ${nomNiveauBareme(niveau)}`, apsa, niveau, pas: 0.5, blocs: m.fabrique(niveau) } : modeleFourni(apsa, niveau);
+}
+
 /* ---------- Calculs ---------- */
 
 const arrondiPas = (x, pas) => Math.round(x / pas) * pas;
@@ -243,7 +314,11 @@ function lirePerf(b, texte) {
 
 let baremeOuvert = null; // identifiant du barème affiché (null : la bibliothèque)
 const filtresBaremes = { ca: '', niveau: '', texte: '' };
-const caApsaBareme = apsa => Object.entries(CA_PAR_APSA).find(([, l]) => l.includes(apsa))?.[0] || '';
+// Étiquette de la carte : le champ d'apprentissage (EPS), ou la famille du type d'épreuve (SVT : TP, Écrit, Oral).
+const caApsaBareme = apsa => (baremesDiscipline() ? baremesDiscipline().modeles.find(m => m.nom === apsa)?.famille || ''
+  : Object.entries(CA_PAR_APSA).find(([, l]) => l.includes(apsa))?.[0] || '');
+// Classe de couleur de la carte (ca-CA1…).
+const classeCaBareme = apsa => { const f = caApsaBareme(apsa); return (baremesDiscipline()?.familles[f] ?? f) || 'aucun'; };
 const mesBaremes = () => Donnees.liste('baremes').sort((a, b) => collator.compare(a.apsa || '', b.apsa || '') || collator.compare(a.titre, b.titre));
 
 function htmlBaremes() {
@@ -254,55 +329,57 @@ function htmlBaremes() {
   const garde = (apsa, niveau, titre) => (!f.ca || caApsaBareme(apsa) === f.ca) && (!f.niveau || niveau === f.niveau)
     && (!cherche || sansAccent(`${apsa} ${titre}`).includes(cherche));
   const miens = mesBaremes().filter(x => garde(x.apsa, x.niveau, x.titre));
-  const fournis = APSA_BAREMES.flatMap(a => Object.keys(NIVEAUX_BAREME).map(n => ({ apsa: a, niveau: n }))).filter(x => garde(x.apsa, x.niveau, ''));
-  const carte = x => `<button class="carte-bareme ca-${caApsaBareme(x.apsa) || 'aucun'}" data-bar="ouvrir" data-arg="${x.id}">
-      <span class="chip-ca">${caApsaBareme(x.apsa) || '—'}</span>${x.modele ? '<span class="etoile-bareme" title="Enregistré comme modèle">⭐</span>' : ''}
-      <b>${esc(x.titre)}</b><span class="aide">${esc(x.apsa || 'Sans APSA')} · ${esc(NIVEAUX_BAREME[x.niveau] || '')} · sur ${fmt(totalBareme(x))}</span></button>`;
+  const fournis = modelesFournisListe().filter(x => garde(x.apsa, x.niveau, ''));
+  const disc = baremesDiscipline(), nomApsa = mot('activiteBareme');
+  const familles = disc ? Object.keys(disc.familles) : ['CA1', 'CA2', 'CA3', 'CA4', 'CA5'];
+  const carte = x => `<button class="carte-bareme ca-${classeCaBareme(x.apsa)}" data-bar="ouvrir" data-arg="${x.id}">
+      <span class="chip-ca">${esc(caApsaBareme(x.apsa)) || '—'}</span>${x.modele ? '<span class="etoile-bareme" title="Enregistré comme modèle">⭐</span>' : ''}
+      <b>${esc(x.titre)}</b><span class="aide">${esc(x.apsa || 'Sans ' + nomApsa)} · ${esc(nomNiveauBareme(x.niveau))} · sur ${fmt(totalBareme(x))}</span></button>`;
   return `
     <div class="outils">
       <h2>📊 Barèmes</h2>
       <button class="primaire" data-bar="nouveau">+ Nouveau barème</button>
       <button data-bar="recevoir" title="Ton barème en PDF, Word (.docx), LibreOffice (.odt) ou Excel : l’appli le lit et le range dans Mes barèmes. Accepte aussi le fichier .json d’un collègue.">📥 Importer un barème</button>
-      <label class="choix-tri">Champ<select data-bar-filtre="ca"><option value="">Tous</option>${['CA1', 'CA2', 'CA3', 'CA4', 'CA5'].map(c => `<option ${f.ca === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
-      <label class="choix-tri">Niveau<select data-bar-filtre="niveau"><option value="">Tous</option>${Object.entries(NIVEAUX_BAREME).map(([k, n]) => `<option value="${k}" ${f.niveau === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-      <input type="search" data-bar-filtre="texte" value="${esc(f.texte)}" placeholder="Rechercher une APSA…" aria-label="Rechercher">
+      <label class="choix-tri">${disc ? esc(disc.nomFamille) : 'Champ'}<select data-bar-filtre="ca"><option value="">Tous</option>${familles.map(c => `<option ${f.ca === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+      <label class="choix-tri">Niveau<select data-bar-filtre="niveau"><option value="">Tous</option>${Object.entries(niveauxBareme()).map(([k, n]) => `<option value="${k}" ${f.niveau === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <input type="search" data-bar-filtre="texte" value="${esc(f.texte)}" placeholder="${esc(mot('rechercheBareme'))}" aria-label="Rechercher">
     </div>
     <h3 class="titre-rayon">Mes barèmes <span class="aide">(${miens.length})</span></h3>
     ${miens.length ? `<div class="rayon-baremes">${miens.map(carte).join('')}</div>`
     : '<p class="aide">Aucun barème pour l’instant : « + Nouveau barème », ou touche un modèle ci-dessous pour partir de lui.</p>'}
     <h3 class="titre-rayon">Modèles fournis <span class="aide">— à dupliquer puis adapter (chiffres indicatifs)</span></h3>
-    <div class="rayon-baremes">${fournis.map(x => `<button class="carte-bareme modele-fourni ca-${caApsaBareme(x.apsa)}" data-bar="depuis-modele" data-arg="${esc(x.apsa)}|${x.niveau}">
-      <span class="chip-ca">${caApsaBareme(x.apsa)}</span><b>${esc(x.apsa)}</b><span class="aide">${NIVEAUX_BAREME[x.niveau]}</span></button>`).join('')}</div>`;
+    <div class="rayon-baremes">${fournis.map(x => `<button class="carte-bareme modele-fourni ca-${disc ? classeCaBareme(x.apsa) : caApsaBareme(x.apsa)}" data-bar="depuis-modele" data-arg="${esc(x.apsa)}|${x.niveau}">
+      <span class="chip-ca">${esc(caApsaBareme(x.apsa))}</span><b>${esc(x.apsa)}</b><span class="aide">${nomNiveauBareme(x.niveau)}</span></button>`).join('')}</div>`;
 }
 
 /* ---------- Création : APSA, niveau, point de départ, blocs à garder ---------- */
 
 // Point de départ : 'fourni' (modèle de l'appli), id d'un de mes barèmes ⭐, ou 'vide'.
 function departBareme(apsa, niveau, depart) {
-  if (depart === 'vide') return { titre: apsa ? `${apsa} — ${NIVEAUX_BAREME[niveau]}` : 'Nouveau barème', apsa, niveau, pas: 0.5, blocs: [] };
+  if (depart === 'vide') return { titre: apsa ? `${apsa} — ${nomNiveauBareme(niveau)}` : 'Nouveau barème', apsa, niveau, pas: 0.5, blocs: [] };
   const mien = depart !== 'fourni' && Donnees.get('baremes', depart);
   if (mien) { const { id, maj, majChamps, majChampsPour, modele, ...reste } = mien; return { ...structuredClone(reste), titre: reste.titre + ' (copie)' }; }
-  return APSA_BAREMES.includes(apsa) ? modeleFourni(apsa, niveau) : departBareme(apsa, niveau, 'vide');
+  return apsaBaremes().includes(apsa) ? modeleDeLaDiscipline(apsa, niveau) : departBareme(apsa, niveau, 'vide');
 }
 
 // Tous les blocs qu'on peut piocher : ceux de mes barèmes et ceux des modèles fournis.
 function blocsAPiocher() {
   const l = [];
   for (const br of mesBaremes()) br.blocs.forEach((b, k) => l.push({ cle: `m|${br.id}|${k}`, nom: `${br.titre} › ${b.titre}`, bloc: b }));
-  for (const a of APSA_BAREMES) for (const n of Object.keys(NIVEAUX_BAREME)) {
-    modeleFourni(a, n).blocs.forEach((b, k) => l.push({ cle: `f|${a}|${n}|${k}`, nom: `Modèle ${a} (${NIVEAUX_COURTS[n]}) › ${b.titre}`, bloc: b }));
+  for (const { apsa: a, niveau: n } of modelesFournisListe()) {
+    modeleDeLaDiscipline(a, n).blocs.forEach((b, k) => l.push({ cle: `f|${a}|${n}|${k}`, nom: `Modèle ${a} (${baremesDiscipline() ? nomNiveauBareme(n).toLocaleLowerCase('fr') : NIVEAUX_COURTS[n]}) › ${b.titre}`, bloc: b }));
   }
   return l;
 }
 
-async function nouveauBareme(apsa = APSA_BAREMES[0], niveau = 'college') {
+async function nouveauBareme(apsa = apsaBaremes()[0], niveau = 'college') {
   const etoiles = mesBaremes().filter(b => b.modele);
   const piocher = blocsAPiocher();
   const { d, resultat } = ouvrirModale('Nouveau barème', `
     <div class="ligne">
-      <label>APSA<input name="apsa" list="liste-apsa-bareme" value="${esc(apsa)}" required></label>
-      <datalist id="liste-apsa-bareme">${APSA_BAREMES.map(a => `<option value="${esc(a)}">`).join('')}</datalist>
-      <label>Niveau<select name="niveau">${Object.entries(NIVEAUX_BAREME).map(([k, n]) => `<option value="${k}" ${k === niveau ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label>${esc(mot('activiteBareme'))}<input name="apsa" list="liste-apsa-bareme" value="${esc(apsa)}" required></label>
+      <datalist id="liste-apsa-bareme">${apsaBaremes().map(a => `<option value="${esc(a)}">`).join('')}</datalist>
+      <label>Niveau<select name="niveau">${Object.entries(niveauxBareme()).map(([k, n]) => `<option value="${k}" ${k === niveau ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label>Point de départ<select name="depart"><option value="fourni">Modèle fourni par l’appli</option>
         ${etoiles.map(b => `<option value="${b.id}">⭐ ${esc(b.titre)}</option>`).join('')}<option value="vide">Page blanche</option></select></label>
     </div>
@@ -346,7 +423,7 @@ async function nouveauBareme(apsa = APSA_BAREMES[0], niveau = 'college') {
   if (r.action !== 'ok') return;
   const base = departBareme(r.data.apsa.trim(), r.data.niveau, r.data.depart);
   const br = preparerBareme({ ...base, apsa: r.data.apsa.trim(), niveau: r.data.niveau,
-    titre: r.data.depart === 'fourni' || r.data.depart === 'vide' ? `${r.data.apsa.trim()} — ${NIVEAUX_BAREME[r.data.niveau]}` : base.titre,
+    titre: r.data.depart === 'fourni' || r.data.depart === 'vide' ? `${r.data.apsa.trim()} — ${nomNiveauBareme(r.data.niveau)}` : base.titre,
     blocs: blocs.filter(b => b.garder).map(({ garder, cible, ...b }) => ({ ...b, _cible: cible })) });
   for (const b of br.blocs) { if (b._cible !== undefined && b._cible !== pointsBloc({ ...b, inactif: false })) ajusterBloc(b, b._cible, br.pas); delete b._cible; }
   const enreg = Donnees.ecrire('baremes', { ...br, id: Donnees.nouvelId(), cree: Date.now() });
@@ -418,9 +495,9 @@ function htmlEditeurBareme(br) {
       <span class="total-bareme">Total : <b data-bar-total>${fmt(total)}</b> pts</span>
     </div>
     <div class="ligne reglages-bareme">
-      <label>APSA${champBar('apsa', br.apsa, 'list="liste-apsa-bareme2" maxlength="60"')}</label>
-      <datalist id="liste-apsa-bareme2">${APSA_BAREMES.map(a => `<option value="${esc(a)}">`).join('')}</datalist>
-      <label>Niveau<select data-bar-champ="niveau">${Object.entries(NIVEAUX_BAREME).map(([k, n]) => `<option value="${k}" ${br.niveau === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label>${esc(mot('activiteBareme'))}${champBar('apsa', br.apsa, 'list="liste-apsa-bareme2" maxlength="60"')}</label>
+      <datalist id="liste-apsa-bareme2">${apsaBaremes().map(a => `<option value="${esc(a)}">`).join('')}</datalist>
+      <label>Niveau<select data-bar-champ="niveau">${Object.entries(niveauxBareme()).map(([k, n]) => `<option value="${k}" ${br.niveau === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label>Pas des points<select data-bar-champ="pas" data-bar-type="nombre"><option value="0.5" ${br.pas === 0.5 ? 'selected' : ''}>0,5</option><option value="1" ${br.pas === 1 ? 'selected' : ''}>1</option></select></label>
       <span class="espace"></span>
       <label>Ramener sur<input type="number" min="1" step="1" value="20" data-bar-cible aria-label="Total visé"></label>
@@ -563,7 +640,7 @@ function imprimerBareme(br) {
   const actifs = br.blocs.filter(b => !b.inactif);
   let zone = $('#zone-impression');
   if (!zone) { zone = document.createElement('div'); zone.id = 'zone-impression'; document.body.append(zone); }
-  zone.innerHTML = `<h1>${esc(br.titre)}</h1><p>${esc(br.apsa || '')} · ${esc(NIVEAUX_BAREME[br.niveau] || '')} · noté sur ${fmt(totalBareme(br))}</p>
+  zone.innerHTML = `<h1>${esc(br.titre)}</h1><p>${esc(br.apsa || '')} · ${esc(nomNiveauBareme(br.niveau))} · noté sur ${fmt(totalBareme(br))}</p>
     ${actifs.map(b => {
     const [entete, ...lignes] = lignesBloc(b, br.pas);
     return `<h2>${esc(b.titre)}${b.type === 'texte' ? '' : ` — ${fmt(pointsBloc(b))} pts`}</h2>${b.type === 'texte' ? `<p>${esc(b.texte || '')}</p>`
@@ -585,7 +662,7 @@ function telechargerBlob(blob, nom) {
 }
 
 function excelBareme(br) {
-  const lignes = [[{ v: br.titre, style: 'titre' }], [`${br.apsa || ''} · ${NIVEAUX_BAREME[br.niveau] || ''} · noté sur ${fmt(totalBareme(br))}`], []];
+  const lignes = [[{ v: br.titre, style: 'titre' }], [`${br.apsa || ''} · ${nomNiveauBareme(br.niveau)} · noté sur ${fmt(totalBareme(br))}`], []];
   for (const b of br.blocs.filter(x => !x.inactif)) {
     lignes.push([{ v: `${b.titre}${b.type === 'texte' ? '' : ` — ${fmt(pointsBloc(b))} pts`}`, style: 'entete' }]);
     const [entete, ...reste] = lignesBloc(b, br.pas);

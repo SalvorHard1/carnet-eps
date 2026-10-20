@@ -21,6 +21,8 @@ const TYPES_EVENEMENTS_DEFAUT = [
   { id: 'reunion', nom: 'Réunion', couleur: '#5b3fa0' },
   { id: 'autre', nom: 'Autre', couleur: '#3d4a52' },
 ];
+// Types proposés tant que l'enseignant n'a pas réglé les siens : ceux de la discipline (SVT : sorties de terrain, labo…).
+const typesEvenementsDefaut = () => profil().typesEvenements || TYPES_EVENEMENTS_DEFAUT;
 const JOURS_SEMAINE = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const MOIS_LONGS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
@@ -69,7 +71,7 @@ function reglageAgenda() {
   const r = Donnees.get('reglages', 'agenda') || {}, d = anneeScolaireAg();
   return {
     debut: r.debut || d.debut, fin: r.fin || d.fin, vacances: r.vacances || [],
-    types: r.types?.length ? r.types : TYPES_EVENEMENTS_DEFAUT,
+    types: r.types?.length ? r.types : typesEvenementsDefaut(),
     afficher: { ...Object.fromEntries(Object.keys(AFFICHAGES_AGENDA).map(k => [k, true])), ...(r.afficher || {}) },
     semaines: { nommage: r.semaines?.nommage === 'AB' ? 'AB' : 'parite', A: r.semaines?.A === 'paire' ? 'paire' : 'impaire' },
   };
@@ -83,7 +85,7 @@ function ecrireReglageAgenda(valeurs) {
 
 const elementsAgenda = (type, f = () => true) => Donnees.liste('agenda', x => x.type === type && f(x)).sort((a, b) => (a.debut || '').localeCompare(b.debut || ''));
 const vacancesLe = (iso, r) => r.vacances.find(v => v.debut && v.fin && iso >= v.debut && iso <= v.fin);
-const typeEvAg = (r, id) => r.types.find(t => t.id === id) || r.types.at(-1) || TYPES_EVENEMENTS_DEFAUT.at(-1);
+const typeEvAg = (r, id) => r.types.find(t => t.id === id) || r.types.at(-1) || typesEvenementsDefaut().at(-1);
 const classesAgenda = () => (ui.agClasse && Donnees.get('classes', ui.agClasse) ? [Donnees.get('classes', ui.agClasse)] : classesTriees());
 const creneauxDe = c => trierCreneaux((c?.creneaux || []).slice());
 
@@ -114,8 +116,9 @@ const leconsFaites = seq => seancesDe(seq.classeId).filter(s => s.date >= seq.de
 // { court (sur le bloc), detail (infobulle), etat ('avenir' | 'encours' | 'finie') }
 function avancementSeq(seq, r) {
   const auj = aujourdhui(), p = leconsPrevues(seq, r), f = leconsFaites(seq);
-  const pl = n => `${n} leçon${n > 1 ? 's' : ''}`;
-  const notees = f ? ` · ${f} enregistrée${f > 1 ? 's' : ''} dans l’onglet Leçons` : '';
+  const lecon = motMin('lecon');
+  const pl = n => `${n} ${lecon}${n > 1 ? 's' : ''}`;
+  const notees = f ? ` · ${f} enregistrée${f > 1 ? 's' : ''} dans l’onglet ${mot('lecons')}` : '';
   if (auj < seq.debut) {
     const sem = Math.ceil((dateAg(lundiAg(seq.debut)) - dateAg(lundiAg(auj))) / 864e5 / 7);
     return { court: p ? pl(p) : '', etat: 'avenir',
@@ -124,7 +127,7 @@ function avancementSeq(seq, r) {
   if (auj > seq.fin) return { court: '✔', etat: 'finie', detail: `terminée${p ? ` (${pl(p)} prévue${p > 1 ? 's' : ''})` : ''}${notees}` };
   const n = p === null ? null : leconsPrevues({ ...seq, fin: auj }, r); // (créneaux passés, aujourd'hui compris)
   return { court: p ? `${n}/${p}` : 'en cours', etat: 'encours',
-    detail: p ? `en cours : leçon ${n} sur ${p} à ce jour${notees}` : `en cours${notees}` };
+    detail: p ? `en cours : ${lecon} ${n} sur ${p} à ce jour${notees}` : `en cours${notees}` };
 }
 
 // Fins de période (trimestres / semestres de l'onglet Notes) placées dans l'année affichée.
@@ -172,7 +175,9 @@ function htmlAgenda() {
 
 function htmlLegendeAg(r) {
   const a = r.afficher, l = [];
-  if (a.sequences) l.push(...['CA1', 'CA2', 'CA3', 'CA4', 'CA5'].map(ca => `<span><span class="leg-ag ag-seq ca-${ca}"></span>${ca}</span>`));
+  // (Couleur par champ d'apprentissage en EPS ; une seule couleur de séquence sinon.)
+  if (a.sequences) l.push(...(profil().champsSequence ? ['CA1', 'CA2', 'CA3', 'CA4', 'CA5'].map(ca => `<span><span class="leg-ag ag-seq ca-${ca}"></span>${ca}</span>`)
+    : ['<span><span class="leg-ag ag-seq"></span>Séquence</span>']));
   if (a.conseils) l.push('<span><span class="leg-ag ag-cc"></span>Conseil de classe</span>');
   if (a.evenements) l.push(...r.types.map(t => `<span><span class="leg-ag ag-ev" data-c="${esc(t.couleur)}"></span>${esc(t.nom)}</span>`));
   if (a.evaluations) l.push('<span><span class="ag-eval-leg">✎</span>Évaluation (onglet Notes)</span>');
@@ -415,7 +420,7 @@ async function editerSequence(id, preset = {}) {
     </fieldset>`).join('')}
     <p class="aide" data-ag-prevues></p>
     <label>Objectifs, attendus visés<textarea name="objectifs" rows="3">${esc(s.objectifs || '')}</textarea></label>
-    <label>Évaluation prévue<input name="evaluation" value="${esc(s.evaluation || '')}" placeholder="ex. Tournoi final, leçon 8"></label>
+    <label>Évaluation prévue<input name="evaluation" value="${esc(s.evaluation || '')}" placeholder="${esc(mot('evalSequenceExemple'))}"></label>
     <label>Notes (installation, matériel…)<textarea name="notes" rows="2">${esc(s.notes || '')}</textarea></label>
     ${id && classes.length > 1 ? `<details class="copier-ag"><summary>Copier cette séquence pour d’autres classes</summary>
       ${classes.filter(c => c.id !== s.classeId).map(c => `<label class="case"><input type="checkbox" name="copies" value="${c.id}"> ${esc(c.nom)}</label>`).join('')}</details>` : ''}`,
@@ -431,8 +436,8 @@ async function editerSequence(id, preset = {}) {
     const memes = classeId && essai.debut && essai.fin ? elementsAgenda('sequence', q => q.id !== id && q.classeId === classeId
       && q.debut <= essai.fin && q.fin >= essai.debut && creneauxSeq(q).some(x => creneauxSeq(essai).some(y => cleCreneau(x) === cleCreneau(y)))) : [];
     $('[data-ag-prevues]', d).textContent = !classeId ? ''
-      : n === null ? 'Indique l’emploi du temps de la classe (🕒) pour voir le nombre de leçons prévues.'
-        : `${n} leçon${n > 1 ? 's' : ''} prévue${n > 1 ? 's' : ''} d’après l’emploi du temps (vacances déduites)`
+      : n === null ? `Indique l’emploi du temps de la classe (🕒) pour voir le nombre de ${motMin('lecons')} prévues.`
+        : `${n} ${motMin('lecon')}${n > 1 ? 's' : ''} prévue${n > 1 ? 's' : ''} d’après l’emploi du temps (vacances déduites)`
           + (essai.debut <= aujourdhui() ? `, dont ${leconsPrevues({ ...essai, fin: essai.fin < aujourdhui() ? essai.fin : aujourdhui() }, r)} déjà passée(s) à ce jour.` : '.')
           + (memes.length ? ` ⚠ En même temps que « ${memes.map(q => q.apsa).join(' », « ')} » sur les mêmes cours : coche seulement les cours de ${mot('cetteActivite')}.` : '');
   };
@@ -533,7 +538,7 @@ async function editerEvenementAg(id, preset = {}) {
   const conseil = e.type === 'conseil';
   const { resultat } = ouvrirModale(conseil ? 'Conseil de classe' : id ? 'Événement' : 'Nouvel événement', `
     ${conseil ? `<label>Classe<select name="classe">${classes.map(c => `<option value="${c.id}" ${c.id === e.classeId ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label>`
-    : `<label>Titre<input name="titre" value="${esc(e.titre)}" required placeholder="Cross du collège, sortie escalade…"></label>
+    : `<label>Titre<input name="titre" value="${esc(e.titre)}" required placeholder="${esc(mot('evenementExemple'))}"></label>
       <div class="ligne">
         <label>Type<select name="typeEv">${r.types.map(t => `<option value="${esc(t.id)}" ${t.id === e.typeEv ? 'selected' : ''}>${esc(t.nom)}</option>`).join('')}</select></label>
         <label>Pour<select name="classe"><option value="">Tout le collège</option>${classes.map(c => `<option value="${c.id}" ${c.id === e.classeId ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label>
@@ -624,7 +629,7 @@ async function reglerAgenda() {
   const types = tnoms.map((nom, k) => ({ id: tids[k] || 't' + Donnees.nouvelId().slice(0, 8), nom: nom.trim(), couleur: tcoul[k] })).filter(t => t.nom);
   const choisis = f.getAll('afficher');
   ecrireReglageAgenda({
-    debut: v.debut, fin: v.fin, vacances: vacs, types: types.length ? types : TYPES_EVENEMENTS_DEFAUT,
+    debut: v.debut, fin: v.fin, vacances: vacs, types: types.length ? types : typesEvenementsDefaut(),
     afficher: Object.fromEntries(Object.keys(AFFICHAGES_AGENDA).map(k => [k, choisis.includes(k)])),
     semaines: v.semaines === 'parite' ? { nommage: 'parite', A: r.semaines.A } : { nommage: 'AB', A: v.semaines === 'AB-paire' ? 'paire' : 'impaire' },
   });
@@ -652,7 +657,7 @@ async function editerEmploiDuTemps() {
       ${htmlGuideImport('edt')}
       <label class="bouton primaire">Choisir le PDF…<input type="file" accept=".pdf,application/pdf" data-fichier-edt hidden></label>
     </div>
-    <p class="aide">Ou saisis les créneaux à la main : ils servent à compter les leçons prévues de chaque séquence et à placer les cours dans le calendrier du mois.
+    <p class="aide">Ou saisis les créneaux à la main : ils servent à compter les ${esc(motMin('lecons'))} prévues de chaque séquence et à placer les cours dans le calendrier du mois.
       Un cours une semaine sur deux : choisis « ${esc(libelleSemaine('paire', r))} » ou « ${esc(libelleSemaine('impaire', r))} »
       (cette semaine est la n° ${semaineIso(auj)}, ${r.semaines.nommage === 'AB' ? 'semaine ' + nomSemaine(pariteAg(auj), r) + ', ' : ''}${pariteAg(auj)} ; A / B se règle dans ⚙ Année et vacances).</p>
     ${classes.map(c => `<fieldset class="edt-classe"><legend>${esc(c.nom)}</legend>

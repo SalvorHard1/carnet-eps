@@ -169,6 +169,8 @@ function appliquerReglages(forcer = false) {
       CODES_ENT[STATUTS_ENT[code].toLocaleUpperCase('fr')] ??= code; // (sans jamais détourner une lettre existante : A, D, B…)
     }
   }
+  // Oubli (lettre T) : « Oubli tenue » en EPS, « Oubli matériel » en SVT (même code TEN ; aussi dans les classeurs Excel).
+  STATUTS_ENT.TEN = STATUTS_ENT_BASE.TEN = mot('oubliCourt');
 
   const c = reglage('competences');
   NIVEAUX_MAITRISE.forEach((niv, i) => { niv.nom = (c.niveaux[i] || '').trim() || REGLAGES_DEFAUT.competences.niveaux[i]; });
@@ -216,8 +218,8 @@ function htmlReglageApparence(a, appareil) {
       <option value="perso" ${palette === 'perso' ? 'selected' : ''}>Personnalisée</option>
     </select></label>
     <div class="couleurs">${a.degres.map((c, i) => `<label class="couleur"><input type="color" name="degre${i + 1}" value="${esc(c)}">${i + 1}</label>`).join('')}</div>
-    <h4>Couleurs des champs d’apprentissage</h4>
-    <div class="couleurs">${Object.keys(COULEURS_CA).map(ca => `<label class="couleur"><input type="color" name="${ca}" value="${esc(a.ca[ca] || COULEURS_CA[ca])}">${ca}</label>`).join('')}</div>`;
+    ${profil().champsSequence ? '' : '<div hidden>'}<h4>Couleurs des champs d’apprentissage</h4>
+    <div class="couleurs">${Object.keys(COULEURS_CA).map(ca => `<label class="couleur"><input type="color" name="${ca}" value="${esc(a.ca[ca] || COULEURS_CA[ca])}">${ca}</label>`).join('')}</div>${profil().champsSequence ? '' : '</div>'}`;
 }
 
 function htmlReglageNotes(n) {
@@ -235,21 +237,21 @@ function htmlReglageNotes(n) {
     </div>
     <p class="aide">Chaque classe garde ensuite son propre réglage (⚙ Note → degré dans l’onglet Notes).</p>
     <h4>Barre de saisie rapide</h4>
-    <p class="aide">Coche les boutons à afficher ; tu peux les renommer (ex. « Autre » → « Natation »). Les lettres (${Object.entries(LETTRES_CODES).map(([c, l]) => `<b>${l}</b> ${CODES_SAISIE[c].toLowerCase()}`).join(', ')}) marchent toujours au clavier.</p>
+    <p class="aide">Coche les boutons à afficher ; tu peux les renommer (ex. « Autre » → « Natation »). Les lettres (${Object.entries(LETTRES_CODES).filter(([c]) => !['DISP', 'BLE'].includes(c) || codeDeLaDiscipline(c)).map(([c, l]) => `<b>${l}</b> ${CODES_SAISIE[c].toLowerCase()}`).join(', ')}) marchent toujours au clavier.</p>
     <div class="table-reglages">
       ${Object.entries(CODES_SAISIE).map(([code, nom]) => `
         <label class="case"><input type="checkbox" name="code-${code}" ${codeVisible(n, code) ? 'checked' : ''}> ${nom}${code === 'NE' ? ' <span class="aide">(notes)</span>' : ''}</label>
         <input name="lib-${code}" value="${esc(n.libelles[code] || '')}" placeholder="${nom}" aria-label="Nom affiché pour ${nom}" maxlength="20">`).join('')}
     </div>
     <h4>Alerte absences</h4>
-    <label class="case"><input type="checkbox" name="alerte" ${n.alerte ? 'checked' : ''}> Signaler les élèves souvent absents, blessés ou malades (badge ⚠)</label>
+    <label class="case"><input type="checkbox" name="alerte" ${n.alerte ? 'checked' : ''}> Signaler les élèves souvent ${codeDeLaDiscipline('BLE') ? 'absents, blessés ou malades' : 'absents ou malades'} (badge ⚠)</label>
     <div class="ligne">
       <label class="etroit">Orange dès<input type="number" name="alerteOrange" min="1" max="60" step="1" required value="${n.alerteOrange}"></label>
       <label class="etroit">Rouge dès<input type="number" name="alerteRouge" min="1" max="60" step="1" required value="${n.alerteRouge}"></label>
       <span class="aide">jours sur la période</span>
     </div>
-    <h4>Alerte oublis de tenue</h4>
-    <label class="case"><input type="checkbox" name="alerteTenue" ${n.alerteTenue ? 'checked' : ''}> Signaler les élèves qui oublient souvent leur tenue (badge 👕)</label>
+    <h4>Alerte ${oubliTenue(2)}</h4>
+    <label class="case"><input type="checkbox" name="alerteTenue" ${n.alerteTenue ? 'checked' : ''}> Signaler les élèves qui ${mot('tenueReglage')} (badge ${mot('iconeTenue')})</label>
     <div class="ligne">
       <label class="etroit">Orange dès<input type="number" name="tenueOrange" min="1" max="60" step="1" required value="${n.tenueOrange}"></label>
       <label class="etroit">Rouge dès<input type="number" name="tenueRouge" min="1" max="60" step="1" required value="${n.tenueRouge}"></label>
@@ -308,7 +310,7 @@ async function ouvrirReglages(rubrique = 'apparence') {
         <p class="aide">${AIDE_DISCIPLINE} Le choix est gardé dans ton carnet (il te suit sur la clé) ;
           il n’est jamais transmis avec les réglages partagés avec un collègue.</p>
       </div></details>
-    <details ${ouvert('notes')}><summary>📝 Notes <small>barème, codes, alertes absences et tenue</small></summary>
+    <details ${ouvert('notes')}><summary>📝 Notes <small>barème, codes, alertes absences et ${mot('deTenue').replace(/^de /, '')}</small></summary>
       <div class="rubrique">${htmlReglageNotes(n)}</div></details>
     <details ${ouvert('competences')}><summary>🎯 Compétences <small>degrés, référentiels</small></summary>
       <div class="rubrique">
@@ -695,7 +697,7 @@ async function premierLancement() {
       <h4>Mode</h4>
       <div class="segments">${radio('mode', 'auto', a.mode, 'Automatique')}${radio('mode', 'clair', a.mode, '☀ Clair')}${radio('mode', 'sombre', a.mode, '🌙 Sombre')}</div>
     </div>
-    <p class="aide" data-choix-exemple ${disciplineActive() === 'eps' ? '' : 'hidden'}>🎓 Une <b>classe exemple</b> déjà remplie (élèves inventés)
+    <p class="aide">🎓 Une <b>classe exemple</b> déjà remplie (élèves inventés)
       t’attend pour découvrir le carnet : tu pourras la supprimer d’un clic.</p>
     <label class="bouton">📂 Utiliser les réglages d’un collègue…<input type="file" accept=".json,application/json" data-importer-reglages hidden></label>`,
   '<span class="espace"></span><button type="button" data-fermer>Plus tard</button><button value="ok" class="primaire">C’est parti</button>', 'reglages');
@@ -707,7 +709,6 @@ async function premierLancement() {
   const disciplineChoisie = () => form.querySelector('[name="discipline"]:checked')?.value || 'eps';
   let discipline = disciplineActive(); // (mis à jour à chaque choix : la fenêtre n'existe plus une fois fermée)
   d.addEventListener('change', e => {
-    if (e.target.name === 'discipline') $('[data-choix-exemple]', d).hidden = disciplineChoisie() !== 'eps';
     if (e.target.closest('[data-rubrique="apparence"]')) appliquerApparence(choisi(), reglagesAppareil(), form.elements.etablissement.value || a.etablissement);
     // (Le nom du carnet en haut de la page suit tout de suite la discipline choisie.)
     if (e.target.name === 'discipline') {
@@ -731,7 +732,8 @@ async function premierLancement() {
   } else if (r.action === 'ok') {
     ecrireReglage('apparence', { ...choisi(), etablissement: r.data.etablissement.trim() || a.etablissement, prof: r.data.prof.trim() });
   }
-  // Classe exemple créée d'office (EPS seulement : son contenu est de l'EPS), même avec « Plus tard » ; supprimable d'un clic.
+  // Classe exemple de la discipline (3e d'EPS, 2nde de SVT) créée d'office, même avec « Plus tard » ; supprimable d'un clic.
+  // (« Plus tard » ne garde pas la discipline : pas de classe exemple si celle cochée n'est pas celle du carnet.)
   // (Supprimée sur un autre appareil, elle disparaît aussi ici en récupérant le carnet de la clé : ses identifiants sont fixes.)
   // « J'ai déjà un carnet » : pas de classe exemple, on va le chercher (enregistrement.js).
   if (dejaCarnet && typeof recupererCarnetExistant === 'function') {
@@ -739,8 +741,9 @@ async function premierLancement() {
     rendre();
     return lancer(recupererCarnetExistant); // (attendu par le démarrage : le guide ne s'ouvre qu'après)
   }
-  if (discipline === 'eps' && !classesTriees().length) {
+  if (discipline === disciplineActive() && !classesTriees().length) {
     ui.classeId = creerClasseExemple().id;
+    for (const jeu of exemplesEnPlus()) creerClasseExemple(jeu); // (SVT : une 4e en plus de la 2nde)
     Donnees.antidater('exemple-');
     memoriserUi();
   }

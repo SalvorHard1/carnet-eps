@@ -41,6 +41,7 @@ const CODES_ENT = {
   O: 'AUT', AU: 'AUT', AUT: 'AUT', AUTRE: 'AUT',
   R: 'NR', NR: 'NR', 'NON RENDU': 'NR',
   T: 'TEN', TEN: 'TEN', TENUE: 'TEN', 'OUBLI TENUE': 'TEN', 'OUBLI DE TENUE': 'TEN',
+  'MATÉRIEL': 'TEN', 'OUBLI MATÉRIEL': 'TEN', 'OUBLI DE MATÉRIEL': 'TEN', // (SVT)
 };
 
 /* ---------- Modèles de données par APSA / champ d'apprentissage ---------- */
@@ -285,15 +286,15 @@ function htmlEntrainement(c) {
       <h2>${esc(c.nom)}</h2>
       <button class="primaire" data-action="ajout-seance">+ Séance</button>
       <button data-action="excel-ent" title="Exporter ou importer les ${esc(motMin('lecons'))} de la classe (classeur Excel)">⇅ Excel</button>
-      ${exercices.length ? `<label class="choix-tri">Exercice
+      ${exercices.length ? `<label class="choix-tri">${esc(mot('exercice'))}
         <select data-filtre-exercice="${c.id}">
           <option value="">Toutes (${toutes.length} séance${toutes.length > 1 ? 's' : ''})</option>
           ${exercices.map(x => `<option ${x === filtre ? 'selected' : ''}>${esc(x)}</option>`).join('')}
         </select></label>` : ''}
-      <span class="aide aide-saisie">Temps : 3:45 ou 12,5 · ${aideCodes(true).replace(/(<b>O<\/b>)/, '<b>T</b> oubli de tenue · $1')} — toute la ${esc(motMin('lecon'))}, ou seulement la case si l’élève a déjà des résultats</span>
+      <span class="aide aide-saisie">${esc(mot('aideSaisieTemps'))}${aideCodes(true).replace(/(<b>O<\/b>)/, `<b>T</b> ${esc(oubliTenue())} · $1`)} — toute la ${esc(motMin('lecon'))}, ou seulement la case si l’élève a déjà des résultats</span>
     </div>
     ${legende}
-    ${toutes.length ? (filtre ? '' : '<p class="aide">Choisis un exercice pour voir la meilleure performance et l’évolution de chaque élève.</p>')
+    ${toutes.length ? (filtre ? '' : `<p class="aide">${esc(mot('aideExercice'))}</p>`)
     : `<p class="aide">${esc(mot('aideLecons'))} Rien ici ne compte dans les moyennes.</p>`}
     <div class="grille-scroll">
       <table class="grille grille-ent">
@@ -580,10 +581,13 @@ function majStatsEnt() {
   for (const s of seances) {
     const presents = eleves.filter(el => !statutEnt(s.id, el.id));
     const statuts = eleves.map(el => statutEnt(s.id, el.id)).filter(Boolean);
-    const resumer = codes => [['ABS', 'absent'], ['DISP', 'dispensé'], ['BLE', 'blessé'], ['MAL', 'malade'], ['AUT', 'autre']]
+    // (Statuts de la discipline : en SVT, ni dispensé ni blessé, sauf codes réactivés dans les réglages.)
+    const motsStatuts = [['ABS', 'absent'], ['DISP', 'dispensé'], ['BLE', 'blessé'], ['MAL', 'malade'], ['AUT', 'autre']]
+      .filter(([code]) => code === 'ABS' || codeDeLaDiscipline(code));
+    const resumer = codes => motsStatuts
       .map(([code, mot]) => { const n = codes.filter(x => x === code).length; return n ? `${n} ${mot}${n > 1 ? 's' : ''}` : ''; })
       .filter(Boolean).join(' · ');
-    const resumeStatuts = resumer(statuts) || 'Aucun absent, dispensé, blessé, malade ou autre';
+    const resumeStatuts = resumer(statuts) || `Aucun ${motsStatuts.map(x => x[1]).join(', ').replace(/, ([^,]*)$/, ' ou $1')}`;
     for (const ind of s.indicateurs) {
       const td = $(`[data-stat-indic="${s.id}|${ind.id}"]`);
       if (!td) continue;
@@ -1114,7 +1118,7 @@ function htmlFiche(el, apsa, seances) {
   const suivi = Donnees.get('suivis', idSuivi(el.id, apsa));
   html += `<h3>✍ Mon suivi <span class="aide">(enregistré tout seul)</span></h3>
     <textarea class="obs-fiche" data-obs rows="3" placeholder="Objectifs fixés avec l’élève, points d’appui, ce qui l’aide…">${esc(suivi?.texte || '')}</textarea>
-    ${suivi?.texte ? `<p class="aide">Modifié le ${dateHeure(suivi.maj)}</p>` : ''}`;
+    ${suivi?.texte && suivi.maj > 1 ? `<p class="aide">Modifié le ${dateHeure(suivi.maj)}</p>` : ''}`;
   return html;
 }
 
@@ -1187,7 +1191,7 @@ document.addEventListener('click', e => {
 const sansAccent = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
   .toLowerCase().replace(/[’`]/g, '\'').replace(/\s+/g, ' ').trim();
 const LIB_TYPES = { temps: 'Temps', distance: 'Distance', nombre: 'Nombre', echelle: 'Échelle 1 à 4', choix: 'Choix', texte: 'Texte' };
-const STATUTS_PAR_NOM = Object.fromEntries(Object.entries(STATUTS_ENT_BASE).map(([code, nom]) => [sansAccent(nom), code]));
+const STATUTS_PAR_NOM = { ...Object.fromEntries(Object.entries(STATUTS_ENT_BASE).map(([code, nom]) => [sansAccent(nom), code])), 'oubli materiel': 'TEN' };
 const dateFr = d => (d ? d.split('-').reverse().join('/') : '');
 
 function typeEnTexte(ind) {
@@ -1272,6 +1276,8 @@ function exporterExcel(c, { anonyme = false } = {}) {
   const prof = anonyme ? '' : reglage('apparence').prof;
   // Anonyme : Blessé / Malade / Dispensé deviennent « ABS » (absent de l'activité), sans dire pourquoi.
   const statutExporte = st => (!st ? '' : anonyme && ['DISP', 'BLE', 'MAL'].includes(st) ? STATUTS_ENT_BASE.ABS : STATUTS_ENT_BASE[st]);
+  // Statuts de la discipline (EPS : ABS, DISP, Blessé, Malade, Autre ; SVT : ABS, Malade, Autre, Non rendu).
+  const statutsListe = ['ABS', 'DISP', 'BLE', 'MAL', 'AUT', 'NR'].filter(k => k === 'ABS' || codeDeLaDiscipline(k)).map(k => STATUTS_ENT_BASE[k]);
   const lisezMoi = {
     nom: 'Lisez-moi', largeurs: [100],
     lignes: [
@@ -1281,7 +1287,7 @@ function exporterExcel(c, { anonyme = false } = {}) {
       ...(anonyme ? [...LIGNES_ANONYME, []] : []),
       [E('Comment s’en servir')],
       ['Un onglet par séance : une ligne par élève, une colonne par donnée relevée. La ligne « Type » dit ce qu’on attend dans la colonne.'],
-      [`Temps : 3:45 ou 12,5 · Échelle : 1, 2, 3 ou 4 · Choix : une des réponses listées · Statut : ${anonyme ? 'ABS ou Autre' : 'ABS, DISP, Blessé, Malade ou Autre'}.`],
+      [`Temps : 3:45 ou 12,5 · Échelle : 1, 2, 3 ou 4 · Choix : une des réponses listées · Statut : ${anonyme ? 'ABS ou Autre' : statutsListe.join(', ').replace(/, ([^,]*)$/, ' ou $1')}.`],
       ...(anonyme ? [] : [
         ['Tu peux compléter ou corriger les cases, ajouter des élèves (nom et prénom) ou un onglet de séance construit sur le même modèle.'],
         ['Ne supprime pas la colonne A ni les lignes masquées : elles permettent à l’appli de reconnaître les séances et les élèves.'],
@@ -1304,11 +1310,11 @@ function exporterExcel(c, { anonyme = false } = {}) {
       lignes: [
         ['#seance', E('Séance'), { v: s.titre, style: 'titre' }],
         [anonyme ? '' : s.id, E('Date'), T(dateFr(s.date))],
-        ['', E('APSA'), T(s.apsa || '')],
+        ['', E(mot('activite')), T(s.apsa || '')],
         ['', E('Documents'), A(anonyme ? '—' : docsDe(s).map(d => d.nom).join(', ') || '—')],
         [],
         ['#eleve', E('Nom'), E('Prénom'), E('Statut'), ...inds.map(ind => E(ind.nom))],
-        ['#type', A('Type'), A(''), A(anonyme ? 'ABS / Autre' : 'ABS / DISP / Blessé / Malade / Autre'), ...inds.map(ind => A(typeEnTexte(ind)))],
+        ['#type', A('Type'), A(''), A(anonyme ? 'ABS / Autre' : statutsListe.join(' / ')), ...inds.map(ind => A(typeEnTexte(ind)))],
         ['#donnee', '', '', '', ...inds.map(ind => ind.id)],
         ...eleves.map(el => {
           const st = statutEnt(s.id, el.id);
@@ -1357,7 +1363,7 @@ function lireSeancesExcel(feuilles) {
         valeurs: colonnes.map(col => l[col.k] || '') }));
     res.push({
       onglet: f.nom, fichierId, titre: (meta['seance'] || f.nom).trim(),
-      date: lireDateExcel(meta['date']) || aujourdhui(), apsa: (meta['apsa'] || '').trim(), colonnes, lignes,
+      date: lireDateExcel(meta['date']) || aujourdhui(), apsa: (meta['apsa'] || meta['theme'] || '').trim(), colonnes, lignes, // (« Thème » : classeur d'un carnet SVT)
     });
   }
   return res;

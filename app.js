@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.109.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.113.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -625,7 +625,7 @@ function rendreVue() {
   }
   v.innerHTML = (c.exemple && !enModeEleve() ? `<p class="bandeau-exemple">🎓 <span><b>Classe exemple</b> : élèves et résultats inventés, pour voir un carnet rempli.
     Touche à tout (notes, appel, fiches bilan, ✍ appréciations…), rien n’est grave.</span>
-    <button class="lien" data-action="suppr-exemple">Supprimer la classe exemple</button></p>` : '')
+    <button class="lien" data-action="suppr-exemple"${c.id !== ID_CLASSE_EXEMPLE ? ` data-arg="${c.id}"` : ''}>Supprimer la classe exemple</button></p>` : '')
     + (ui.vue === 'eleves' ? htmlEleves(c) : ui.vue === 'appel' ? htmlAppel(c) : ui.vue === 'entrainement' ? htmlEntrainement(c) : htmlNotes(c));
   if (ui.vue === 'notes') { majMoyennes(); majBilans(); caleEntete(); }
   if (ui.vue === 'entrainement') { majStatsEnt(); caleEntete(); }
@@ -663,13 +663,13 @@ function absencesEleve(el) {
 function badgeAlerte(el, a) {
   if (!a.niveau) return '';
   return ` <button class="alerte-abs ${a.niveau}" data-alerte-abs="${el.id}"
-    title="${a.n} jours absent, blessé ou malade au ${a.periode?.code || 'trimestre'} — toucher pour le détail">⚠ ${a.n}</button>`;
+    title="${a.n} jours ${motifsAbsence()} au ${a.periode?.code || 'trimestre'} — toucher pour le détail">⚠ ${a.n}</button>`;
 }
 
 async function voirAbsences(id) {
   const el = Donnees.get('eleves', id), a = absencesEleve(el);
   ouvrirModale(`Absences — ${el.nom} ${el.prenom}`, `
-    <p><b>${a.n} jour${a.n > 1 ? 's' : ''}</b> absent, blessé ou malade au <b>${esc(a.periode?.code || '')}</b>
+    <p><b>${a.n} jour${a.n > 1 ? 's' : ''}</b> ${motifsAbsence()} au <b>${esc(a.periode?.code || '')}</b>
       <span class="aide">(${esc(a.periode?.texte || '')})</span></p>
     <ul class="liste-absences">${a.jours.map(([date, l]) => `<li><b>${dateCourte(date)}</b> — ${[...new Set(l.map(x => MOTIFS_ALERTE[x.code]))].join(' / ')}
       <span class="aide">· ${esc([...new Set(l.map(x => x.quoi))].join(', '))}</span></li>`).join('')}</ul>
@@ -705,13 +705,13 @@ function oublisTenue(el) {
 function badgeTenue(el, a) {
   if (!a.niveau) return '';
   return ` <button class="alerte-abs alerte-tenue ${a.niveau}" data-alerte-tenue="${el.id}"
-    title="${a.n} oublis de tenue au ${a.periode?.code || 'trimestre'} — toucher pour le détail">👕 ${a.n}</button>`;
+    title="${a.n} ${oubliTenue(a.n)} au ${a.periode?.code || 'trimestre'} — toucher pour le détail">${mot('iconeTenue')} ${a.n}</button>`;
 }
 
 async function voirOublisTenue(id) {
   const el = Donnees.get('eleves', id), a = oublisTenue(el);
-  ouvrirModale(`Oublis de tenue — ${el.nom} ${el.prenom}`, `
-    <p><b>${a.n} oubli${a.n > 1 ? 's' : ''} de tenue</b> au <b>${esc(a.periode?.code || '')}</b>
+  ouvrirModale(`O${oubliTenue(2).slice(1)} — ${el.nom} ${el.prenom}`, `
+    <p><b>${a.n} ${oubliTenue(a.n)}</b> au <b>${esc(a.periode?.code || '')}</b>
       <span class="aide">(${esc(a.periode?.texte || '')})</span></p>
     <ul class="liste-absences">${a.jours.map(([date, l]) => `<li><b>${dateCourte(date)}</b>
       <span class="aide">· ${esc([...new Set(l)].join(', '))}</span></li>`).join('')}</ul>
@@ -731,8 +731,8 @@ document.addEventListener('click', e => {
 function celluleNom(el, i) {
   const alerte = absencesEleve(el), tenue = oublisTenue(el);
   const infos = [
-    alerte.niveau ? `⚠ ${alerte.n} jours absent, blessé ou malade au ${alerte.periode?.code}` : '',
-    tenue.niveau ? `👕 ${tenue.n} oublis de tenue au ${tenue.periode?.code}` : '',
+    alerte.niveau ? `⚠ ${alerte.n} jours ${motifsAbsence()} au ${alerte.periode?.code}` : '',
+    tenue.niveau ? `${mot('iconeTenue')} ${tenue.n} ${oubliTenue(tenue.n)} au ${tenue.periode?.code}` : '',
     aPai(el) ? 'PAI' + (el.paiInfo ? ' : ' + el.paiInfo : '') : '',
     el.bep ? 'BEP' + (el.bepInfo ? ' : ' + el.bepInfo : '') : '',
     el.remarque, statutDispense(el)?.texte,
@@ -788,7 +788,7 @@ function htmlNotes(c) {
       <h2>${esc(c.nom)}</h2>
       <button class="primaire" data-action="ajout-eval">+ Évaluation</button>
       <button data-action="excel-notes" title="Exporter ou importer les notes et degrés de maîtrise de la classe (classeur Excel)">⇅ Excel</button>
-      <button data-action="appreciations" title="Appréciations du trimestre proposées par l’appli, d’après les notes et les ${motMin('lecons')}">✍ Appréciations</button>
+      <button data-action="appreciations" title="Appréciations du trimestre proposées par l’appli, d’après les notes et les ${motMin('lecons')}">✍ Appréciations</button>${typeof htmlBoutonsBilansSvt === 'function' ? htmlBoutonsBilansSvt(c) : ''}
       <label class="choix-tri">Période
         <select data-periode>
           <option value="annee">Toute l’année</option>
@@ -1073,6 +1073,9 @@ function htmlEleves(c) {
   const adaptes = eleves.filter(el => el.adapte).length;
   const optionsAmenagement = el => [['', '—'], ['dispense', 'Dispensé'], ['adapte', 'Adapté']]
     .map(([v, l]) => `<option value="${v}" ${amenagement(el) === v ? 'selected' : ''}>${l}</option>`).join('');
+  // Colonne « Dispense / adapté » : en EPS ; ailleurs seulement si un élève de la classe en a une (données gardées).
+  const avecDisp = codeDeLaDiscipline('DISP') || eleves.some(el => el.dispense || el.adapte);
+  const aideRem = mot('remarquesAide');
   // 👀 Consulter (par défaut) : cartes et bandeau de la classe (eleves.js) ; ✎ Modifier la liste : le tableau ci-dessous.
   if (eleves.length && typeof htmlConsulterEleves === 'function' && modeEleves() === 'consulter') {
     return `
@@ -1099,7 +1102,7 @@ function htmlEleves(c) {
     </div>
     ${eleves.length ? `
       <div class="carte"><table class="tableau-eleves">
-        <thead><tr><th class="c-num">N°</th><th>Nom</th><th>Prénom</th><th class="c-sexe">Sexe</th><th>PAI</th><th title="Besoin éducatif particulier">BEP</th><th>Dispense / adapté</th><th title="Santé, inaptitude…">Remarques</th><th></th></tr></thead>
+        <thead><tr><th class="c-num">N°</th><th>Nom</th><th>Prénom</th><th class="c-sexe">Sexe</th><th>PAI</th><th title="Besoin éducatif particulier">BEP</th>${avecDisp ? '<th>Dispense / adapté</th>' : ''}<th title="${esc(aideRem[0].toUpperCase() + aideRem.slice(1))}">Remarques</th><th></th></tr></thead>
         <tbody>${eleves.map((el, i) => {
           const s = statutDispense(el);
           return `
@@ -1114,7 +1117,7 @@ function htmlEleves(c) {
             <td class="c-sexe" data-label="Sexe"><select data-champ="sexe" aria-label="Sexe">${optionsSexe(el.sexe || '')}</select></td>
             <td class="case-pai" data-label="PAI">${boutonBesoin(el, 'pai')}</td>
             <td class="case-bep" data-label="BEP">${boutonBesoin(el, 'bep')}</td>
-            <td class="case-disp" data-label="Dispense / adapté">
+            ${avecDisp ? `<td class="case-disp" data-label="Dispense / adapté">
               <div class="ligne-disp">
                 <select data-champ="amenagement" class="choix-amenagement ${amenagement(el)}" aria-label="Dispense ou pratique adaptée">${optionsAmenagement(el)}</select>
                 ${el.adapte ? `
@@ -1131,8 +1134,8 @@ function htmlEleves(c) {
                   ${el.dispFin ? `<button class="replier-disp" data-replier-dispense="${el.id}">OK</button>` : ''}
                 </div>
                 <span class="badge-disp ${s.code}">${esc(s.texte)}</span>` : ''}
-            </td>
-            <td class="c-rem" data-label="Remarques"><input data-champ="remarque" value="${esc(el.remarque || '')}" aria-label="Remarques" placeholder="santé, inaptitude…"></td>
+            </td>` : ''}
+            <td class="c-rem" data-label="Remarques"><input data-champ="remarque" value="${esc(el.remarque || '')}" aria-label="Remarques" placeholder="${esc(aideRem)}"></td>
             <td class="c-suppr">${ListeClasse.aDesInfos(el) ? `<button class="icone-petit" data-contacts="${el.id}" title="Naissance, dispositifs, responsables" aria-label="Fiche de ${esc(el.nom)}">📇</button>` : ''}<button class="icone-petit" data-supprimer-eleve="${el.id}" title="Supprimer l’élève" aria-label="Supprimer l’élève">🗑</button></td>
           </tr>`;
         }).join('')}
@@ -1174,11 +1177,11 @@ function texteChangements(ch) {
     classes: ['classe', 'classes', 'f'], eleves: ['élève', 'élèves', 'm'], evals: ['évaluation', 'évaluations', 'f'],
     seances: [motMin('lecon'), motMin('lecons'), 'f'], documents: ['document joint', 'documents joints', 'm'],
     suivis: ['observation', 'observations', 'f'], agenda: ['élément d’agenda', 'éléments d’agenda', 'm'], reglages: ['réglage', 'réglages', 'm'],
-    baremes: ['barème', 'barèmes', 'm'],
+    baremes: ['barème', 'barèmes', 'm'], modeles: ['modèle de séance', 'modèles de séance', 'm'],
   };
   const parts = [];
   let supprimes = 0;
-  for (const col of ['classes', 'eleves', 'notes', 'evals', 'seances', 'suivis', 'documents', 'agenda', 'baremes', 'reglages']) {
+  for (const col of ['classes', 'eleves', 'notes', 'evals', 'seances', 'suivis', 'documents', 'agenda', 'baremes', 'modeles', 'reglages']) {
     const r = ch?.[col];
     if (!r) continue;
     supprimes += r.s;
@@ -1346,9 +1349,10 @@ function optionsBaremesEval(e, apsaSaisie, niveauClasse, choisi) {
   const niveauBr = { cycle3: 'cycle3', cycle4: 'college', lycee: 'lycee' }[REFERENTIEL_PAR_NIVEAU[niveauClasse]] || '';
   const sel = v => (v === choisi ? 'selected' : '');
   const option = b => `<option value="${b.id}" ${sel(b.id)}>${esc(b.titre)} — sur ${fmt(totalBareme(b))}</option>`;
-  const fourni = (a, n) => `<option value="fourni|${esc(a)}|${n}" ${sel(`fourni|${a}|${n}`)}>${esc(a)} — ${NIVEAUX_BAREME[n]} (modèle)</option>`;
+  const fourni = (a, n) => `<option value="fourni|${esc(a)}|${n}" ${sel(`fourni|${a}|${n}`)}>${esc(a)} — ${nomNiveauBareme(n)} (modèle)</option>`;
   const miens = mesBaremes(), mA = miens.filter(b => memeApsa(b.apsa)), mAutres = miens.filter(b => !memeApsa(b.apsa));
-  const modeles = APSA_BAREMES.flatMap(a => Object.keys(NIVEAUX_BAREME).map(n => [a, n]))
+  // (Modèles de la discipline : APSA en EPS, types d'épreuve en SVT.)
+  const modeles = modelesFournisListe().map(x => [x.apsa, x.niveau])
     .sort(([a1, n1], [a2, n2]) => (n2 === niveauBr) - (n1 === niveauBr));
   const fA = modeles.filter(([a]) => memeApsa(a)), fAutres = modeles.filter(([a]) => !memeApsa(a));
   const groupe = (titre, html) => (html ? `<optgroup label="${esc(titre)}">${html}</optgroup>` : '');
@@ -1365,8 +1369,8 @@ function baremeChoisiEval(e, valeur, apercu) {
   if (!valeur) return null;
   if (valeur.startsWith('fourni|')) {
     const [, a, n] = valeur.split('|');
-    if (!APSA_BAREMES.includes(a) || !NIVEAUX_BAREME[n]) return null;
-    return apercu[valeur] ??= { ...preparerBareme(modeleFourni(a, n)), id: valeur };
+    if (!modelesFournisListe().some(x => x.apsa === a && x.niveau === n)) return null;
+    return apercu[valeur] ??= { ...preparerBareme(modeleDeLaDiscipline(a, n)), id: valeur };
   }
   return Donnees.get('baremes', valeur) || (e.bareme?.id === valeur ? e.bareme : null);
 }
@@ -1553,7 +1557,9 @@ async function editerClasse(id) {
     ? BOUTON_SUPPRIMER + (elevesDe(id).some(el => el.responsables)
       ? '<button value="effacer-coord" formnovalidate title="Retire téléphones, emails et adresses des responsables de toute la classe">Effacer les coordonnées</button>' : '')
     : '<button value="ecole-directe" formnovalidate title="Créer la classe et ses élèves à partir de la liste exportée d’École Directe ou de Pronote (.xlsx, .csv)">📥 Depuis École Directe / Pronote…</button>'
-      + (classeExemple() ? '' : '<button value="exemple" formnovalidate title="Une classe inventée, déjà remplie, pour découvrir le carnet">🎓 Classe exemple</button>')), 'modale-large');
+      + (classeExemple() ? '' : `<button value="exemple" formnovalidate title="Une classe inventée, déjà remplie, pour découvrir le carnet">🎓 Classe exemple${exemplesEnPlus().length ? ` (${esc(jeuExemple().niveau)})` : ''}</button>`)
+      // (Autres classes exemples de la discipline : SVT 4e.)
+      + exemplesEnPlus().filter(j => !Donnees.get('classes', idClasseExemple(j))).map(j => `<button value="exemple:${esc(j.prefixe)}" formnovalidate title="Une classe inventée, déjà remplie, pour découvrir le carnet">🎓 Classe exemple (${esc(j.niveau)})</button>`).join('')), 'modale-large');
   const r = await resultat;
   if (r.action === 'ecole-directe') return ListeClasse.choisirFichier(null);
   if (r.action === 'effacer-coord') {
@@ -1563,8 +1569,9 @@ async function editerClasse(id) {
   } else if (r.action === 'supprimer') {
     if (!(await confirmer(`Supprimer la classe « ${c.nom} », ses élèves et toutes ses notes ?`))) return;
     supprimerClasse(id);
-  } else if (r.action === 'exemple') {
-    ui.classeId = creerClasseExemple().id;
+  } else if (r.action === 'exemple' || String(r.action || '').startsWith('exemple:')) {
+    const jeu = exemplesEnPlus().find(j => 'exemple:' + j.prefixe === r.action);
+    ui.classeId = creerClasseExemple(jeu).id; // (jeu non trouvé : la classe exemple de la discipline)
     memoriserUi();
   } else if (r.action === 'ok') {
     const seuils = [+r.data.s2, +r.data.s3, +r.data.s4].sort((x, y) => x - y);
@@ -2745,8 +2752,9 @@ document.addEventListener('click', e => {
     case 'ajout-classe': basculerMenu(false); return lancer(() => editerClasse());
     case 'exemple': ui.classeId = creerClasseExemple().id; memoriserUi(); return rendre();
     case 'suppr-exemple': return lancer(async () => {
-      if (!classeExemple() || !(await confirmer('Supprimer la classe exemple (élèves et résultats inventés) ? Tu pourras la recréer depuis « + Nouvelle classe ».', 'Supprimer'))) return;
-      supprimerClasse(ID_CLASSE_EXEMPLE);
+      const id = ds.arg || ID_CLASSE_EXEMPLE; // (une autre classe exemple : la 4e de SVT)
+      if (!Donnees.get('classes', id)?.exemple || !(await confirmer('Supprimer la classe exemple (élèves et résultats inventés) ? Tu pourras la recréer depuis « + Nouvelle classe ».', 'Supprimer'))) return;
+      supprimerClasse(id);
       rendre();
     });
     case 'ajout-eval': return lancer(() => editerEval());

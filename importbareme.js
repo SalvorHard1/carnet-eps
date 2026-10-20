@@ -1512,9 +1512,9 @@ async function verifierImport(fichier, a) {
       <label class="large">Titre<input name="titre" value="${esc(a.titre)}" maxlength="120" required></label>
     </div>
     <div class="ligne ligne-unique">
-      <label>APSA<input name="apsa" list="liste-apsa-import" value="${esc(a.apsa)}" maxlength="60"></label>
-      <datalist id="liste-apsa-import">${APSA_BAREMES.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
-      <label>Niveau<select name="niveau">${Object.entries(NIVEAUX_BAREME).map(([k, n]) => `<option value="${k}" ${k === a.niveau ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label>${esc(mot('activiteBareme'))}<input name="apsa" list="liste-apsa-import" value="${esc(baremesDiscipline() && APSA_BAREMES.includes(a.apsa) ? '' : a.apsa)}" maxlength="60"></label>
+      <datalist id="liste-apsa-import">${apsaBaremes().map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+      <label>Niveau<select name="niveau">${Object.entries(niveauxBareme()).map(([k, n]) => `<option value="${k}" ${k === a.niveau ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
     </div>
     <div class="blocs-import"></div>
     <p class="total-import"></p>

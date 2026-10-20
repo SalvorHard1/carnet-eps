@@ -75,18 +75,21 @@ function htmlLeconsFiche(el, periode, moy) {
   const liste = o => Object.entries(o).map(([c, n]) => `${n} ${nomStatut(c)}`).join(' · ');
   let html = `<h3>${esc(mot('lecons'))} <span class="aide">présence et santé</span></h3>`;
   if (b.total) {
-    html += `<p class="fiche-presence">Présent à <b>${b.presences} leçon${b.presences > 1 ? 's' : ''} sur ${b.total}</b>${
+    const lecon = motMin('lecon');
+    html += `<p class="fiche-presence">Présent à <b>${b.presences} ${lecon}${b.presences > 1 ? 's' : ''} sur ${b.total}</b>${
       Object.keys(b.statuts).length ? ' · ' + esc(liste(b.statuts)) : ''}${
-      Object.keys(b.enCours).length ? ` · arrêté en cours de leçon : ${esc(liste(b.enCours))}` : ''}</p>`;
+      Object.keys(b.enCours).length ? ` · arrêté en cours de ${lecon} : ${esc(liste(b.enCours))}` : ''}</p>`;
   }
   // Alerte : souvent blessé ou malade (leçons et évaluations), surtout quand les notes, elles, sont bonnes.
+  // (Sans code « Blessé » dans la discipline, comme en SVT : « souvent malade ».)
   const nSante = b.sante + santeNotes.length, base = b.total + santeNotes.length;
   if (nSante >= 2 && nSante / Math.max(1, base) >= 0.2) {
     const bonnes = moy !== null && moy >= seuilsClasse(Donnees.get('classes', el.classeId))[1];
-    html += `<div class="alerte-sante">⚠ <b>${esc(el.prenom)} est souvent blessé${el.sexe === 'F' ? 'e' : el.sexe === 'G' ? '' : '·e'} ou malade</b> :
-      ${nSante} fois sur la période (${b.sante ? `${b.sante} leçon${b.sante > 1 ? 's' : ''}` : ''}${b.sante && santeNotes.length ? ', ' : ''}${
+    const accord = el.sexe === 'F' ? 'e' : el.sexe === 'G' ? '' : '·e';
+    html += `<div class="alerte-sante">⚠ <b>${esc(el.prenom)} est souvent ${codeDeLaDiscipline('BLE') ? `blessé${accord} ou ` : ''}malade</b> :
+      ${nSante} fois sur la période (${b.sante ? `${b.sante} ${motMin('lecon')}${b.sante > 1 ? 's' : ''}` : ''}${b.sante && santeNotes.length ? ', ' : ''}${
       santeNotes.length ? `${santeNotes.length} évaluation${santeNotes.length > 1 ? 's' : ''}` : ''}).
-      ${bonnes ? `Les notes sont bonnes (${fmt1(moy)}/20), mais elles ne montrent pas ce temps de pratique manqué.` : ''}
+      ${bonnes ? `Les notes sont bonnes (${fmt1(moy)}/20), mais elles ne montrent pas ${esc(mot('tempsManque'))}.` : ''}
       Si cela se répète, cela peut valoir la peine d’en parler (famille, infirmerie, professeur principal).</div>`;
   }
   const jours = [...b.jours, ...santeNotes].sort((x, y) => (x.date || '').localeCompare(y.date || ''));
@@ -214,7 +217,7 @@ function pointsEtAxes(el, s) {
   if (s.valeurs.competences !== null && s.valeurs.competences < 2.75 && !axes.some(x => x.cat === 'attendus')) axes.push({ cat: 'competences', poids: 4 - s.valeurs.competences, texte: `Compétences : degré moyen ${fmt1(s.valeurs.competences)}`, phrase: 'consolider les compétences travaillées' });
   if (!a.defaut.attitude && n.attitude <= 2) axes.push({ cat: 'attitude', poids: 5 - n.attitude, texte: 'Engagement irrégulier', phrase: 's’investir plus régulièrement' });
   if (!a.defaut.comportement && n.comportement <= 2) axes.push({ cat: 'comportement', poids: 5.5 - n.comportement, texte: 'Comportement à améliorer', phrase: 'mieux respecter les consignes et les camarades' });
-  if (s.vs.tenue >= 2) axes.push({ cat: 'vie', poids: 2 + s.vs.tenue * 0.6, texte: `${s.vs.tenue} oublis de tenue`, phrase: `venir en tenue à chaque ${motMin('lecon')}` });
+  if (s.vs.tenue >= 2) axes.push({ cat: 'vie', poids: 2 + s.vs.tenue * 0.6, texte: `${s.vs.tenue} ${oubliTenue(s.vs.tenue)}`, phrase: mot('tenuePhrase') });
   if (s.vs.abs >= 2) axes.push({ cat: 'vie', poids: 2 + s.vs.abs * 0.6, texte: `${s.vs.abs} absences`, phrase: `être plus assidu${e}` });
   if (s.vs.retards >= 2) axes.push({ cat: 'vie', poids: 1.5 + s.vs.retards * 0.4, texte: `${s.vs.retards} retards`, phrase: 'arriver à l’heure en cours' });
   if (s.moy !== null && s.moy !== undefined && s.moy < seuils[0]) axes.push({ cat: 'notes', poids: 3 + (seuils[0] - s.moy) / 4, texte: `Moyenne ${fmt1(s.moy)}/20`, phrase: `remonter son niveau${d.apsaFaible ? enMin(d.apsaFaible) : ''}` });
@@ -259,10 +262,10 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
   const classeAxe = (k, v) => (v === null || v === undefined ? '' : k === 'niveau' ? `classe ${fmt1(moyClasse)}/20` : `classe ${fmt1(v)}`);
   const signaux = [];
   if (s.vs.abs) signaux.push(`❌ ${s.vs.abs} absence${s.vs.abs > 1 ? 's' : ''}`);
-  if (s.vs.tenue) signaux.push(`👕 ${s.vs.tenue} oubli${s.vs.tenue > 1 ? 's' : ''} de tenue`);
+  if (s.vs.tenue) signaux.push(`${mot('iconeTenue')} ${s.vs.tenue} ${oubliTenue(s.vs.tenue)}`);
   if (s.vs.retards) signaux.push(`⏰ ${s.vs.retards} retard${s.vs.retards > 1 ? 's' : ''}`);
   const sante = bilanLecons(el, periode).sante + evals.filter(e => SANTE.includes(Donnees.note(e.id, el.id))).length;
-  if (sante) signaux.push(`🩺 ${sante} fois blessé·e / malade`);
+  if (sante) signaux.push(`🩺 ${sante} fois ${codeDeLaDiscipline('BLE') ? 'blessé·e / malade' : 'malade'}`);
   let html = `<div class="synthese-fiche">
     <div class="radar-bloc">${radarSynthese(s.valeurs, classe)}
       <p class="aide legende-graph"><span class="trait-eleve"></span> ${esc(opts.anonyme ? 'élève' : el.prenom)} <span class="trait-classe"></span> moyenne de la classe</p></div>
@@ -323,7 +326,7 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
     const parApsa = Donnees.liste('suivis', x => x.eleveId === el.id && x.texte && x.apsa !== ID_BILAN_NOTES && !/^appréciation /i.test(x.apsa || ''));
     html += `<details class="depli-fiche"${suivi?.texte || parApsa.length ? ' open' : ''}><summary>✏️ Mes observations <span class="aide">(restent dans le carnet, jamais dans le PDF)</span></summary>
       <textarea class="obs-fiche" data-obs-notes rows="3" placeholder="Bilan, attitude, progrès, objectifs fixés avec l’élève…">${esc(suivi?.texte || '')}</textarea>
-      ${suivi?.texte ? `<p class="aide">Modifié le ${dateHeure(suivi.maj)}</p>` : ''}
+      ${suivi?.texte && suivi.maj > 1 ? `<p class="aide">Modifié le ${dateHeure(suivi.maj)}</p>` : ''}
       ${parApsa.length ? `<p class="aide">Notées dans les fiches ${esc(mot('lecons'))} :</p><ul class="liste-fiche">${parApsa.map(x => `<li><b>${esc(x.apsa)}</b> : ${esc(x.texte)}</li>`).join('')}</ul>` : ''}</details>`;
   }
   return html;

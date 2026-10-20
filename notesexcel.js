@@ -24,6 +24,10 @@ function exporterNotesExcel(c, { anonyme = false } = {}) {
   // Anonyme : « DISP » (dispense, donc santé) devient « NE » (non noté).
   const noteExportee = n => (anonyme && CODES_SANTE.includes(n) ? 'NE' : n);
   const prof = anonyme ? '' : reglage('apparence').prof;
+  // Codes de la discipline (EPS : ABS, DISP, NE, BLE, MAL, AUT ; SVT : ABS, NE, MAL, AUT, NR).
+  const codes = ['ABS', 'DISP', 'NE', 'BLE', 'MAL', 'AUT', 'NR'].filter(k => k === 'ABS' || codeDeLaDiscipline(k));
+  const precision = { BLE: ' (blessé)', MAL: ' (malade)', AUT: ' (autre)', NR: ' (non rendu)' };
+  const listeEt = (liste, et) => liste.join(', ').replace(/, ([^,]*)$/, ` ${et} $1`);
   const lisezMoi = {
     nom: 'Lisez-moi', largeurs: [100],
     lignes: [
@@ -34,7 +38,7 @@ function exporterNotesExcel(c, { anonyme = false } = {}) {
       [E('Comment s’en servir')],
       ['Onglet « Synthèse » : les notes de toutes les évaluations et les moyennes (à lire seulement : il n’est pas repris à l’import).'],
       ['Puis un onglet par évaluation : une ligne par élève, la note, puis un degré de maîtrise par compétence.'],
-      [`Note : un nombre (jusqu’au barème « Noté sur »), ou ${anonyme ? 'ABS, NE' : 'ABS, DISP, NE, BLE (blessé), MAL (malade), AUT (autre)'} · Degré : 1, 2, 3 ou 4.`],
+      [`Note : un nombre (jusqu’au barème « Noté sur »), ou ${anonyme ? 'ABS, NE' : codes.map(k => k + (precision[k] || '')).join(', ')} · Degré : 1, 2, 3 ou 4.`],
       ...(anonyme ? [] : [
         ['Tu peux compléter ou corriger les cases, ajouter des élèves (nom et prénom) ou un onglet d’évaluation construit sur le même modèle.'],
         ['Ne supprime pas la colonne A ni les lignes masquées : elles permettent à l’appli de reconnaître les évaluations, les compétences et les élèves.'],
@@ -55,7 +59,7 @@ function exporterNotesExcel(c, { anonyme = false } = {}) {
     nom: 'Synthèse', largeurs: [10, 18, 16, ...evals.map(() => 12), ...moyennes.map(() => 11)], colonnesMasquees: [0], figer: [3, 3],
     lignes: [
       ['#synthese', { v: `Notes — ${c.nom}`, style: 'titre' }],
-      ['', A(`Moyennes sur 20, pondérées par les coefficients ; ${anonyme ? 'ABS et NE' : 'ABS, DISP, NE, BLE, MAL et AUT'} ne comptent pas.`)],
+      ['', A(`Moyennes sur 20, pondérées par les coefficients ; ${anonyme ? 'ABS et NE' : listeEt(codes, 'et')} ne comptent pas.`)],
       ['#eleve', E('Nom'), E('Prénom'), ...evals.map(e => E(`${e.titre} (${dateFr(e.date).slice(0, 5)}) /${fmt(e.max)}`)), ...moyennes.map(m => E(m.titre))],
       ...eleves.map(el => [idEl(el), nomEl(el), prenomEl(el), ...evals.map(e => valeurSynthese(Donnees.note(e.id, el.id))),
         ...moyennes.map(m => { const v = moyenneEleve(el.id, m.evals); return v === null ? '' : Math.round(v * 100) / 100; })]),
@@ -71,13 +75,16 @@ function exporterNotesExcel(c, { anonyme = false } = {}) {
       lignes: [
         ['#eval', E('Évaluation'), { v: e.titre, style: 'titre' }],
         [anonyme ? '' : e.id, E('Date'), T(dateFr(e.date))],
-        ['', E('APSA'), T(e.apsa || '')],
+        ['', E(mot('activite')), T(e.apsa || '')],
         ['', E('Noté sur'), e.max],
         ['', E('Coefficient'), e.coef],
-        [e.referentiel || '', E('Champ d’apprentissage'), T(e.ca ? `${e.ca}${ref?.champs[e.ca] ? ' — ' + ref.champs[e.ca].titre : ''}` : '')],
+        // (Sans champ d'apprentissage hors EPS : le référentiel ; sa colonne A sert à l'import, comme celle du champ.)
+        profil().champsSequence
+          ? [e.referentiel || '', E('Champ d’apprentissage'), T(e.ca ? `${e.ca}${ref?.champs[e.ca] ? ' — ' + ref.champs[e.ca].titre : ''}` : '')]
+          : [e.referentiel || '', E('Référentiel'), T(ref?.nom || '')],
         [],
         ['#eleve', E('Nom'), E('Prénom'), E('Note'), ...comps.map(a => E(a.code))],
-        ['#type', A('Type'), A(''), A(`sur ${fmt(e.max)}, ou ${anonyme ? 'ABS / NE' : 'ABS / DISP / NE / BLE / MAL / AUT'}`), ...comps.map(a => A(`Degré 1 à 4 — ${a.texte}`))],
+        ['#type', A('Type'), A(''), A(`sur ${fmt(e.max)}, ou ${anonyme ? 'ABS / NE' : codes.join(' / ')}`), ...comps.map(a => A(`Degré 1 à 4 — ${a.texte}`))],
         [],
         ['#comp', '', '', '', ...comps.map(a => a.id)],
         ...eleves.map(el => {
@@ -113,7 +120,7 @@ function lireEvalsExcel(feuilles) {
       const cle = sansAccent(l[1]);
       if (cle) meta[cle] = l[2] || '';
       if (cle === 'date' && l[0]) fichierId = l[0];
-      if (cle.startsWith('champ') && l[0]) refId = l[0];
+      if ((cle.startsWith('champ') || cle === 'referentiel') && l[0]) refId = l[0];
     }
     const typeL = L.slice(h + 1).find(l => l[0] === '#type' || sansAccent(l[1]) === 'type');
     const idsL = L.slice(h + 1).find(l => l[0] === '#comp');
@@ -130,7 +137,7 @@ function lireEvalsExcel(feuilles) {
     const coef = nombre(String(meta['coefficient'] || '').replace(',', '.'));
     res.push({
       onglet: f.nom, fichierId, refId, titre: (meta['evaluation'] || f.nom).trim(),
-      date: lireDateExcel(meta['date']) || aujourdhui(), apsa: (meta['apsa'] || '').trim(),
+      date: lireDateExcel(meta['date']) || aujourdhui(), apsa: (meta['apsa'] || meta['theme'] || '').trim(), // (« Thème » : classeur d'un carnet SVT)
       ca: (String(meta['champ d\'apprentissage'] || '').match(/^CA\d/i)?.[0] || '').toUpperCase(),
       max: max > 0 ? max : 20, coef: coef !== null && coef >= 0 ? coef : 1, colonnes, lignes,
     });
