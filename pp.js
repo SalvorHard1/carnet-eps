@@ -209,7 +209,7 @@ const enMatieres = noms => {
 // (« pas assez sérieux », « doit participer ») ou si une réserve les suit (« travail insuffisant », « participer davantage »).
 const MOTS_PP = {
   travail: {
-    moins: ['travail insuffisant', 'travail personnel insuffisant', 'manque de travail', 'manque de serieux', 'pas assez de travail', 'travail irregulier',
+    moins: ['travail insuffisant', 'travail personnel insuffisant', 'manque de travail regulier', 'pas apprises', 'pas apprise', 'non fait', 'pas ete rendu', 'manque de travail', 'manque de serieux', 'pas assez de travail', 'travail irregulier',
       'travail superficiel', 'ne travaille pas', 'ne fournit pas', 'travail non fait', 'devoirs non faits', 'lecons non apprises', 'travail non rendu',
       'non rendu', 'pas rendu', 'doit travailler', 'accentuer son travail', 'accentuer ses efforts', 'se mettre au travail', 'travailler davantage',
       'travailler plus', 'davantage de travail', 'plus de travail', 'apprendre rigoureusement', 'apprendre regulierement', 'apprendre ses lecons',
@@ -256,8 +256,13 @@ const RE_NIE_AVANT_PP = /(?:\b(?:pas|plus|jamais|peu|moins|sans|non|aucune?)|man
 const RE_NIE_APRES_PP = /^[a-z']*\s+(?:(?!mais\s)[a-z']+\s+){0,2}?(?:(?:que\s+)?trop peu|pas assez|insuffisa|trop faible|faible|en baisse|irreguli|a revoir|a ameliorer|a developper|a renforcer|a fournir|a accentuer|a retrouver|perfectible|decevant|en recul|limite|trop juste|fragile|inexistant|fait defaut|davantage|en dents de scie)/;
 
 function signauxPP(texte) {
-  let t = ' ' + sansAccent(texte).replace(/[.,;:!?()]+/g, ' . ').replace(/[^a-z0-9'. ]+/g, ' ').replace(/\s+/g, ' ') + ' ';
+  let t = ' ' + sansAccent(texte).replace(/[.!?]+/g, ' . ').replace(/[,;:()]+/g, ' , ').replace(/[^a-z0-9'., ]+/g, ' ').replace(/\s+/g, ' ') + ' ';
   const res = [];
+  // Phrase de conseil (« Un travail régulier est indispensable », « Il faut maintenir… ») : ses mots positifs ne sont pas
+  // des éloges (ils ne comptent pas), sauf s'ils sont niés (« il doit participer » reste négatif).
+  const phrases = t.split(' . '), RE_CONSEIL = /\b(il faut|il faudra|il faudrait|faut|doit|doivent|devra|devrait|indispensable|necessaire|permettrait|pour progresser|possibles?|a fournir|il s'agit)\b/;
+  const debuts = phrases.reduce((l, p) => [...l, l.at(-1) + p.length + 3], [0]);
+  const conseil = i => { const k = debuts.findIndex((d, j) => i >= d && i < (debuts[j + 1] ?? Infinity)); return RE_CONSEIL.test(phrases[k] || ''); };
   const chercher = (m, depuis) => {
     for (let i = t.indexOf(m, depuis); i >= 0; i = t.indexOf(m, i + 1)) if (t[i - 1] === ' ' || t[i - 1] === '\'') return i;
     return -1;
@@ -268,7 +273,7 @@ function signauxPP(texte) {
     for (let i = chercher(m, 0); i >= 0; i = chercher(m, i + 1)) {
       const avant = t.slice(Math.max(0, i - 26), i).replace(/\s+/g, ' '), apres = t.slice(i + m.trimEnd().length, i + m.length + 45).replace(/\s+/g, ' ');
       const neg = RE_NIE_AVANT_PP.test(avant) || RE_NIE_APRES_PP.test(apres);
-      res.push({ k, s: neg ? -1 : 1, mot: m.trim() });
+      if (neg || !conseil(i)) res.push({ k, s: neg ? -1 : 1, mot: m.trim() });
       effacer(i, m.trimEnd().length);
     }
   }
@@ -381,7 +386,10 @@ function mentionProposeePP(niv, a, r) {
   const ok = k => !niv[k] || niv[k] >= 3;
   if (m !== null && m !== undefined && m >= r.felicitations && ok('travail') && ok('comportement') && ok('participation')) return 'felicitations';
   if (m !== null && m !== undefined && m >= r.compliments && ok('travail') && ok('comportement')) return 'compliments';
-  if ((niv.travail >= 3 || niv.progression >= 3) && ok('comportement')) return 'encouragements';
+  // Encouragements : un travail sérieux qui mérite d'être salué — résultats encore modestes, travail très bien, ou
+  // moyenne générale en hausse (d'après les bulletins, pas d'après les mots des collègues).
+  if (niv.travail >= 3 && ok('participation') && ok('comportement')
+    && (niv.resultats <= 2 || niv.travail === 4 || a.details.ecart >= 0.5)) return 'encouragements';
   return 'aucune';
 }
 
@@ -446,7 +454,7 @@ const STABLE_BON_PP = { p: ['Le bon niveau est maintenu.', '{S} {maintient|maint
 const BILANS_PP = {
   4: ['Excellent {per}.', '{S} {réalise|réalisez} un excellent {per}.', 'Très bon {per}.', 'Remarquable {per}.'],
   3: ['Bon {per}.', '{S} {réalise|réalisez} un bon {per}.', '{Per} satisfaisant.', '{Per} réussi.'],
-  2: { b: ['{Per} encourageant, mais encore inégal.', '{Per} en demi-teinte, avec des points encourageants.', '{Per} correct, à consolider.'], n: ['{Per} inégal.', '{Per} moyen.', '{Per} mitigé.'], x: ['{Per} trop juste.', '{Per} en dessous de {ses|vos} possibilités.'] },
+  2: { b: ['{Per} encourageant, mais encore inégal.', '{Per} en demi-teinte, avec des points encourageants.', '{Per} contrasté.'], n: ['{Per} inégal.', '{Per} moyen.', '{Per} mitigé.'], x: ['{Per} trop juste.', '{Per} en dessous de {ses|vos} possibilités.'] },
   1: { b: ['{Per} difficile.', '{Per} compliqué.'], n: ['{Per} difficile.', '{Per} décevant.'], x: ['{Per} très décevant.', '{Per} très insuffisant.', '{Per} nettement insuffisant.', '{Per} alarmant.'] },
 };
 const MATIERES_PHRASES_PP = {
@@ -675,8 +683,8 @@ function htmlReglagePP(r) {
     <div class="ligne">
       <label class="etroit">Félicitations dès<input type="number" name="pp-felicitations" min="0" max="20" step="0.5" value="${r.felicitations}"></label>
       <label class="etroit">Compliments dès<input type="number" name="pp-compliments" min="0" max="20" step="0.5" value="${r.compliments}"></label>
-      <span class="aide">de moyenne générale, avec un travail et un comportement au moins satisfaisants. Encouragements : travail sérieux
-        ou progrès. Avertissement : travail ou comportement au niveau 1.</span>
+      <span class="aide">de moyenne générale, avec un travail et un comportement au moins satisfaisants. Encouragements : travail sérieux,
+        avec des résultats encore modestes, un travail très bien ou une moyenne en hausse. Avertissement : travail ou comportement au niveau 1.</span>
     </div>`;
 }
 
@@ -832,6 +840,7 @@ function htmlTableauPP(c, periode, eleves) {
   for (const { el } of lignes) { const m = appreciationPP(el, periode, r).mention; mentions[m] = (mentions[m] || 0) + 1; }
   const fragiles = matieres.map(n => ({ n, m: moyClasse(n) })).filter(x => x.m !== null).sort((a, b) => a.m - b.m).slice(0, 3);
   return `
+    <div class="outils"><button type="button" data-pp="fiches-pdf" title="Un PDF pour la classe : récapitulatif, puis une fiche par élève">📄 Fiches bilan du conseil (PDF)</button></div>
     <div class="carte pp-bilan-classe">
       <b>Bilan de la classe</b> · ${lignes.length} élèves · moyenne générale ${gen.length ? fmtD(gen.reduce((a, v) => a + v, 0) / gen.length) : '–'}
       · ${Object.entries(MENTIONS_PP).filter(([k]) => mentions[k] && k !== 'aucune').map(([k, n]) => `${mentions[k]} ${esc(n.toLowerCase())}`).join(', ') || 'aucune mention'}
@@ -841,12 +850,12 @@ function htmlTableauPP(c, periode, eleves) {
       <thead><tr><th>Élève</th><th>Moy. gén.</th><th>Évol.</th><th>Abs.</th><th>Mention</th>${matieres.map(n => `<th><span class="pp-vertical">${esc(n)}</span></th>`).join('')}</tr></thead>
       <tbody>${lignes.map(({ el, b, bp }) => {
     const d = bp && b.moyGen !== null && bp.moyGen !== null && bp.moyGen !== undefined ? b.moyGen - bp.moyGen : null;
-    const m = appreciationPP(el, periode, r).mention;
+    const x = appreciationPP(el, periode, r), m = x.mention;
     return `<tr><td><button type="button" class="lien" data-pp="voir-eleve" data-arg="${el.id}">${esc(el.nom)} ${esc(el.prenom)}</button></td>
           <td class="${classeMoyPP(b.moyGen)}"><b>${fmtMoyPP(b.moyGen)}</b></td>
           <td>${d === null ? '' : d >= 0.5 ? `<span class="pp-hausse">▲ ${fmtD(d)}</span>` : d <= -0.5 ? `<span class="pp-baisse">▼ ${fmtD(-d)}</span>` : '='}</td>
           <td>${b.absences ?? ''}${b.nonJustifiees ? ` <small>(${b.nonJustifiees} NJ)</small>` : ''}</td>
-          <td>${m !== 'aucune' ? esc(MENTIONS_PP[m]) : ''}</td>
+          <td>${m !== 'aucune' ? esc(MENTIONS_PP[m]) : ''}${x.enreg?.mention ? ' <span class="aide" title="Choisie par toi (proposée : ' + esc(MENTIONS_PP[x.mentionCalculee]) + ')">✎</span>' : ''}</td>
           ${matieres.map(n => { const v = moyDe(b, n); return `<td class="${classeMoyPP(v)}">${fmtMoyPP(v)}</td>`; }).join('')}</tr>`;
   }).join('')}</tbody>
       <tfoot><tr><th>Moyenne</th><th>${gen.length ? fmtD(gen.reduce((a, v) => a + v, 0) / gen.length) : '–'}</th><th></th><th></th><th></th>${matieres.map(n => `<th>${fmtMoyPP(moyClasse(n))}</th>`).join('')}</tr></tfoot>
@@ -926,15 +935,88 @@ function htmlConseilPP(c, periode, eleves) {
       <button type="button" data-pp="eleve" data-arg="${avec[i + 1]?.id || ''}" ${i < avec.length - 1 ? '' : 'disabled'} aria-label="Élève suivant">▶</button>
       <span class="aide">${i + 1} / ${avec.length}</span><span class="espace"></span>
       <button type="button" data-pp="compte-rendu" title="Copie, pour chaque élève : moyenne, mention et notes du conseil">📋 Compte rendu du conseil</button>
+      <button type="button" data-pp="fiches-pdf" title="Un PDF pour la classe : récapitulatif, puis une fiche par élève (appréciation générale, mention, moyennes, absences, points d’attention, notes du conseil, suivi)">📄 Fiches bilan (PDF)</button>
     </div>
     <div class="pp-conseil-resume carte">
       <b class="pp-grand">${esc(el.nom)} ${esc(el.prenom)}</b> ${besoins}
       <span>Moyenne générale <b class="${classeMoyPP(b.moyGen)}">${fmtMoyPP(b.moyGen)}</b>${b.moyGenClasse ? ` <small>(classe ${fmtD(b.moyGenClasse)})</small>` : ''}
         ${d === null ? '' : d >= 0.5 ? `<span class="pp-hausse">▲ ${fmtD(d)}</span>` : d <= -0.5 ? `<span class="pp-baisse">▼ ${fmtD(-d)}</span>` : '<span class="aide">stable</span>'}</span>
       <span>${b.absences !== null && b.absences !== undefined ? `Absences : ${b.absences} ½ j.${b.nonJustifiees ? ` dont ${b.nonJustifiees} NJ` : ''}` : ''}${b.retards ? ` · ${b.retards} retards` : ''}</span>
+      ${(l => (l.length ? `<span class="pp-points" data-pp-points>⚠ ${l.map(esc).join(' · ')}</span>` : ''))(alertesPP(el, periode, r))}
     </div>
     ${htmlCartePP(el, periode, r, eleves).replace('<details class="pp-collegues"', '<details open class="pp-collegues"')}
     <label class="pp-notes">Notes du conseil (décisions, remarques des collègues)<textarea data-pp-notes="${el.id}" rows="3" maxlength="2000">${esc(enreg?.notes || '')}</textarea></label>`;
+}
+
+/* ---------- 📄 Fiches bilan du conseil (un PDF pour la classe) ----------
+   Page 1 : récapitulatif de la classe ; puis une page par élève : chiffres clés, mention, appréciation générale,
+   moyennes par matière, points forts et à renforcer, points d'attention, notes du conseil, suivi récent.
+   Tout est relu au moment de l'export (mention, niveaux et textes choisis à la main compris). PDF : « Enregistrer au
+   format PDF » dans la fenêtre d'impression, comme la fiche bilan de l'onglet Notes. */
+
+function htmlFicheConseilPP(el, periode, r, c) {
+  const b = bulletinPP(el.id, periode), x = appreciationPP(el, periode, r), d = x.analyse.details;
+  const prec = periodePrecPP(periode), bp = prec && bulletinPP(el.id, prec);
+  const ecart = bp && b.moyGen !== null && b.moyGen !== undefined && bp.moyGen !== null && bp.moyGen !== undefined ? b.moyGen - bp.moyGen : null;
+  const besoins = Object.values(BESOINS).filter(y => y.actif(el)).map(y => y.sigle).join(', ');
+  const alertes = alertesPP(el, periode, r), notes = x.enreg?.notes || '';
+  const journal = journalPP(el.id).slice(0, 4);
+  const abs = b.absences !== null && b.absences !== undefined ? `${b.absences} ½ j.` : '–';
+  return `<section class="fiche-conseil">
+    <h1>${esc(el.nom)} ${esc(el.prenom)}</h1>
+    <p class="sous-titre">${esc(c.nom)} · ${esc(nomPeriodePP(periode))}${besoins ? ` · ${esc(besoins)}` : ''}</p>
+    <table class="chiffres"><tr>
+      <td><small>Moyenne générale</small><b>${fmtMoyPP(b.moyGen)}</b>${b.moyGenClasse ? `<small>classe ${fmtD(b.moyGenClasse)}</small>` : ''}</td>
+      <td><small>Évolution</small><b>${ecart === null ? '–' : (ecart >= 0 ? '+' : '−') + fmtD(Math.abs(ecart))}</b></td>
+      <td><small>Absences</small><b>${esc(abs)}</b>${b.nonJustifiees ? `<small>dont ${b.nonJustifiees} non justifiée${b.nonJustifiees > 1 ? 's' : ''}</small>` : ''}</td>
+      <td><small>Retards</small><b>${b.retards ?? '–'}</b></td>
+      <td class="mention"><small>Mention</small><b>${esc(x.mention === 'aucune' ? '—' : MENTIONS_PP[x.mention])}</b></td>
+    </tr></table>
+    <h2>Appréciation générale</h2>
+    <p class="cadre">${esc(x.texte) || '<i>—</i>'}</p>
+    <h2>Moyennes par matière</h2>
+    <table class="matieres"><thead><tr><th>Matière</th><th>Élève</th><th>Classe</th></tr></thead><tbody>${b.matieres.filter(m => m.moy !== null).map(m => `<tr><td>${esc(nomMatierePP(m.brut))}</td><td><b>${fmtMoyPP(m.moy)}</b></td><td><small>${fmtMoyPP(m.moyClasse)}</small></td></tr>`).join('')}</tbody></table>
+    ${d.forts?.length || d.faibles?.length ? `<p>${d.forts.length ? `<b>Points forts :</b> ${esc(d.forts.map(y => y.nom).join(', '))}` : ''}${d.forts.length && d.faibles.length ? ' · ' : ''}${d.faibles.length ? `<b>À renforcer :</b> ${esc(d.faibles.map(y => y.nom).join(', '))}` : ''}</p>` : ''}
+    ${alertes.length ? `<h2>Points d’attention</h2><ul>${alertes.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
+    ${notes ? `<h2>Notes du conseil</h2><p class="cadre">${esc(notes).replace(/\n/g, '<br>')}</p>` : ''}
+    ${journal.length ? `<h2>Suivi</h2><ul>${journal.map(j => `<li><b>${dateCourtePP(j.date)}</b> · ${esc(TYPES_JOURNAL_PP[j.type] || 'Autre')}${j.objet ? ` — ${esc(j.objet)}` : ''}${j.suite ? ` <i>Suite : ${esc(j.suite)}</i>` : ''}${j.rappel && !j.fait ? ` (rappel le ${dateCourtePP(j.rappel)})` : ''}</li>`).join('')}</ul>` : ''}
+  </section>`;
+}
+
+function exporterFichesPP() {
+  const c = classePP();
+  if (!c) return;
+  enregistrerTextePP();
+  const periode = periodePP(c), r = reglagePP(), eleves = elevesDe(c.id).filter(el => bulletinPP(el.id, periode));
+  if (!eleves.length) return toast(`Aucun bulletin lu pour ${nomPeriodePP(periode)} : rien à exporter.`, 'erreur');
+  const prec = periodePrecPP(periode);
+  const lignes = eleves.map(el => {
+    const b = bulletinPP(el.id, periode), x = appreciationPP(el, periode, r), bp = prec && bulletinPP(el.id, prec);
+    const e = bp && b.moyGen !== null && b.moyGen !== undefined && bp.moyGen !== null && bp.moyGen !== undefined ? b.moyGen - bp.moyGen : null;
+    return `<tr><td>${esc(el.nom)} ${esc(el.prenom)}</td><td><b>${fmtMoyPP(b.moyGen)}</b></td><td>${e === null ? '' : (e >= 0 ? '+' : '−') + fmtD(Math.abs(e))}</td>
+      <td>${b.absences ?? ''}${b.nonJustifiees ? ` (${b.nonJustifiees} NJ)` : ''}</td><td>${x.mention === 'aucune' ? '' : esc(MENTIONS_PP[x.mention])}</td><td>${alertesPP(el, periode, r).length || ''}</td></tr>`;
+  });
+  const gens = eleves.map(el => bulletinPP(el.id, periode).moyGen).filter(v => v !== null && v !== undefined);
+  const mentions = {};
+  for (const el of eleves) { const m = appreciationPP(el, periode, r).mention; mentions[m] = (mentions[m] || 0) + 1; }
+  let zone = $('#zone-impression');
+  if (!zone) { zone = document.createElement('div'); zone.id = 'zone-impression'; document.body.append(zone); }
+  zone.innerHTML = `<div class="impression-pp">
+    <section class="fiche-conseil">
+      <h1>Conseil de classe — ${esc(c.nom)} — ${esc(nomPeriodePP(periode))}</h1>
+      <p class="sous-titre">${eleves.length} élèves · moyenne de la classe ${gens.length ? fmtD(gens.reduce((a, v) => a + v, 0) / gens.length) : '–'} ·
+        ${Object.entries(MENTIONS_PP).filter(([k]) => mentions[k] && k !== 'aucune').map(([k, n]) => `${mentions[k]} ${esc(n.toLowerCase())}`).join(', ') || 'aucune mention'} · édité le ${dateCourtePP(aujourdhui())}</p>
+      <table><thead><tr><th>Élève</th><th>Moy.</th><th>Évol.</th><th>Abs. (½ j.)</th><th>Mention</th><th>Points d’attention</th></tr></thead><tbody>${lignes.join('')}</tbody></table>
+    </section>
+    ${eleves.map(el => htmlFicheConseilPP(el, periode, r, c)).join('')}</div>`;
+  // (Nom proposé pour le PDF : celui de la page.)
+  const titre = document.title;
+  document.title = `Conseil ${c.nom} ${nomPeriodePP(periode)}`;
+  document.body.classList.add('impression-bareme');
+  const fin = () => { document.body.classList.remove('impression-bareme'); document.title = titre; window.removeEventListener('afterprint', fin); };
+  window.addEventListener('afterprint', fin);
+  window.print();
+  setTimeout(fin, 1000);
 }
 
 /* ---------- 🗂 Suivi des élèves ---------- */
@@ -947,14 +1029,18 @@ function alertesPP(el, periode, r) {
   const auj = aujourdhui();
   for (const j of journalPP(el.id)) if (j.rappel && !j.fait && j.rappel <= auj) res.push(`⏰ Rappel du ${dateCourtePP(j.rappel)} : ${j.objet || TYPES_JOURNAL_PP[j.type]}`);
   if (!b) return res;
-  const a = analyserPP(el, periode, r);
+  // D'après ce qui est décidé : niveaux et mention choisis à la main l'emportent sur ceux calculés par l'appli.
+  const x = appreciationPP(el, periode, r), a = x.analyse, niv = x.propose.niveaux, perso = x.enreg?.niveaux || {};
+  const qui = k => (k in perso ? ' (choisi par toi)' : a.details.neg[k]?.length ? ` (${a.details.neg[k].join(', ')})` : '');
+  if (x.mention === 'avTravail' || x.mention === 'avComportement') res.push(`${MENTIONS_PP[x.mention]} ${x.enreg?.mention ? 'décidé' : 'proposé'}`);
   if (b.moyGen !== null && b.moyGen !== undefined && b.moyGen < 10) res.push(`Moyenne générale ${fmtD(b.moyGen)}`);
   if (a.details.ecart !== undefined && a.details.ecart <= -1.5) res.push(`Baisse de ${fmtD(-a.details.ecart)} point${-a.details.ecart >= 2 ? 's' : ''}`);
   const sous10 = b.matieres.filter(m => m.moy !== null && m.moy < 10).length;
   if (sous10 >= 3) res.push(`${sous10} matières sous 10`);
-  if (a.niveaux.travail === 1) res.push(`Travail signalé insuffisant (${a.details.neg.travail.join(', ')})`);
-  if (a.niveaux.comportement === 1) res.push(`Comportement signalé (${a.details.neg.comportement.join(', ')})`);
-  if (a.niveaux.assiduite === 1) res.push(`Absences : ${a.sources.assiduite.split('\n')[0]}`);
+  if (niv.travail === 1) res.push('Travail insuffisant' + qui('travail'));
+  if (niv.comportement === 1) res.push('Comportement à reprendre' + qui('comportement'));
+  if (niv.participation === 1) res.push('Participation très faible' + qui('participation'));
+  if (niv.assiduite === 1) res.push(`Absences : ${a.sources.assiduite.split('\n')[0]}`);
   return res;
 }
 const dateCourtePP = iso => (iso ? new Date(iso + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '');
@@ -1029,6 +1115,13 @@ function dessinerCartePP(id) {
   const ouvert = carte.querySelector('details.pp-collegues')?.open;
   carte.outerHTML = htmlCartePP(Donnees.get('eleves', id), periodePP(c), reglagePP(), elevesDe(c.id));
   if (ouvert) $(`#vue [data-pp-eleve="${id}"] details.pp-collegues`).open = true;
+  // Conseil : les points d'attention du résumé suivent les niveaux et la mention choisis.
+  const points = $('#vue .pp-conseil-resume');
+  if (points) {
+    const el = Donnees.get('eleves', id), l = alertesPP(el, periodePP(c), reglagePP());
+    $('[data-pp-points]', points)?.remove();
+    if (l.length) points.insertAdjacentHTML('beforeend', `<span class="pp-points" data-pp-points>⚠ ${l.map(esc).join(' · ')}</span>`);
+  }
 }
 
 async function actionPP(action, arg, b) {
@@ -1049,6 +1142,7 @@ async function actionPP(action, arg, b) {
       Donnees.supprimer('suivis', idBulletinPP(arg, periode));
       return rendreVue();
     }
+    case 'fiches-pdf': return exporterFichesPP();
     case 'reglages-base': {
       Donnees.ecrire('reglages', { ...Donnees.get('reglages', 'pp'), id: 'pp', ...structuredClone(REGLAGES_DEFAUT.pp) });
       $('#vue [data-pp-reglages]').innerHTML = htmlReglagePP(reglagePP());
@@ -1143,8 +1237,10 @@ document.addEventListener('change', e => {
   if (t.matches('[data-pp-mention]')) {
     const carte = t.closest('[data-pp-eleve]'), c = classePP(), periode = periodePP(c);
     const x = appreciationPP(Donnees.get('eleves', carte.dataset.ppEleve), periode);
+    enregistrerTextePP();
     ecrirePP(carte.dataset.ppEleve, periode, { mention: t.value === x.mentionCalculee ? '' : t.value });
-    return;
+    dessinerCartePP(carte.dataset.ppEleve); // (et, au conseil, les points d'attention de l'élève)
+    return $(`#vue [data-pp-eleve="${carte.dataset.ppEleve}"] [data-pp-mention]`)?.focus();
   }
   if (t.closest('[data-pp-reglages]')) { clearTimeout(minuteurReglagesPP); return reglagesModifiesPP(); }
 });

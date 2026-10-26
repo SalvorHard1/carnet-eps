@@ -307,25 +307,103 @@ function creerClasseExemple(jeu = jeuExemple()) {
    Bulletins inventés (toutes les matières, appréciations des « collègues », absences) pour la période en cours et la
    précédente, quelques notes du conseil et un suivi : l'onglet « Prof principal » est rempli comme une vraie classe.
    Hasard à part (graine 77) : le reste de la classe exemple ne change pas. Les classes exemples créées avant la v0.116
-   sont complétées au démarrage (completerExemplesPP), une seule fois (marque `ppExemple`). */
+   sont complétées au démarrage (completerExemplesPP), une seule fois (marque `ppExemple` = VERSION_PP_EXEMPLE). */
 
 const MATIERES_EXEMPLE = {
   college: ['FRANCAIS', 'MATHEMATIQUES', 'HISTOIRE-GEOGRAPHIE EMC', 'ANGLAIS LV1', 'ESPAGNOL LV2', 'PHYSIQUE-CHIMIE', 'SVT', 'TECHNOLOGIE', 'ARTS PLASTIQUES', 'EDUCATION MUSICALE', 'EPS'],
   lycee: ['FRANCAIS', 'MATHEMATIQUES', 'HISTOIRE-GEOGRAPHIE', 'ANGLAIS LVA', 'ESPAGNOL LVB', 'PHYSIQUE-CHIMIE', 'SVT', 'SES', 'SNT', 'EPS', 'EMC'],
 };
-// Appréciations des collègues : selon la moyenne de la matière, puis une remarque selon le profil de l'élève.
+// Appréciations des collègues, en 2 ou 3 phrases comme sur un vrai bulletin : les résultats (selon la moyenne de la
+// matière), une remarque propre à la matière, sur l'attitude ou selon le profil de l'élève, puis souvent un conseil.
+// Banques larges : dans le bulletin d'un même élève, une phrase n'est jamais écrite deux fois (voir apprExemple).
 const APPR_EXEMPLE = {
-  4: ['Excellent trimestre, travail sérieux et participation pertinente.', 'Très bons résultats, travail sérieux et régulier.', 'Très bon ensemble. Investissement remarquable, continuez ainsi.'],
-  3: ['Bon trimestre, travail sérieux.', 'Bons résultats et bonne participation en classe.', 'Ensemble satisfaisant, continuez ainsi.', 'Assez bon trimestre, le travail est régulier.'],
-  2: ['Résultats corrects mais irréguliers : il faut fournir un travail plus régulier.', 'Un ensemble satisfaisant à l’écrit, mais il faut participer davantage.',
-    'Des résultats justes : le travail personnel doit être plus approfondi.', 'Ensemble moyen, peut mieux faire.', 'Résultats justes, des efforts à poursuivre.'],
-  1: ['Des difficultés : il faut apprendre les leçons régulièrement.', 'Résultats insuffisants, un travail plus régulier est indispensable.', 'Trimestre difficile, des efforts sont à fournir.'],
-  bavard: ['Bavardages trop fréquents.', 'Se disperse souvent en classe.', 'Attitude à revoir : trop de bavardages.'],
-  passive: ['Attitude trop passive en classe.', 'Participation inexistante à l’oral.', 'Doit s’impliquer davantage.'],
-  nonRendu: ['Travail non rendu à plusieurs reprises.', 'Plusieurs devoirs non faits.'],
+  resultats: {
+    4: ['Excellent trimestre : les connaissances sont solides et les méthodes parfaitement maîtrisées.', 'Très bons résultats, fruit d’un travail régulier et approfondi.',
+      'Un trimestre remarquable, avec des évaluations de très bon niveau.', 'Très bon ensemble, aussi bien à l’écrit qu’à l’oral.',
+      'Des résultats brillants tout au long de la période.', 'Un excellent niveau, confirmé à chaque évaluation.', 'Très beau trimestre, sans fausse note.',
+      'Les attendus sont largement dépassés.', 'Une maîtrise remarquable des notions travaillées.'],
+    3: ['Bon trimestre : les notions sont comprises et les résultats réguliers.', 'Des résultats satisfaisants, obtenus grâce à un travail sérieux.',
+      'Un ensemble solide, même si certaines évaluations auraient pu être mieux réussies.', 'Assez bon trimestre, avec des résultats en progrès sur la fin de la période.',
+      'Les notions essentielles sont acquises.', 'Un bon niveau d’ensemble, encore perfectible à l’écrit.', 'Des résultats de bonne tenue.',
+      'Un trimestre réussi dans l’ensemble.', 'Les évaluations sont globalement bien réussies.'],
+    2: ['Des résultats justes, qui ne reflètent pas encore toutes les capacités de l’élève.', 'Un trimestre en demi-teinte : les bases sont là mais restent fragiles.',
+      'Un ensemble moyen, avec des évaluations très inégales.', 'Des résultats corrects à l’oral, plus fragiles à l’écrit.', 'La moyenne reste juste.',
+      'Des acquis encore fragiles, à consolider.', 'Un trimestre inégal, avec quelques évaluations réussies.', 'Les résultats sont tout juste suffisants.',
+      'Des connaissances encore imprécises.'],
+    1: ['Un trimestre difficile : les notions essentielles ne sont pas encore acquises.', 'Des résultats insuffisants, avec de réelles lacunes à combler.',
+      'Les évaluations montrent des difficultés importantes, notamment dans la compréhension des consignes.', 'Les bases ne sont pas maîtrisées.',
+      'Un ensemble très fragile.', 'Des résultats faibles, en dessous des attendus.', 'Les connaissances ne sont pas fixées.',
+      'Les évaluations sont très en deçà des attentes.', 'De grosses difficultés ce trimestre.'],
+  },
+  attitude: {
+    4: ['La participation est active et pertinente, et le travail toujours soigné.', 'Un élément moteur de la classe, toujours volontaire à l’oral.',
+      'Le sérieux et l’implication en classe sont exemplaires.', 'Une curiosité et un enthousiasme qui font plaisir à voir.', 'Le travail est rigoureux et toujours soigné.'],
+    3: ['Le travail est sérieux et la participation régulière.', 'L’attitude en classe est positive et le travail régulier.',
+      'Bonne implication en classe, même si l’oral pourrait être plus fréquent.', 'Un travail appliqué et une bonne écoute en classe.', 'Une attitude agréable et constructive.'],
+    2: ['Le travail personnel doit être plus régulier, en particulier l’apprentissage des leçons.', 'L’attitude est correcte mais la participation reste trop discrète.',
+      'Des efforts sont visibles, mais le travail à la maison manque encore de rigueur.', 'Le travail manque de régularité d’une semaine à l’autre.',
+      'Une attention parfois fluctuante en classe.'],
+    1: ['Le travail personnel est insuffisant et les leçons ne sont pas apprises.', 'Le manque de travail régulier explique en grande partie ces résultats.',
+      'Il faut reprendre les bases avec méthode et ne pas hésiter à demander de l’aide.', 'Le travail à la maison est trop léger.', 'Les leçons ne sont pas revues.'],
+  },
+  bavard: ['Les bavardages incessants perturbent le cours et nuisent à la concentration.', 'Trop de dispersion en classe : il faut se recentrer sur le travail demandé.',
+    'Le comportement doit changer : trop de bavardages et d’agitation pendant les cours.', 'Les remarques répétées sur le comportement n’ont pas suffi.',
+    'L’agitation en classe empêche tout travail sérieux.', 'Une attitude dissipée qui gêne le groupe.', 'Les bavardages prennent le pas sur le travail.'],
+  passive: ['L’attitude reste très passive : aucune participation orale, et il faut sans cesse relancer.', 'La participation est quasi inexistante, ce qui freine les progrès.',
+    'Un manque d’implication en classe qui inquiète : il faut se mobiliser.', 'Une attitude en retrait, sans prise de parole.',
+    'Peu d’investissement en classe : il faut sortir de cette passivité.', 'Le désintérêt pour le cours est manifeste.'],
+  nonRendu: ['Plusieurs devoirs n’ont pas été rendus, ce qui pèse lourdement sur la moyenne.', 'Le travail à la maison est trop souvent non fait.',
+    'Des devoirs non faits à plusieurs reprises.', 'Le travail demandé n’est pas rendu dans les délais.'],
+  conseil: {
+    haut: ['Continuez ainsi.', 'Il faut maintenir cette belle dynamique.', 'Bravo, poursuivez dans cette voie.', 'Félicitations pour ce travail.', 'Un très bon état d’esprit.'],
+    moyen: ['Il faut approfondir les révisions avant chaque évaluation.', 'Une participation orale plus fréquente permettrait de progresser.',
+      'Il faut viser davantage de rigueur dans la rédaction.', 'Des fiches de révision aideraient à mieux fixer les notions.', 'Les exercices d’entraînement doivent être faits avec soin.'],
+    bas: ['Un travail régulier, dès maintenant, est indispensable pour progresser.', 'Il faut profiter de l’aide proposée et reprendre les leçons chaque semaine.',
+      'Courage : avec un travail régulier, des progrès sont possibles.', 'Il faut se remettre au travail sans tarder.', 'L’aide aux devoirs serait un vrai soutien.'],
+  },
 };
+// Remarques propres à la matière : [réussites, difficultés].
+const MATIERE_APPR_EXEMPLE = [
+  [/FRANCAIS/, ['L’expression écrite est riche et soignée.', 'Les analyses de textes sont fines et bien argumentées.'], ['L’expression écrite reste à travailler, notamment l’orthographe.', 'Les analyses de textes manquent encore de précision.']],
+  [/MATH/, ['Les raisonnements sont rigoureux et bien rédigés.', 'Les méthodes de calcul sont bien maîtrisées.'], ['Les méthodes de calcul doivent être consolidées.', 'Les raisonnements manquent de rigueur dans la rédaction.']],
+  [/ANGLAIS/, ['L’oral est fluide et le vocabulaire riche.', 'La compréhension écrite comme orale est très bonne.'], ['Le vocabulaire doit être appris régulièrement.', 'L’expression orale reste hésitante.']],
+  [/ESPAGNOL/, ['La prononciation est soignée et l’expression aisée.', 'Les textes sont bien compris.'], ['La conjugaison reste à revoir.', 'La compréhension orale est encore difficile.']],
+  [/HISTOIRE|EMC/, ['Les repères sont maîtrisés et les analyses de documents pertinentes.', 'Les connaissances sont précises et bien mobilisées.'], ['Les repères chronologiques sont à revoir.', 'L’analyse de documents manque encore de méthode.']],
+  [/SVT/, ['La démarche expérimentale est bien conduite.', 'Les schémas sont précis et bien légendés.'], ['Les schémas manquent de précision.', 'Les notions de cours doivent être mieux apprises.']],
+  [/PHYSIQUE|SNT/, ['Les comptes rendus sont clairs et rigoureux.', 'Les manipulations sont bien menées.'], ['La rédaction des comptes rendus manque de rigueur.', 'Les formules doivent être mieux maîtrisées.']],
+  [/EPS/, ['L’engagement moteur est de grande qualité.', 'Les rôles d’arbitre et d’observateur sont très bien tenus.'], ['L’engagement dans les activités doit être plus constant.', 'Les rôles d’arbitre et d’observateur sont à mieux assumer.']],
+  [/SES/, ['Les notions économiques sont bien comprises.', 'L’argumentation est structurée.'], ['Les notions économiques restent floues.', 'L’argumentation doit être mieux construite.']],
+  [/ARTS|MUSICALE|TECHNO/, ['Les projets sont menés avec soin et créativité.', 'Les productions sont abouties.'], ['Les productions manquent d’investissement.', 'Les projets ne sont pas toujours menés à terme.']],
+];
 
-function remplirPPExemple(jeu, c) {
+// Appréciation d'un collègue : n = niveau de la moyenne (1 à 4), x = profil de l'élève.
+// deja : phrases déjà écrites dans le bulletin de l'élève (deux collègues n'écrivent pas mot pour mot la même chose) ;
+// une banque épuisée laisse la place à une autre sorte de remarque.
+function apprExemple(brut, n, x, au, alea, deja) {
+  const prendre = l => { const libres = (l || []).filter(p => !deja.has(p)); if (!libres.length) return null; const p = au(libres); deja.add(p); return p; };
+  if (alea() < 0.08) return ''; // (quelques cases vides, comme sur un vrai bulletin)
+  const voisin = n >= 3 ? n - 1 : n + 1;
+  const phrases = [prendre(APPR_EXEMPLE.resultats[n]) || prendre(APPR_EXEMPLE.resultats[voisin]) || au(APPR_EXEMPLE.resultats[n])];
+  const profil = ['bavard', 'passive', 'nonRendu'].find(f => x[f] && alea() < 0.7);
+  const propre = MATIERE_APPR_EXEMPLE.find(([re]) => re.test(brut));
+  const remarque = (profil && prendre(APPR_EXEMPLE[profil])) || (propre && alea() < 0.55 && prendre(propre[n >= 3 ? 1 : 2])) || prendre(APPR_EXEMPLE.attitude[n]);
+  if (remarque) phrases.push(remarque);
+  const cleConseil = n >= 4 ? 'haut' : n >= 2 && !profil ? 'moyen' : 'bas';
+  if (alea() < 0.6) { const c = prendre(APPR_EXEMPLE.conseil[cleConseil]); if (c) phrases.push(c); }
+  // (Toujours au moins deux phrases, une centaine de caractères : on complète si besoin.)
+  for (const l of [propre?.[n >= 3 ? 1 : 2], APPR_EXEMPLE.attitude[n], APPR_EXEMPLE.conseil[cleConseil], APPR_EXEMPLE.attitude[voisin]]) {
+    if (phrases.length >= 2 && phrases.join(' ').length >= 90) break;
+    const p = prendre(l);
+    if (p) phrases.push(p);
+  }
+  return phrases.join(' ');
+}
+
+// (Version des bulletins inventés : la monter refait les bulletins des classes exemples existantes au démarrage.)
+const VERSION_PP_EXEMPLE = 4;
+
+// bulletinsSeuls : mise à jour d'une classe déjà remplie (la case PP, les notes du conseil et le suivi ne bougent pas).
+function remplirPPExemple(jeu, c, bulletinsSeuls = false) {
   const P = jeu.prefixe || 'exemple-', alea = hasardExemple(77), au = l => l[Math.floor(alea() * l.length)];
   const bruit = a => (alea() * 2 - 1) * a, arr = n => Math.round(Math.max(2, Math.min(19.5, n)) * 100) / 100;
   const matieres = /^(2nde|1re|Tle)/.test(jeu.niveau) ? MATIERES_EXEMPLE.lycee : MATIERES_EXEMPLE.college;
@@ -347,11 +425,10 @@ function remplirPPExemple(jeu, c) {
     const gens = moys.map(l => arr(l.reduce((a, v) => a + v, 0) / l.length));
     const genClasse = arr(gens.reduce((a, v) => a + v, 0) / gens.length);
     eleves.forEach((x, k) => {
+      const deja = new Set();
       const mats = matieres.map((brut, j) => {
         const moy = moys[k][j], n = moy >= 15.5 ? 4 : moy >= 12.5 ? 3 : moy >= 9.5 ? 2 : 1;
-        let appr = alea() < 0.1 ? '' : au(APPR_EXEMPLE[n]);
-        for (const f of ['bavard', 'passive', 'nonRendu']) if (x[f] && appr && alea() < 0.6) appr += ' ' + au(APPR_EXEMPLE[f]);
-        return { brut, moy, moyClasse: moyClasse[j], appr };
+        return { brut, moy, moyClasse: moyClasse[j], appr: apprExemple(brut, n, x, au, alea, deja) };
       });
       const abs = x.bavard ? 6 : x.passive ? 8 : x.tenue ? 3 : Math.floor(alea() * 4);
       Donnees.ecrire('suivis', {
@@ -360,6 +437,7 @@ function remplirPPExemple(jeu, c) {
       });
     });
   });
+  if (bulletinsSeuls) { Donnees.ecrire('classes', { ...Donnees.get('classes', c.id), ppExemple: VERSION_PP_EXEMPLE }); return; }
   // Conseil de la période en cours : quelques notes ; suivi : entretiens pour les élèves à suivre.
   const per = aRemplir.at(-1), trouver = f => eleves.find(f);
   const notes = [[trouver(x => x.bavard), 'Comportement évoqué par plusieurs collègues. Rencontre avec la famille proposée.'],
@@ -375,16 +453,17 @@ function remplirPPExemple(jeu, c) {
   journal.forEach(([x, jours, type, objet, suite, rappel], k) => {
     if (x) Donnees.ecrire('suivis', { id: `${P}ppj${k + 1}`, eleveId: x.id, apsa: 'pp journal', pp: true, date: decalerJours(auj, jours), type, objet, suite, rappel, fait: false });
   });
-  Donnees.ecrire('classes', { ...Donnees.get('classes', c.id), pp: true, ppExemple: true });
+  Donnees.ecrire('classes', { ...Donnees.get('classes', c.id), pp: true, ppExemple: VERSION_PP_EXEMPLE });
 }
 
 // Classes exemples créées par une version d'avant l'espace professeur principal : on les complète, une seule fois
-// (décocher « Je suis PP » ensuite ne les fait pas revenir). Suivis PP d'élèves exemples supprimés : retirés.
+// (décocher « Je suis PP » ensuite ne les fait pas revenir) ; celles d'une version précédente des bulletins inventés :
+// seuls les bulletins sont refaits. Suivis PP d'élèves exemples supprimés : retirés.
 function completerExemplesPP() {
-  for (const c of Donnees.liste('classes', x => x.exemple && !x.ppExemple && x.id.startsWith('exemple-'))) {
+  for (const c of Donnees.liste('classes', x => x.exemple && x.ppExemple !== VERSION_PP_EXEMPLE && x.id.startsWith('exemple-'))) {
     const jeu = [EXEMPLES.eps, EXEMPLES.svt, ...Object.values(EXEMPLES_EN_PLUS).flat()].find(j => idClasseExemple(j) === c.id && j.nom === c.nom)
       || [jeuExemple(), ...exemplesEnPlus()].find(j => idClasseExemple(j) === c.id);
-    if (jeu) remplirPPExemple(jeu, c);
+    if (jeu) remplirPPExemple(jeu, c, !!c.ppExemple);
   }
   for (const s of Donnees.liste('suivis', x => x.pp && x.eleveId?.startsWith('exemple-') && !Donnees.get('eleves', x.eleveId))) Donnees.supprimer('suivis', s.id);
 }
