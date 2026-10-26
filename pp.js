@@ -310,9 +310,10 @@ function analyserPP(el, periode, r = reglagePP()) {
       if (net < 0) { neg.push(nom); mots.neg.push(`${nom} (${s.filter(x => x.s < 0).map(x => '« ' + x.mot + ' »').join(', ')})`); }
     });
     details.neg[k] = neg; details.pos[k] = pos;
-    const P = pos.length, M = neg.length;
+    // (Proportions : sur 11 matières, 3 remarques ne font pas un travail « insuffisant » ; sur 4, si.)
+    const P = pos.length, M = neg.length, part = M / Math.max(1, avecAppr);
     let n = null;
-    if (P + M) n = M >= 3 || (M >= 2 && !P) ? 1 : M && M >= P ? 2 : P >= 3 && !M ? 4 : 3;
+    if (P + M) n = M >= 2 && part >= 0.45 && M > P ? 1 : M && (M >= P || part >= 0.25) ? 2 : P >= 3 && !M && P / Math.max(1, avecAppr) >= 0.4 ? 4 : 3;
     niveaux[k] = n;
     sources[k] = P + M ? [mots.pos.length ? '👍 ' + mots.pos.join(' ; ') : '', mots.neg.length ? '👎 ' + mots.neg.join(' ; ') : ''].filter(Boolean).join('\n')
       : `Aucune appréciation n’en parle (${avecAppr} appréciation${avecAppr > 1 ? 's' : ''} lue${avecAppr > 1 ? 's' : ''})`;
@@ -392,74 +393,76 @@ function mentionProposeePP(niv, a, r) {
 // Niveaux 1 et 2 : une liste par ton (b bienveillant, n neutre, x exigeant). Style télégraphique : listes `t`.
 const PHRASES_PP = {
   resultats: {
-    4: { p: ['{S} {obtient|obtenez} d’excellents résultats.', 'Les résultats sont excellents.', '{S} {obtient|obtenez} de très bons résultats dans l’ensemble des matières.'], t: ['Excellents résultats.', 'Très bons résultats.'] },
-    3: { p: ['{S} {obtient|obtenez} de bons résultats.', 'Les résultats sont satisfaisants.', 'Les résultats sont solides dans l’ensemble.'], t: ['Bons résultats.', 'Résultats satisfaisants.'] },
-    2: { p: { b: ['Les résultats sont encourageants mais encore fragiles.', 'Les résultats restent justes : {s} {peut|pouvez} faire mieux.'], n: ['Les résultats sont moyens.', 'Les résultats restent justes.'], x: ['Les résultats sont trop justes.', 'Les résultats sont en deçà des attentes.'] },
-      t: { b: ['Résultats encore fragiles.'], n: ['Résultats moyens.', 'Résultats justes.'], x: ['Résultats trop justes.'] } },
-    1: { p: { b: ['Les résultats sont difficiles, mais {il ne faut pas se décourager|ne vous découragez pas}.', 'Les résultats restent insuffisants : il faut s’accrocher.'], n: ['Les résultats sont insuffisants.'], x: ['Les résultats sont très insuffisants.', 'Les résultats sont nettement insuffisants.'] },
-      t: { b: ['Résultats à redresser.'], n: ['Résultats insuffisants.'], x: ['Résultats très insuffisants.'] } },
+    4: { p: ['{S} {obtient|obtenez} d’excellents résultats.', 'Les résultats sont excellents.', '{S} {obtient|obtenez} de très bons résultats dans l’ensemble des matières.', 'Les résultats sont remarquables.'],
+      t: ['Excellents résultats.', 'Très bons résultats.', 'Résultats remarquables.'] },
+    3: { p: ['{S} {obtient|obtenez} de bons résultats.', 'Les résultats sont satisfaisants.', 'Les résultats sont solides dans l’ensemble.', 'Les résultats sont bons.'],
+      t: ['Bons résultats.', 'Résultats satisfaisants.', 'Résultats solides.'] },
+    2: { p: { b: ['Les résultats sont encourageants mais encore fragiles.', 'Les résultats restent justes : {s} {peut|pouvez} faire mieux.'], n: ['Les résultats sont moyens.', 'Les résultats restent justes.', 'Les résultats sont fragiles.'], x: ['Les résultats sont trop justes.', 'Les résultats sont en deçà des attentes.'] },
+      t: { b: ['Résultats encore fragiles.', 'Résultats à consolider.'], n: ['Résultats moyens.', 'Résultats justes.'], x: ['Résultats trop justes.', 'Résultats en deçà des attentes.'] } },
+    1: { p: { b: ['Les résultats sont difficiles, mais {il ne faut pas se décourager|ne vous découragez pas}.', 'Les résultats restent faibles : il faut s’accrocher.'], n: ['Les résultats sont insuffisants.', 'Les résultats sont en dessous des attentes.', 'Les résultats sont faibles.'], x: ['Les résultats sont très insuffisants.', 'Les résultats sont très faibles.', 'Les résultats sont nettement en dessous des attentes.'] },
+      t: { b: ['Résultats à redresser.', 'Résultats difficiles.'], n: ['Résultats insuffisants.', 'Résultats faibles.'], x: ['Résultats très insuffisants.', 'Résultats très faibles.', 'Résultats alarmants.', 'Résultats nettement insuffisants.'] } },
   },
   travail: {
-    4: { p: ['{S} {fait|faites} preuve d’un travail sérieux et régulier.', 'Le travail est sérieux et régulier.', '{S} {fournit|fournissez} un travail de grande qualité.'], t: ['Travail sérieux et régulier.', 'Excellent travail.'] },
-    3: { p: ['Le travail est sérieux.', '{S} {travaille|travaillez} avec sérieux.', 'Le travail fourni est sérieux dans l’ensemble.'], t: ['Travail sérieux.', 'Bon travail.'] },
-    2: { p: { b: ['Le travail doit gagner en régularité{mat}.', '{S} {doit|devez} fournir un travail plus régulier{mat}.'], n: ['Le travail est irrégulier{mat}.', 'Le travail personnel reste irrégulier{mat}.'], x: ['Le travail personnel est insuffisant{mat}.', '{S} {doit|devez} fournir davantage de travail{mat}.'] },
-      t: { b: ['Travail à rendre plus régulier{mat}.'], n: ['Travail irrégulier{mat}.'], x: ['Travail insuffisant{mat}.'] } },
-    1: { p: { b: ['Le travail personnel doit absolument devenir plus régulier{mat}.', '{S} {doit se|devez vous} mettre au travail{mat} sans attendre.'], n: ['Le travail est insuffisant{mat}.', 'Le travail personnel est très insuffisant{mat}.'], x: ['Le travail est très insuffisant{mat}.', 'Le manque de travail est préoccupant{mat}.'] },
-      t: { b: ['Travail à reprendre en main{mat}.'], n: ['Travail insuffisant{mat}.'], x: ['Travail très insuffisant{mat}.'] } },
+    4: { p: ['{S} {fait|faites} preuve d’un travail sérieux et régulier.', 'Le travail est sérieux et régulier.', '{S} {fournit|fournissez} un travail de grande qualité.', 'Le travail est exemplaire.'], t: ['Travail sérieux et régulier.', 'Excellent travail.', 'Travail exemplaire.'] },
+    3: { p: ['Le travail est sérieux.', '{S} {travaille|travaillez} avec sérieux.', 'Le travail fourni est sérieux dans l’ensemble.', 'Le travail est régulier.'], t: ['Travail sérieux.', 'Bon travail.', 'Travail régulier.'] },
+    2: { p: { b: ['Le travail doit gagner en régularité{mat}.', 'Le travail personnel mérite d’être approfondi{mat}.'], n: ['Le travail est irrégulier{mat}.', 'Le travail personnel reste irrégulier{mat}.', 'Le travail manque de régularité{mat}.'], x: ['Le travail personnel ne suffit pas{mat}.', '{S} {doit|devez} fournir un travail plus conséquent{mat}.', 'Le travail personnel est superficiel{mat}.'] },
+      t: { b: ['Travail à approfondir{mat}.', 'Régularité à trouver dans le travail{mat}.'], n: ['Travail irrégulier{mat}.', 'Travail inégal{mat}.'], x: ['Travail superficiel{mat}.', 'Travail personnel trop léger{mat}.'] } },
+    1: { p: { b: ['Le travail personnel doit absolument devenir régulier{mat}.', '{S} {doit se|devez vous} mettre au travail sans attendre{mat}.'], n: ['Le travail fourni ne suffit pas{mat}.', 'Le travail personnel fait défaut{mat}.', 'Le travail est insuffisant{mat}.'], x: ['Le manque de travail est préoccupant{mat}.', 'Le travail personnel est quasi inexistant{mat}.', 'Le travail est très insuffisant{mat}.'] },
+      t: { b: ['Travail à reprendre en main{mat}.', 'Mise au travail indispensable{mat}.'], n: ['Travail personnel absent{mat}.', 'Travail insuffisant{mat}.'], x: ['Manque de travail préoccupant{mat}.', 'Travail quasi inexistant{mat}.'] } },
   },
   participation: {
-    4: { p: ['{S} {participe|participez} activement et avec pertinence.', 'La participation en classe est très active.', '{S} {s’implique|vous impliquez} pleinement en classe.'], t: ['Participation très active.'] },
+    4: { p: ['{S} {participe|participez} activement et avec pertinence.', 'La participation en classe est remarquable.', '{S} {s’implique|vous impliquez} pleinement en classe.'], t: ['Participation remarquable.', 'Participation active et pertinente.'] },
     3: { p: ['{S} {participe|participez} volontiers en classe.', 'La participation est bonne.', '{S} {s’implique|vous impliquez} en classe.'], t: ['Bonne participation.', 'Bonne implication en classe.'] },
-    2: { p: { b: ['La participation orale est à développer{mat}.', '{S} {doit|devez} oser davantage prendre la parole{mat}.'], n: ['La participation reste trop discrète{mat}.', 'La participation est irrégulière{mat}.'], x: ['{S} {doit|devez} participer davantage{mat}.', 'L’implication en classe est insuffisante{mat}.'] },
-      t: { b: ['Participation à développer{mat}.'], n: ['Participation discrète{mat}.'], x: ['Participation insuffisante{mat}.'] } },
-    1: { p: { b: ['{S} {doit s’impliquer|devez vous impliquer} bien davantage en classe{mat}.'], n: ['L’attitude en classe est trop passive{mat}.', 'L’implication en classe est très insuffisante{mat}.'], x: ['L’attitude très passive en classe est préjudiciable{mat}.', 'Le manque d’implication en classe est préoccupant{mat}.'] },
-      t: { b: ['Implication à trouver{mat}.'], n: ['Attitude trop passive{mat}.'], x: ['Passivité préoccupante{mat}.'] } },
+    2: { p: { b: ['La participation orale est à développer{mat}.', '{S} {doit|devez} oser prendre la parole{mat}.'], n: ['La participation reste discrète{mat}.', 'La participation est irrégulière{mat}.'], x: ['{S} {doit|devez} participer bien plus{mat}.', 'L’implication en classe ne suffit pas{mat}.'] },
+      t: { b: ['Participation à développer{mat}.', 'Oral à développer{mat}.'], n: ['Participation discrète{mat}.', 'Participation irrégulière{mat}.'], x: ['Participation insuffisante{mat}.', 'Implication trop faible{mat}.'] } },
+    1: { p: { b: ['{S} {doit s’impliquer|devez vous impliquer} bien davantage en classe{mat}.', 'L’implication en classe reste à trouver{mat}.'], n: ['L’attitude en classe est passive{mat}.', 'L’implication en classe est très faible{mat}.'], x: ['L’attitude passive en classe est préjudiciable{mat}.', 'Le manque d’implication en classe est préoccupant{mat}.'] },
+      t: { b: ['Implication à trouver{mat}.'], n: ['Attitude passive{mat}.', 'Implication très faible{mat}.'], x: ['Passivité préoccupante{mat}.'] } },
   },
   comportement: {
-    4: { p: ['Le comportement est exemplaire.', '{S} {a|avez} une attitude exemplaire en classe.'], t: ['Comportement exemplaire.'] },
+    4: { p: ['Le comportement est exemplaire.', '{S} {a|avez} une attitude exemplaire en classe.'], t: ['Comportement exemplaire.', 'Attitude exemplaire.'] },
     3: { p: ['Le comportement est correct.', 'L’attitude en classe est positive.', '{S} {a|avez} un comportement adapté.'], t: ['Comportement correct.', 'Attitude positive.'] },
     2: { p: { b: ['La concentration en classe doit progresser{mat}.', 'Attention aux bavardages et à la dispersion{mat}.'], n: ['Le comportement est parfois à reprendre{mat}.', 'L’attitude en classe manque de concentration{mat}.'], x: ['La dispersion en classe nuit au travail{mat}.', 'Le comportement doit changer{mat}.'] },
-      t: { b: ['Concentration à améliorer{mat}.'], n: ['Comportement parfois à reprendre{mat}.'], x: ['Dispersion qui nuit au travail{mat}.'] } },
-    1: { p: { b: ['Le comportement doit nettement s’améliorer{mat}.'], n: ['Le comportement pose problème{mat}.', 'Le comportement en classe n’est pas acceptable{mat}.'], x: ['Le comportement est inacceptable et nuit au travail de la classe{mat}.'] },
+      t: { b: ['Concentration à améliorer{mat}.', 'Attention aux bavardages{mat}.'], n: ['Comportement parfois à reprendre{mat}.', 'Concentration fragile{mat}.'], x: ['Dispersion qui nuit au travail{mat}.', 'Comportement à corriger{mat}.'] } },
+    1: { p: { b: ['Le comportement doit nettement s’améliorer{mat}.', 'L’attitude en classe doit changer{mat}.'], n: ['Le comportement pose problème{mat}.', 'Le comportement en classe n’est pas acceptable{mat}.'], x: ['Le comportement est inacceptable et nuit à la classe{mat}.', 'Le comportement en classe est inadmissible{mat}.'] },
       t: { b: ['Comportement à améliorer nettement{mat}.'], n: ['Comportement problématique{mat}.'], x: ['Comportement inacceptable{mat}.'] } },
   },
   progression: {
-    4: { p: ['{S} {a|avez} fait de très nets progrès {ce}.', 'Les progrès sont remarquables {ce}.'], t: ['Très nets progrès.'] },
+    4: { p: ['{S} {a|avez} fait de nets progrès {ce}.', 'Les progrès sont remarquables {ce}.'], t: ['Nets progrès.', 'Progrès remarquables.'] },
     3: { p: ['Les progrès sont encourageants.', '{S} {est|êtes} en progrès {ce}.'], t: ['En progrès.', 'Progrès encourageants.'] },
-    2: { p: { b: ['Les résultats sont stables.'], n: ['Les résultats sont stables.'], x: ['Les résultats stagnent.'] }, t: { b: ['Résultats stables.'], n: ['Résultats stables.'], x: ['Résultats qui stagnent.'] } },
-    1: { p: { b: ['Les résultats sont en baisse {ce} : {il faut se ressaisir|il faut vous ressaisir}.'], n: ['Les résultats sont en baisse {ce}.'], x: ['Les résultats sont en net recul {ce}.'] },
-      t: { b: ['Résultats en baisse : se ressaisir.'], n: ['Résultats en baisse.'], x: ['Net recul des résultats.'] } },
+    2: { p: { b: ['Le niveau est stable.', 'Les résultats sont stables.'], n: ['Le niveau est stable.', 'Les résultats sont stables.'], x: ['Le niveau stagne.', 'Les résultats stagnent.'] }, t: { b: ['Niveau stable.'], n: ['Niveau stable.'], x: ['Niveau qui stagne.'] } },
+    1: { p: { b: ['Le niveau baisse {ce} : {il faut se ressaisir|il faut vous ressaisir}.'], n: ['Le niveau est en baisse {ce}.', 'Les résultats sont en baisse {ce}.'], x: ['Le niveau est en net recul {ce}.'] },
+      t: { b: ['Niveau en baisse : se ressaisir.'], n: ['Niveau en baisse.'], x: ['Net recul.'] } },
   },
   assiduite: {
-    4: { p: ['L’assiduité est irréprochable.'], t: ['Assiduité irréprochable.'] },
-    3: { p: ['L’assiduité est satisfaisante.'], t: ['Assiduité satisfaisante.'] },
-    2: { p: { b: ['Attention aux absences{abs}.'], n: ['Les absences sont trop nombreuses{abs}.'], x: ['Les absences{abs} pénalisent le travail.'] },
-      t: { b: ['Attention aux absences{abs}.'], n: ['Absences trop nombreuses{abs}.'], x: ['Absences trop nombreuses{abs}.'] } },
-    1: { p: { b: ['Les absences{abs} sont préoccupantes : la présence en cours est indispensable.'], n: ['Les absences{abs} sont trop nombreuses et pénalisent le travail.'], x: ['Le nombre d’absences{abs} est inacceptable.'] },
-      t: { b: ['Assiduité préoccupante{abs}.'], n: ['Absences trop nombreuses{abs}.'], x: ['Absentéisme inacceptable{abs}.'] } },
+    4: { p: ['L’assiduité est irréprochable.', 'La présence en cours est irréprochable.'], t: ['Assiduité irréprochable.'] },
+    3: { p: ['L’assiduité est bonne.', 'La présence en cours est régulière.'], t: ['Bonne assiduité.', 'Présence régulière.'] },
+    2: { p: { b: ['Attention aux absences{abs}.', 'Vigilance sur les absences{abs}.'], n: ['Les absences sont nombreuses{abs}.', 'Les absences sont à surveiller{abs}.'], x: ['Les absences{abs} pénalisent les apprentissages.', 'Les absences{abs} ne sont pas acceptables.'] },
+      t: { b: ['Attention aux absences{abs}.'], n: ['Absences nombreuses{abs}.', 'Absences à surveiller{abs}.'], x: ['Absences pénalisantes{abs}.'] } },
+    1: { p: { b: ['Les absences{abs} sont préoccupantes : la présence en cours est indispensable.'], n: ['Les absences{abs} sont nombreuses et pénalisent les apprentissages.', 'Les absences{abs} sont préoccupantes.'], x: ['Le nombre d’absences{abs} est inacceptable.'] },
+      t: { b: ['Assiduité préoccupante{abs}.'], n: ['Absences préoccupantes{abs}.'], x: ['Absentéisme inacceptable{abs}.'] } },
   },
 };
 const STABLE_BON_PP = { p: ['Le bon niveau est maintenu.', '{S} {maintient|maintenez} un bon niveau.'], t: ['Bon niveau maintenu.'] };
 const BILANS_PP = {
-  4: ['Excellent {per}.', '{S} {réalise|réalisez} un excellent {per}.', 'Très bon {per}.'],
-  3: ['Bon {per}.', '{S} {réalise|réalisez} un bon {per}.', '{Per} satisfaisant.'],
-  2: { b: ['{Per} encourageant, mais encore inégal.', '{Per} en demi-teinte, avec des points encourageants.'], n: ['{Per} inégal.', '{Per} moyen.'], x: ['{Per} trop juste.', '{Per} en dessous de {ses|vos} possibilités.'] },
-  1: { b: ['{Per} difficile.'], n: ['{Per} difficile.', '{Per} décevant.'], x: ['{Per} très insuffisant.'] },
+  4: ['Excellent {per}.', '{S} {réalise|réalisez} un excellent {per}.', 'Très bon {per}.', 'Remarquable {per}.'],
+  3: ['Bon {per}.', '{S} {réalise|réalisez} un bon {per}.', '{Per} satisfaisant.', '{Per} réussi.'],
+  2: { b: ['{Per} encourageant, mais encore inégal.', '{Per} en demi-teinte, avec des points encourageants.', '{Per} correct, à consolider.'], n: ['{Per} inégal.', '{Per} moyen.', '{Per} mitigé.'], x: ['{Per} trop juste.', '{Per} en dessous de {ses|vos} possibilités.'] },
+  1: { b: ['{Per} difficile.', '{Per} compliqué.'], n: ['{Per} difficile.', '{Per} décevant.'], x: ['{Per} très décevant.', '{Per} très insuffisant.', '{Per} nettement insuffisant.', '{Per} alarmant.'] },
 };
 const MATIERES_PHRASES_PP = {
-  deux: { p: ['De belles réussites {f} ; des difficultés {d}.', 'Des points forts {f}, mais des difficultés {d}.'], t: ['Points forts : {F} ; à renforcer : {D}.'] },
-  forts: { p: ['De belles réussites {f}.', 'Les résultats sont particulièrement solides {f}.'], t: ['Points forts : {F}.'] },
-  faibles: { p: { b: ['Des difficultés {d}, qui demandent une attention particulière.'], n: ['Des difficultés {d}.'], x: ['Des lacunes importantes {d}.'] }, t: { b: ['À renforcer : {D}.'], n: ['À renforcer : {D}.'], x: ['Lacunes : {D}.'] } },
+  deux: { p: ['De belles réussites {f} ; des difficultés {d}.', 'Des points forts {f}, mais des difficultés {d}.'], t: ['Points forts : {F} ; à renforcer : {D}.', 'Réussites : {F} ; difficultés : {D}.'] },
+  forts: { p: ['De belles réussites {f}.', 'Des réussites particulières {f}.'], t: ['Points forts : {F}.', 'Réussites : {F}.'] },
+  faibles: { p: { b: ['Des difficultés {d}, qui demandent une attention particulière.', 'Des difficultés {d}, à surmonter.'], n: ['Des difficultés {d}.'], x: ['Des lacunes importantes {d}.'] }, t: { b: ['À renforcer : {D}.'], n: ['À renforcer : {D}.', 'Difficultés : {D}.'], x: ['Lacunes : {D}.'] } },
 };
 // Buts (verbe à l'infinitif) : selon la rubrique la plus faible.
 const OBJECTIFS_PP = {
-  travail: ['fournir un travail personnel plus régulier', '{se|vous} mettre davantage au travail', 'apprendre {ses|vos} leçons plus régulièrement'],
-  participation: ['{s’|vous }impliquer davantage à l’oral', 'participer plus activement en classe', 'oser prendre la parole'],
-  comportement: ['adopter une attitude plus sérieuse en classe', 'gagner en concentration', 'limiter les bavardages'],
-  resultats: ['consolider {ses|vos} acquis par un travail régulier', 'fournir les efforts nécessaires pour progresser'],
+  travail: ['fournir un travail personnel régulier', '{se|vous} mettre au travail avec sérieux', 'apprendre {ses|vos} leçons chaque semaine', '{s’|vous }organiser pour travailler chaque jour'],
+  participation: ['{s’|vous }impliquer à l’oral', 'participer activement en classe', 'oser prendre la parole', 'prendre part aux échanges en classe'],
+  comportement: ['adopter une attitude sérieuse en classe', 'gagner en concentration', 'limiter les bavardages'],
+  resultats: ['consolider {ses|vos} acquis', 'fournir les efforts nécessaires pour progresser', 'reprendre les bases avec méthode'],
   progression: ['{se|vous} remobiliser pour retrouver un meilleur niveau', 'retrouver de la régularité'],
-  assiduite: ['gagner en assiduité', 'venir en cours plus régulièrement'],
-  haut: ['poursuivre dans cette voie', 'conserver cette belle dynamique', 'maintenir ces efforts'],
+  assiduite: ['gagner en assiduité', 'venir en cours régulièrement'],
+  haut: ['poursuivre dans cette voie', 'conserver cette belle dynamique', 'maintenir ces efforts', 'continuer ainsi'],
 };
 
 function redigerPP(el, periode, a, perso, r, graine = 0) {
@@ -480,9 +483,13 @@ function redigerPP(el, periode, a, perso, r, graine = 0) {
   };
   // « , notamment en anglais » : sauf les matières déjà nommées par la phrase des matières (pas de répétition).
   const citees = rubriquesPP(r, a, perso).includes('matieres') && niv.matieres ? [...d.forts, ...d.faibles].map(x => x.nom) : [];
+  // (Une seule fois par appréciation : pas deux « notamment ».)
+  let matDite = false;
   const listeMat = k => {
     const l = (d.neg[k] || []).filter(n => !citees.includes(n));
-    return l.length && (d.neg[k] || []).length <= 3 ? ', notamment ' + enMatieres(l.slice(0, 2)) : '';
+    if (matDite || !l.length || (d.neg[k] || []).length > 3) return '';
+    matDite = true;
+    return ', notamment ' + enMatieres(l.slice(0, 2));
   };
   const absTexte = () => (d.abs?.abs ? ` (${d.abs.abs} demi-journée${d.abs.abs > 1 ? 's' : ''}${d.abs.nj ? `, dont ${d.abs.nj} non justifiée${d.abs.nj > 1 ? 's' : ''}` : ''})` : '');
   const remplir = (modele, k) => modele
@@ -500,7 +507,7 @@ function redigerPP(el, periode, a, perso, r, graine = 0) {
   const vigil = new Set(actives.filter(k => vigilancePP({ niveaux: niv }, k)));
 
   const construire = (court, exclues = []) => {
-    dejaNomme = false;
+    dejaNomme = false; matDite = false;
     let ecrit = '', dernierPronom = false;
     const moinsDeRepetitions = (tout, voir = brut) => {
       const n = tout.map(x => conflitsAppr(ecrit, voir(x), ignores)), min = Math.min(...n);
@@ -521,7 +528,9 @@ function redigerPP(el, periode, a, perso, r, graine = 0) {
       // (Les résultats comptent double.)
       const base = ['resultats', 'resultats', 'travail', 'participation', 'comportement'].map(k => niv[k]).filter(Boolean);
       if (base.length) {
-        const k = Math.max(1, Math.min(4, Math.round(moyenneListe(base))));
+        // (Jamais plus haut que les résultats : pas d'« Excellent trimestre » avec des résultats seulement satisfaisants.)
+        let k = Math.max(1, Math.min(4, Math.round(moyenneListe(base))));
+        if (niv.resultats) k = Math.min(k, niv.resultats >= 3 ? niv.resultats : niv.resultats + 1);
         const t = remplir(choisir(selonTon(BILANS_PP[k], ton), g('bilan')), k);
         ajouter({ cle: 'bilan', pol: k >= 3 ? 1 : -1, texte: t[0].toUpperCase() + t.slice(1) });
       }
@@ -577,7 +586,11 @@ function redigerPP(el, periode, a, perso, r, graine = 0) {
       if (m.pol && m.cle !== 'bilan') avant = m;
       return t;
     });
-    return corrigerAppr(sortie.join(' '), { retirerAdverbes: true });
+    // (« Bon trimestre… en progrès ce trimestre » : la période déjà nommée n'est pas redite.)
+    let t = sortie.join(' ');
+    const i = t.toLocaleLowerCase('fr').indexOf(per);
+    if (i >= 0) t = t.slice(0, i + per.length) + t.slice(i + per.length).split(' ' + ce).join('');
+    return corrigerAppr(t, { retirerAdverbes: true });
   };
   const essayer = () => {
     let morceaux = construire(false);
@@ -599,7 +612,7 @@ function redigerPP(el, periode, a, perso, r, graine = 0) {
     return { texte, retirees, remarques: relireAppr(texte, el).filter(x => x.grave && !/Il \/ Elle|Elle » pour|Il » pour/.test(x.texte)).length };
   };
   let meilleur = null;
-  for (essai = 0; essai < 4; essai++) {
+  for (essai = 0; essai < 8; essai++) {
     const res = essayer();
     if (!meilleur || res.remarques * 10 + res.retirees.length < meilleur.remarques * 10 + meilleur.retirees.length) meilleur = res;
     if (!res.remarques) break;
@@ -609,6 +622,15 @@ function redigerPP(el, periode, a, perso, r, graine = 0) {
 
 /* ---------- Réglages ---------- */
 
+// Réglages de base d'avant la v0.117 (6 rubriques, 400 caractères) jamais personnalisés : passent aux nouveaux
+// (résultats, travail, comportement, objectif ; 300 caractères). Appelé au démarrage (app.js › migrerTout).
+function migrerReglagePP() {
+  const e = Donnees.get('reglages', 'pp');
+  if (!e || e.longueur !== 400 || JSON.stringify(e.actives) !== JSON.stringify(['resultats', 'travail', 'participation', 'comportement', 'matieres', 'objectif'])) return;
+  const d = REGLAGES_DEFAUT.pp;
+  ecrireReglage('pp', { ordre: [...d.ordre], actives: [...d.actives], longueur: d.longueur });
+}
+
 function reglagePP() {
   const r = reglage('pp');
   r.ordre = [...new Set([...r.ordre.filter(k => RUBRIQUES_PP[k]), ...Object.keys(RUBRIQUES_PP)])];
@@ -616,7 +638,7 @@ function reglagePP() {
   if (!TONS_APPR[r.ton]) r.ton = 'bienveillant';
   if (!STYLES_APPR[r.style]) r.style = 'phrases';
   if (!ADRESSES_PP[r.adresse]) r.adresse = 'il';
-  r.longueur = Math.max(80, Math.min(2000, +r.longueur || 400));
+  r.longueur = Math.max(80, Math.min(2000, +r.longueur || 300));
   if (!(Array.isArray(r.seuils) && r.seuils.length === 3 && r.seuils.every(Number.isFinite))) r.seuils = [10, 13, 16];
   return r;
 }
@@ -625,7 +647,8 @@ function htmlReglagePP(r) {
   const sel = (name, valeurs, actuel) => `<select name="${name}">${Object.entries(valeurs).map(([v, n]) => `<option value="${v}" ${actuel === v ? 'selected' : ''}>${n}</option>`).join('')}</select>`;
   return `
     <p class="aide">Coche les rubriques à aborder et range-les (↑ ↓). Une rubrique où les collègues signalent une difficulté
-      passe en priorité (⚠), même décochée ; touche-la jusqu’à « non mentionné » pour l’écarter.</p>
+      passe en priorité (⚠), même décochée ; touche-la jusqu’à « non mentionné » pour l’écarter.
+      Chaque changement refait aussitôt les appréciations (sauf celles réécrites à la main : 🔄 Reproposer).</p>
     <ol class="rubriques-appr">${r.ordre.map((k, i) => `<li>
       <label class="case"><input type="checkbox" name="pp-${k}" ${r.actives.includes(k) ? 'checked' : ''}>
         <b>${esc(RUBRIQUES_PP[k].nom)}</b> <span class="aide">${esc(RUBRIQUES_PP[k].aide)}</span></label>
@@ -648,6 +671,7 @@ function htmlReglagePP(r) {
       <label class="etroit">4 dès<input type="number" name="pp-s4" min="0" max="20" step="0.5" value="${r.seuils[2]}"></label>
     </div>
     <label class="case"><input type="checkbox" name="pp-mentions" ${r.mentions ? 'checked' : ''}> Proposer une mention</label>
+    <p><button type="button" data-pp="reglages-base" title="Résultats, travail, comportement et objectif ; 300 caractères ; 3e personne, bienveillant, en phrases">↺ Réglages de base</button></p>
     <div class="ligne">
       <label class="etroit">Félicitations dès<input type="number" name="pp-felicitations" min="0" max="20" step="0.5" value="${r.felicitations}"></label>
       <label class="etroit">Compliments dès<input type="number" name="pp-compliments" min="0" max="20" step="0.5" value="${r.compliments}"></label>
@@ -662,7 +686,7 @@ function lireReglagePP(form) {
   return {
     ordre, actives: ordre.filter(k => form.elements['pp-' + k]?.checked), bilan: !!form.elements['pp-bilan']?.checked,
     adresse: v('pp-adresse') || 'il', ton: v('pp-ton') || 'bienveillant', style: v('pp-style') || 'phrases',
-    longueur: Math.max(80, Math.min(2000, +v('pp-longueur') || 400)),
+    longueur: Math.max(80, Math.min(2000, +v('pp-longueur') || 300)),
     seuils: [nb('pp-s2', 10), nb('pp-s3', 13), nb('pp-s4', 16)].sort((a, b) => a - b),
     mentions: !!form.elements['pp-mentions']?.checked, felicitations: nb('pp-felicitations', 16), compliments: nb('pp-compliments', 14),
   };
@@ -690,9 +714,11 @@ function ecrirePP(eleveId, periode, changements) {
 
 const etatPP = { importes: [] }; // bulletins lus mais pas encore rattachés à un élève (en mémoire seulement)
 
+// Classe affichée (on peut être PP de plusieurs classes) : celle choisie dans l'onglet, sinon la classe ouverte si on en
+// est PP, sinon la première classe réelle (avant les classes exemples).
 function classePP() {
   const l = classesPP();
-  return l.find(c => c.id === ui.ppClasse) || l[0] || null;
+  return l.find(c => c.id === ui.ppClasse) || l.find(c => c.id === ui.classeId) || l.find(c => !c.exemple) || l[0] || null;
 }
 function periodePP(c) {
   const ids = periodesAnnee().map(p => p.id);
@@ -712,8 +738,9 @@ function htmlPP() {
   const autres = classesPP();
   return `
     <div class="outils pp-entete">
-      <h2>⭐ ${esc(c.nom)}</h2>
-      ${autres.length > 1 ? `<label class="choix-tri">Classe<select data-pp-classe>${autres.map(x => `<option value="${x.id}" ${x.id === c.id ? 'selected' : ''}>${esc(x.nom)}</option>`).join('')}</select></label>` : ''}
+      <h2>⭐ ${autres.length > 1 ? 'Prof principal' : esc(c.nom)}</h2>
+      ${autres.length > 1 ? `<div class="fiche-onglets pp-classes" role="group" aria-label="Classe">${autres.map(x =>
+    `<button type="button" class="${x.id === c.id ? 'actif' : ''}" data-pp="classe" data-arg="${x.id}">${esc(x.nom)}${x.exemple ? ' <small>(exemple)</small>' : ''}</button>`).join('')}</div>` : ''}
       <div class="fiche-onglets pp-periodes">${periodesAnnee().map(p => `<button type="button" class="${p.id === periode ? 'actif' : ''}" data-pp="periode" data-arg="${p.id}">${p.code}</button>`).join('')}</div>
       <span class="aide">${lus} / ${eleves.length} bulletins lus</span>
     </div>
@@ -756,9 +783,12 @@ function htmlBulletinsPP(c, periode, eleves) {
 async function importerBulletinsPP(fichiers) {
   const c = classePP();
   if (!c || !fichiers.length) return;
+  // Élèves cherchés d'abord dans la classe affichée, puis dans les autres classes réelles dont on est PP
+  // (jamais dans une classe exemple qu'on n'a pas ouverte : ses élèves sont inventés).
   const eleves = elevesDe(c.id), defaut = periodePP(c);
+  const autres = classesPP().filter(x => x.id !== c.id && !x.exemple).flatMap(x => elevesDe(x.id));
   let ok = 0, illisibles = 0;
-  const vus = new Set();
+  const vus = new Set(), ailleurs = new Map(); // ailleurs : classe → nombre de bulletins rangés dans une autre classe
   toast('Lecture des bulletins…');
   for (const f of fichiers) {
     let bulletins;
@@ -767,15 +797,19 @@ async function importerBulletinsPP(fichiers) {
       if (!b.lisible) { illisibles++; continue; }
       const p = b.periode ? periodesAnnee().find(x => x.code === b.periode.type + b.periode.n) || periodesAnnee()[b.periode.n - 1] : null;
       const periode = p?.id || defaut;
-      const el = BulletinPdf.trouverEleve(b.entete, eleves);
+      const el = BulletinPdf.trouverEleve(b.entete, eleves) || BulletinPdf.trouverEleve(b.entete, autres);
       const donnees = { matieres: b.matieres, moyGen: b.moyGen, moyGenClasse: b.moyGenClasse, absences: b.absences, nonJustifiees: b.nonJustifiees, retards: b.retards };
-      if (el && !vus.has(el.id + periode)) { vus.add(el.id + periode); enregistrerBulletinPP(el.id, periode, donnees); ok++; ui.ppPeriode = periode; }
+      if (el && !vus.has(el.id + periode)) {
+        vus.add(el.id + periode); enregistrerBulletinPP(el.id, periode, donnees); ok++; ui.ppPeriode = periode;
+        if (el.classeId !== c.id) ailleurs.set(el.classeId, (ailleurs.get(el.classeId) || 0) + 1);
+      }
       else etatPP.importes.push({ classeId: c.id, fichier: f.name, nomLu: b.nomLu, periode, b: donnees });
     }
   }
   memoriserUi();
   const attente = etatPP.importes.filter(x => x.classeId === c.id).length;
-  toast(`${ok} bulletin${ok > 1 ? 's' : ''} lu${ok > 1 ? 's' : ''}${attente ? `, ${attente} à rattacher à la main` : ''}${illisibles ? `, ${illisibles} illisible${illisibles > 1 ? 's' : ''}` : ''}.`, ok && !illisibles ? 'ok' : '');
+  const dont = [...ailleurs].map(([id, n]) => `${n} en ${Donnees.get('classes', id)?.nom}`).join(', ');
+  toast(`${ok} bulletin${ok > 1 ? 's' : ''} lu${ok > 1 ? 's' : ''}${dont ? ` (dont ${dont})` : ''}${attente ? `, ${attente} à rattacher à la main` : ''}${illisibles ? `, ${illisibles} illisible${illisibles > 1 ? 's' : ''}` : ''}.`, ok && !illisibles ? 'ok' : '');
   rendreVue();
 }
 
@@ -1004,6 +1038,7 @@ async function actionPP(action, arg, b) {
   enregistrerTextePP();
   switch (action) {
     case 'periode': ui.ppPeriode = arg; memoriserUi(); return rendreVue();
+    case 'classe': ui.ppClasse = arg; delete ui.ppEleve; memoriserUi(); return rendreVue();
     case 'section': ui.ppSection = arg; memoriserUi(); return rendreVue();
     case 'eleve': if (arg) { ui.ppEleve = arg; memoriserUi(); rendreVue(); } return;
     case 'voir-eleve': ui.ppEleve = arg; ui.ppSection = 'conseil'; memoriserUi(); return rendreVue();
@@ -1013,6 +1048,11 @@ async function actionPP(action, arg, b) {
       if (!(await confirmer(`Retirer le bulletin ${nomPeriodePP(periode)} de ${el.prenom} ${el.nom} ?`, 'Retirer'))) return;
       Donnees.supprimer('suivis', idBulletinPP(arg, periode));
       return rendreVue();
+    }
+    case 'reglages-base': {
+      Donnees.ecrire('reglages', { ...Donnees.get('reglages', 'pp'), id: 'pp', ...structuredClone(REGLAGES_DEFAUT.pp) });
+      $('#vue [data-pp-reglages]').innerHTML = htmlReglagePP(reglagePP());
+      return reglagesModifiesPP();
     }
     case 'copier-toutes': {
       const r = reglagePP();
@@ -1092,7 +1132,6 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (ui.vue !== 'pp' || !t.closest?.('#vue')) return;
   if (t.matches('[data-pp-fichiers]')) { const f = [...t.files]; t.value = ''; return lancer(() => importerBulletinsPP(f)); }
-  if (t.matches('[data-pp-classe]')) { ui.ppClasse = t.value; memoriserUi(); return rendreVue(); }
   if (t.matches('[data-pp-eleve-choix]')) { enregistrerTextePP(); ui.ppEleve = t.value; memoriserUi(); return rendreVue(); }
   if (t.matches('[data-pp-rattacher]') && t.value) {
     const c = classePP(), l = etatPP.importes.filter(x => x.classeId === c.id), x = l[+t.dataset.ppRattacher];
@@ -1107,15 +1146,22 @@ document.addEventListener('change', e => {
     ecrirePP(carte.dataset.ppEleve, periode, { mention: t.value === x.mentionCalculee ? '' : t.value });
     return;
   }
-  if (t.closest('[data-pp-reglages]')) return reglagesModifiesPP();
+  if (t.closest('[data-pp-reglages]')) { clearTimeout(minuteurReglagesPP); return reglagesModifiesPP(); }
 });
 
 // Texte réécrit et notes du conseil : enregistrés pendant la frappe (sans redessiner la vue).
+let minuteurReglagesPP = null;
 document.addEventListener('input', e => {
   const t = e.target;
   if (ui.vue !== 'pp' || !t.closest?.('#vue')) return;
   const c = classePP();
   if (!c) return;
+  // Réglages chiffrés (longueur, seuils) : appréciations refaites pendant la frappe, après une courte pause.
+  if (t.closest('[data-pp-reglages]') && t.type === 'number') {
+    clearTimeout(minuteurReglagesPP);
+    minuteurReglagesPP = setTimeout(reglagesModifiesPP, 500);
+    return;
+  }
   if (t.matches('[data-pp-notes]')) {
     attentePP = { eleve: t.dataset.ppNotes, periode: periodePP(c), champ: 'notes', texte: t.value.trim() };
     clearTimeout(minuteurPP);

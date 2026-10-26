@@ -299,7 +299,94 @@ function creerClasseExemple(jeu = jeuExemple()) {
     id: P + 'sq4', type: 'sequence', classeId: c.id, ...jeu.suivante, debut: decalerJours(dates[11], 6), fin: decalerJours(dates[11], 6 + 39), notes: '', cours: [],
   });
   Donnees.ecrire('agenda', { id: P + 'conseil', type: 'conseil', classeId: c.id, titre: 'Conseil de classe', debut: decalerJours(dates[11], 20), heure: '17:30', notes: '' });
+  remplirPPExemple(jeu, c);
   return c;
+}
+
+/* ---------- ⭐ Espace professeur principal de la classe exemple (pp.js) ----------
+   Bulletins inventés (toutes les matières, appréciations des « collègues », absences) pour la période en cours et la
+   précédente, quelques notes du conseil et un suivi : l'onglet « Prof principal » est rempli comme une vraie classe.
+   Hasard à part (graine 77) : le reste de la classe exemple ne change pas. Les classes exemples créées avant la v0.116
+   sont complétées au démarrage (completerExemplesPP), une seule fois (marque `ppExemple`). */
+
+const MATIERES_EXEMPLE = {
+  college: ['FRANCAIS', 'MATHEMATIQUES', 'HISTOIRE-GEOGRAPHIE EMC', 'ANGLAIS LV1', 'ESPAGNOL LV2', 'PHYSIQUE-CHIMIE', 'SVT', 'TECHNOLOGIE', 'ARTS PLASTIQUES', 'EDUCATION MUSICALE', 'EPS'],
+  lycee: ['FRANCAIS', 'MATHEMATIQUES', 'HISTOIRE-GEOGRAPHIE', 'ANGLAIS LVA', 'ESPAGNOL LVB', 'PHYSIQUE-CHIMIE', 'SVT', 'SES', 'SNT', 'EPS', 'EMC'],
+};
+// Appréciations des collègues : selon la moyenne de la matière, puis une remarque selon le profil de l'élève.
+const APPR_EXEMPLE = {
+  4: ['Excellent trimestre, travail sérieux et participation pertinente.', 'Très bons résultats, travail sérieux et régulier.', 'Très bon ensemble. Investissement remarquable, continuez ainsi.'],
+  3: ['Bon trimestre, travail sérieux.', 'Bons résultats et bonne participation en classe.', 'Ensemble satisfaisant, continuez ainsi.', 'Assez bon trimestre, le travail est régulier.'],
+  2: ['Résultats corrects mais irréguliers : il faut fournir un travail plus régulier.', 'Un ensemble satisfaisant à l’écrit, mais il faut participer davantage.',
+    'Des résultats justes : le travail personnel doit être plus approfondi.', 'Ensemble moyen, peut mieux faire.', 'Résultats justes, des efforts à poursuivre.'],
+  1: ['Des difficultés : il faut apprendre les leçons régulièrement.', 'Résultats insuffisants, un travail plus régulier est indispensable.', 'Trimestre difficile, des efforts sont à fournir.'],
+  bavard: ['Bavardages trop fréquents.', 'Se disperse souvent en classe.', 'Attitude à revoir : trop de bavardages.'],
+  passive: ['Attitude trop passive en classe.', 'Participation inexistante à l’oral.', 'Doit s’impliquer davantage.'],
+  nonRendu: ['Travail non rendu à plusieurs reprises.', 'Plusieurs devoirs non faits.'],
+};
+
+function remplirPPExemple(jeu, c) {
+  const P = jeu.prefixe || 'exemple-', alea = hasardExemple(77), au = l => l[Math.floor(alea() * l.length)];
+  const bruit = a => (alea() * 2 - 1) * a, arr = n => Math.round(Math.max(2, Math.min(19.5, n)) * 100) / 100;
+  const matieres = /^(2nde|1re|Tle)/.test(jeu.niveau) ? MATIERES_EXEMPLE.lycee : MATIERES_EXEMPLE.college;
+  const eleves = jeu.eleves.map(([, , , niveau, plus = {}], k) => ({ id: P + 'e' + (k + 1), niveau, ...plus }))
+    .filter(x => Donnees.get('eleves', x.id));
+  // Période en cours et précédente (au 1er trimestre : seulement celle-ci).
+  const periodes = periodesAnnee(), i = Math.max(0, periodes.findIndex(p => p.id === periodeDe(aujourdhui())));
+  const aRemplir = periodes.slice(Math.max(0, i - 1), i + 1).map(p => p.id);
+  // Points forts et faibles propres à chaque élève (les mêmes d'une période à l'autre).
+  const profils = new Map(eleves.map(x => [x.id, { fort: au(matieres), faible: au(matieres) }]));
+  aRemplir.forEach((periode, rang) => {
+    const derniere = rang === aRemplir.length - 1;
+    // Moyennes : le niveau de l'élève ± un écart par matière ; à la période précédente, un peu plus bas pour certains (progrès).
+    const moys = eleves.map(x => {
+      const pf = profils.get(x.id), recul = derniere ? 0 : (x.niveau % 3 === 0 ? 1.5 : x.niveau % 3 === 1 ? -0.8 : 0);
+      return matieres.map(m => arr(x.niveau - recul + (m === pf.fort ? 2.5 : m === pf.faible ? -3 : 0) + bruit(1.8) - (x.passive ? 0.8 : 0)));
+    });
+    const moyClasse = matieres.map((m, j) => arr(moys.reduce((a, l) => a + l[j], 0) / moys.length));
+    const gens = moys.map(l => arr(l.reduce((a, v) => a + v, 0) / l.length));
+    const genClasse = arr(gens.reduce((a, v) => a + v, 0) / gens.length);
+    eleves.forEach((x, k) => {
+      const mats = matieres.map((brut, j) => {
+        const moy = moys[k][j], n = moy >= 15.5 ? 4 : moy >= 12.5 ? 3 : moy >= 9.5 ? 2 : 1;
+        let appr = alea() < 0.1 ? '' : au(APPR_EXEMPLE[n]);
+        for (const f of ['bavard', 'passive', 'nonRendu']) if (x[f] && appr && alea() < 0.6) appr += ' ' + au(APPR_EXEMPLE[f]);
+        return { brut, moy, moyClasse: moyClasse[j], appr };
+      });
+      const abs = x.bavard ? 6 : x.passive ? 8 : x.tenue ? 3 : Math.floor(alea() * 4);
+      Donnees.ecrire('suivis', {
+        id: idBulletinPP(x.id, periode), eleveId: x.id, apsa: 'pp bulletin ' + periode, pp: true, periode, matieres: mats,
+        moyGen: gens[k], moyGenClasse: genClasse, absences: abs, nonJustifiees: x.bavard ? 2 : x.passive ? 3 : 0, retards: x.bavard ? 4 : x.tenue ? 2 : 0,
+      });
+    });
+  });
+  // Conseil de la période en cours : quelques notes ; suivi : entretiens pour les élèves à suivre.
+  const per = aRemplir.at(-1), trouver = f => eleves.find(f);
+  const notes = [[trouver(x => x.bavard), 'Comportement évoqué par plusieurs collègues. Rencontre avec la famille proposée.'],
+    [trouver(x => x.passive), 'Collègues inquiets du manque d’implication : entretien avec l’élève et l’infirmière scolaire.'],
+    [trouver(x => x.niveau >= 18), 'Félicitations à l’unanimité.']];
+  for (const [x, texte] of notes) if (x) Donnees.ecrire('suivis', { id: idApprPP(x.id, per), eleveId: x.id, apsa: 'pp appréciation ' + per, pp: true, periode: per, niveaux: {}, graine: 0, texte: '', notes: texte });
+  const auj = aujourdhui();
+  const journal = [
+    [trouver(x => x.bavard), -12, 'famille', 'Rendez-vous avec la mère : bavardages et travail irrégulier signalés par plusieurs collègues.', 'Fiche de suivi hebdomadaire pendant un mois.', decalerJours(auj, 9)],
+    [trouver(x => x.passive), -5, 'eleve', 'Entretien : se dit fatiguée et peu motivée, pas de projet pour l’an prochain.', 'Rendez-vous avec la psychologue de l’Éducation nationale.', decalerJours(auj, -1)],
+    [trouver(x => x.nonRendu || x.tenue), -20, 'vs', 'Point avec la CPE sur les oublis et le travail non rendu.', 'Carnet de liaison signé chaque semaine.', ''],
+  ];
+  journal.forEach(([x, jours, type, objet, suite, rappel], k) => {
+    if (x) Donnees.ecrire('suivis', { id: `${P}ppj${k + 1}`, eleveId: x.id, apsa: 'pp journal', pp: true, date: decalerJours(auj, jours), type, objet, suite, rappel, fait: false });
+  });
+  Donnees.ecrire('classes', { ...Donnees.get('classes', c.id), pp: true, ppExemple: true });
+}
+
+// Classes exemples créées par une version d'avant l'espace professeur principal : on les complète, une seule fois
+// (décocher « Je suis PP » ensuite ne les fait pas revenir). Suivis PP d'élèves exemples supprimés : retirés.
+function completerExemplesPP() {
+  for (const c of Donnees.liste('classes', x => x.exemple && !x.ppExemple && x.id.startsWith('exemple-'))) {
+    const jeu = [EXEMPLES.eps, EXEMPLES.svt, ...Object.values(EXEMPLES_EN_PLUS).flat()].find(j => idClasseExemple(j) === c.id && j.nom === c.nom)
+      || [jeuExemple(), ...exemplesEnPlus()].find(j => idClasseExemple(j) === c.id);
+    if (jeu) remplirPPExemple(jeu, c);
+  }
+  for (const s of Donnees.liste('suivis', x => x.pp && x.eleveId?.startsWith('exemple-') && !Donnees.get('eleves', x.eleveId))) Donnees.supprimer('suivis', s.id);
 }
 
 // Valeur d'une donnée relevée, selon le niveau de l'élève et la leçon (0 à 3 : progrès au fil de la séquence).

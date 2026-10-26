@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.115.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.117.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1984,6 +1984,8 @@ function migrerTout() {
   migrerSeances();
   migrerGroupes();
   migrerNotesOrphelines();
+  completerExemplesPP(); // (classes exemples d'avant l'espace professeur principal : exemple.js)
+  migrerReglagePP(); // (anciens réglages de base de l'appréciation générale : pp.js)
 }
 
 // Déchiffre un fichier de la clé et le fusionne avec le carnet de cet appareil.

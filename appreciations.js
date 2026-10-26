@@ -972,8 +972,15 @@ async function ouvrirAppreciations(periodeVoulue, eleveVise) {
       return copierTexte(eleves.map(el => `${el.nom} ${el.prenom}\t${appreciationEleve(el, periode, eleves, r).texte}`).join('\n'));
     }
   }));
-  // Réglages : redessinés sur les cases et listes ; la longueur quand on quitte le champ.
-  d.addEventListener('change', e => { if (e.target.closest('[data-appr-reglages]')) reglagesModifies(); });
+  // Réglages : les appréciations sont refaites aussitôt (cases, listes) ; la longueur pendant la frappe, après une
+  // courte pause (seule la liste est redessinée : le champ garde la main).
+  let minuteurReglages = null;
+  d.addEventListener('change', e => { if (e.target.closest('[data-appr-reglages]')) { clearTimeout(minuteurReglages); reglagesModifies(); } });
+  d.addEventListener('input', e => {
+    if (!e.target.closest('[data-appr-reglages]') || e.target.type !== 'number') return;
+    clearTimeout(minuteurReglages);
+    minuteurReglages = setTimeout(reglagesModifies, 500);
+  });
 
   dessiner();
   if (eleveVise) d.querySelector(`[data-appr-eleve="${eleveVise}"]`)?.scrollIntoView({ block: 'center' });

@@ -386,7 +386,20 @@ async function ficheNotes(eleveId) {
     dessiner(true);
   };
   d.addEventListener('toggle', e => { if (e.target.matches?.('[data-fiche-reglages-appr]')) reglagesOuverts = e.target.open; }, true);
-  d.addEventListener('change', e => { if (e.target.closest('[data-appr-reglages]')) reglagesModifies(); });
+  // (Longueur : refaite pendant la frappe, après une courte pause ; la carte est redessinée, le champ reprend la main.)
+  let minuteurReglages = null;
+  d.addEventListener('change', e => { if (e.target.closest('[data-appr-reglages]')) { clearTimeout(minuteurReglages); reglagesModifies(); } });
+  d.addEventListener('input', e => {
+    const t = e.target;
+    if (!t.closest('[data-appr-reglages]') || t.type !== 'number') return;
+    clearTimeout(minuteurReglages);
+    minuteurReglages = setTimeout(() => {
+      const nom = t.name, valeur = t.value;
+      reglagesModifies();
+      const champ = d.querySelector(`[data-appr-reglages] [name="${nom}"]`);
+      if (champ) { champ.value = valeur; champ.focus(); }
+    }, 500);
+  });
 
   // Observations : enregistrées pendant la frappe (petit délai) et avant de changer d'élève.
   let minuteur = null, enAttente = null;

@@ -51,9 +51,9 @@ const REGLAGES_DEFAUT = {
   // Appréciation générale du professeur principal (pp.js) : mêmes principes, plus l'adresse (il / vous), les seuils
   // de la moyenne générale et les mentions proposées.
   pp: {
-    ordre: ['resultats', 'travail', 'participation', 'comportement', 'progression', 'matieres', 'assiduite', 'objectif'],
-    actives: ['resultats', 'travail', 'participation', 'comportement', 'matieres', 'objectif'],
-    bilan: true, adresse: 'il', ton: 'bienveillant', style: 'phrases', longueur: 400, seuils: [10, 13, 16],
+    ordre: ['resultats', 'travail', 'comportement', 'participation', 'progression', 'matieres', 'assiduite', 'objectif'],
+    actives: ['resultats', 'travail', 'comportement', 'objectif'],
+    bilan: true, adresse: 'il', ton: 'bienveillant', style: 'phrases', longueur: 300, seuils: [10, 13, 16],
     mentions: true, felicitations: 16, compliments: 14,
   },
   // Discipline du carnet (discipline.js). Jamais exportée avec les réglages partagés : chaque collègue garde la sienne.
