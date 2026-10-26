@@ -10,7 +10,9 @@
 const CODES_NOTE_EXCEL = { A: 'ABS', ABS: 'ABS', ABSENT: 'ABS', D: 'DISP', DISP: 'DISP', 'DISPENSÉ': 'DISP', DISPENSE: 'DISP', N: 'NE', NE: 'NE', NN: 'NE', 'NON NOTÉ': 'NE', 'NON NOTE': 'NE',
   B: 'BLE', BLE: 'BLE', 'BLESSÉ': 'BLE', BLESSE: 'BLE', M: 'MAL', MAL: 'MAL', MALADE: 'MAL', O: 'AUT', AUT: 'AUT', AUTRE: 'AUT', R: 'NR', NR: 'NR', 'NON RENDU': 'NR',
   // (Codes des relevés d'École Directe : « Abs », « Disp », « Inapte », « Absent excusé »…)
-  'ABS.': 'ABS', 'ABSENT EXCUSÉ': 'ABS', 'ABS EXCUSÉ': 'ABS', 'DISP.': 'DISP', INAPTE: 'DISP', INAP: 'DISP', 'NON NOTÉE': 'NE' };
+  'ABS.': 'ABS', 'ABSENT EXCUSÉ': 'ABS', 'ABS EXCUSÉ': 'ABS', 'DISP.': 'DISP', INAPTE: 'DISP', INAP: 'DISP', 'NON NOTÉE': 'NE',
+  // (Codes de Pronote : « N.Not » non noté, « N.Rdu » non rendu, « Inap. »)
+  'N.NOT': 'NE', 'N.NOT.': 'NE', 'N.NOTÉ': 'NE', 'N.RDU': 'NR', 'N.RDU.': 'NR', 'INAP.': 'DISP' };
 // Raisons de santé (dispensé, blessé, malade) : « NE » dans un classeur anonyme.
 const CODES_SANTE = ['DISP', 'BLE', 'MAL'];
 
@@ -158,7 +160,9 @@ async function lireClasseurNotes(fichier) {
   const octets = new Uint8Array(await fichier.arrayBuffer());
   let texte = new TextDecoder('utf-8').decode(octets);
   if (texte.includes('�')) texte = new TextDecoder('windows-1252').decode(octets);
-  if (!/<table/i.test(texte)) throw new Error('Format de fichier non reconnu : il faut un classeur Excel (.xlsx ou .xls).');
+  // Texte en colonnes (export .csv de Pronote, ou tableau copié puis collé dans un fichier .txt)
+  if (!/<table/i.test(texte) && /\.(csv|txt)$/i.test(fichier.name)) return [{ nom: fichier.name, lignes: ListeClasse.lireCsv(texte.replace(/^﻿/, '')) }];
+  if (!/<table/i.test(texte)) throw new Error('Format de fichier non reconnu : il faut un classeur Excel (.xlsx ou .xls), ou un fichier .csv / .txt.');
   // (Page web : chaque tableau devient une feuille ; une case fusionnée sur plusieurs colonnes laisse des cases vides.)
   const doc = new DOMParser().parseFromString(texte, 'text/html');
   return [...doc.querySelectorAll('table')].map((t, i) => ({
@@ -223,6 +227,86 @@ function lireNotesEcoleDirecte(feuilles) {
     }
   }
   return res;
+}
+
+/* ---------- Relevé de notes exporté de Pronote (.xlsx, ou .csv / texte copié) ----------
+   Ligne de titres : « 17 élèves », Classes, Moyenne, N.R., puis une colonne par devoir avec sa date (JJ/MM ou date Excel) ;
+   juste dessous : « coefficient - /barème » (ex. « 1 - /10 ») ; puis un élève par ligne (« NOM Prénom », classe, moyenne, notes).
+   La dernière ligne, sans nom, donne les moyennes du groupe : ignorée. Groupe de plusieurs classes : la colonne Classes est ignorée. */
+const COEF_SUR_PRONOTE = /^(?:coef\.?\s*)?(\d+(?:[.,]\d+)?)\s*-\s*\/\s*(\d+(?:[.,]\d+)?)$/i;
+
+// Date d'en-tête : date Excel, JJ/MM/AAAA, ou JJ/MM (année scolaire en cours : de septembre à août).
+function dateDevoirPronote(t) {
+  const complete = lireDateExcel(t);
+  if (complete) return complete;
+  const m = t.match(/(\d{1,2})\/(\d{1,2})(?!\/)/);
+  if (!m) return '';
+  const auj = aujourdhui(), annee = +auj.slice(0, 4), debut = +auj.slice(5, 7) >= 8 ? annee : annee - 1;
+  return `${+m[2] >= 8 ? debut : debut + 1}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+}
+
+function lireNotesPronote(feuilles) {
+  const res = [];
+  const sa = x => sansAccent(String(x ?? '')).replace(/\s+/g, ' ').trim();
+  for (const f of feuilles) {
+    const L = Array.from(f.lignes, l => Array.from(l || [], x => String(x ?? '').trim()));
+    const iCs = L.findIndex(l => l.some(x => COEF_SUR_PRONOTE.test(x)));
+    if (iCs < 1) continue;
+    const tete = L[iCs - 1];
+    const cols = L[iCs].map((x, k) => (COEF_SUR_PRONOTE.test(x) ? k : -1)).filter(k => k >= 0);
+    const kNom = Math.max(0, tete.findIndex(x => /^\d*\s*eleves?$/.test(sa(x))));
+    const kMoy = tete.findIndex(x => /^moy/.test(sa(x)));
+    const eleves = L.slice(iCs + 1).filter(l => /\p{L}/u.test(l[kNom] || '') && !/^(moyennes?|moy)\b/.test(sa(l[kNom])))
+      .map(l => ({ ...ListeClasse.separerNom(l[kNom]), l }));
+    if (!eleves.length) continue;
+    // Titres : le texte de l'en-tête sans la date, sinon « Devoir du JJ/MM » (plusieurs devoirs le même jour : « (2) », « (3) »…)
+    const vus = new Map();
+    const lues = cols.map(k => {
+      const [, coef, sur] = L[iCs][k].match(COEF_SUR_PRONOTE);
+      const brut = tete[k] || '', date = dateDevoirPronote(brut) || aujourdhui();
+      const texte = /^\d{5}(\.\d+)?$/.test(brut) ? '' : brut.replace(/\d{1,2}\/\d{1,2}(\/\d{2,4})?/, '').replace(/^[\s—–-]+|[\s—–-]+$/g, '').trim();
+      let titre = texte || `Devoir du ${dateFr(date).slice(0, 5)}`;
+      const n = (vus.get(sa(titre) + date) || 0) + 1;
+      vus.set(sa(titre) + date, n);
+      if (n > 1) titre += ` (${n})`;
+      return {
+        onglet: f.nom, fichierId: '', refId: '', titre, date, apsa: '', ca: '', colonnes: [], k,
+        max: +sur.replace(',', '.') || 20, coef: +coef.replace(',', '.'),
+        lignes: eleves.map(({ nom, prenom, l }) => ({ id: '', nom: majuscules(nom), prenom, note: l[k] || '', degres: [] })),
+      };
+    });
+    // Moyennes de Pronote : l'appli refait les deux calculs pour savoir lequel Pronote a suivi
+    // (« sur 20 » : chaque note ramenée sur 20, comme dans le carnet ; « points » : total des points / total des barèmes).
+    if (kMoy >= 0) {
+      const verif = { sur20: 0, points: 0, total: 0 };
+      eleves.forEach(({ l }, i) => {
+        const attendue = nombre(String(l[kMoy] || '').replace(',', '.'));
+        if (attendue === null) return;
+        let s20 = 0, p20 = 0, pts = 0, bar = 0;
+        for (const x of lues) {
+          const n = nombre(String(x.lignes[i].note).replace(',', '.'));
+          if (n === null || !x.coef) continue;
+          s20 += (n / x.max) * 20 * x.coef; p20 += x.coef; pts += n * x.coef; bar += x.max * x.coef;
+        }
+        if (!p20) return;
+        verif.total++;
+        if (Math.abs(s20 / p20 - attendue) < 0.006) verif.sur20++;
+        if (Math.abs((pts / bar) * 20 - attendue) < 0.006) verif.points++;
+      });
+      lues.forEach(x => { x.verifPronote = verif; });
+    }
+    res.push(...lues);
+  }
+  return res;
+}
+
+// Calcul « en points » de Pronote reproduit dans le carnet : chaque coefficient est multiplié par barème / barème le plus courant
+// (ex. devoirs sur 10 et un sur 5 : le devoir sur 5 compte pour moitié). Les moyennes sont alors les mêmes que dans Pronote.
+function coefsCommePronote(lues) {
+  const compte = new Map();
+  lues.forEach(x => compte.set(x.max, (compte.get(x.max) || 0) + 1));
+  const ref = [...compte].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+  lues.forEach(x => { x.coef = Math.round(x.coef * (x.max / ref) * 1000) / 1000; });
 }
 
 // Compétence d'une colonne : celle du référentiel (identifiant connu), sinon une compétence « libre » de l'évaluation.
@@ -386,8 +470,13 @@ async function importerNotesExcel(c, fichier) {
   if (estAnonyme(feuilles)) throw new Error('Ce classeur est un export anonyme : il ne peut pas être réimporté (l’appli ne saurait pas à quels élèves rattacher les notes).');
   // Classeur de l'appli (un onglet par évaluation), sinon relevé de notes d'École Directe (une colonne par évaluation).
   let lues = lireEvalsExcel(feuilles);
+  if (!lues.length) lues = lireNotesPronote(feuilles);
   if (!lues.length) lues = lireNotesEcoleDirecte(feuilles);
-  if (!lues.length) throw new Error(`Aucune évaluation trouvée dans « ${fichier.name} » : il faut le classeur exporté par l’appli, ou le relevé de notes d’École Directe (lignes « Coefficients » et « Noté sur » sous les titres des évaluations).`);
+  if (!lues.length) throw new Error(`Aucune évaluation trouvée dans « ${fichier.name} » : il faut le classeur exporté par l’appli, le relevé de notes de Pronote (dates des devoirs, puis « 1 - /10 » dessous) ou celui d’École Directe (lignes « Coefficients » et « Noté sur » sous les titres des évaluations).`);
+  // Relevé Pronote : moyennes calculées « en points » (et non sur 20) ? → proposé : coefficients adaptés pour retrouver les mêmes moyennes.
+  const verif = lues[0].verifPronote;
+  const enPoints = verif?.total && verif.points > verif.sur20 && new Set(lues.map(x => x.max)).size > 1;
+  if (enPoints) { lues.forEach(x => { x.coefFichier = x.coef; }); coefsCommePronote(lues); }
   const plan = preparerImportNotes(lues, c);
   analyserDoublonsImport(plan);
   const totalEleves = plan.reconnus.size + plan.inconnus.size;
@@ -417,6 +506,12 @@ async function importerNotesExcel(c, fichier) {
       <label class="case"><input type="radio" name="quoi" value="tout" checked><span>Les évaluations <b>et les notes / degrés</b> des élèves</span></label>
       <label class="case"><input type="radio" name="quoi" value="structure"><span>Seulement <b>les évaluations</b> (titres, dates, barèmes, compétences) — pour reprendre les évaluations d’un collègue avec tes élèves</span></label>
     </fieldset>
+    ${enPoints ? `<fieldset class="choix-import"><legend>Moyennes</legend>
+      <p class="aide">Dans ce relevé, Pronote additionne les points (${verif.points} moyenne${verif.points > 1 ? 's' : ''} sur ${verif.total} le confirment) :
+        un devoir sur 5 compte moitié moins qu’un devoir sur 10. Le carnet, lui, ramène chaque note sur 20.</p>
+      <label class="case"><input type="checkbox" name="commePronote" checked><span><b>Mêmes moyennes que Pronote</b> : coefficients adaptés au barème
+        (${[...new Map(plan.evals.map(x => [x.max, x])).values()].map(x => `/${fmt(x.max)} → coef ${fmt(x.coef)}`).join(', ')})</span></label>
+    </fieldset>` : verif?.total ? `<p class="aide">${verif.sur20 ? '✔' : '⚠'} Moyennes de Pronote retrouvées par le carnet pour ${verif.sur20} élève${verif.sur20 > 1 ? 's' : ''} sur ${verif.total}${verif.sur20 < verif.total ? ' (Pronote a pu compter autrement : devoir bonus ou facultatif, note ramenée sur 20…)' : ''}.</p>` : ''}
     ${inconnus.length ? `<div class="inconnus-import">
       <p>${inconnus.length} élève${inconnus.length > 1 ? 's' : ''} du fichier ${inconnus.length > 1 ? 'ne sont' : 'n’est'} pas dans ${esc(c.nom)} :
         <span class="aide">${inconnus.slice(0, 12).map(el => esc(`${el.nom} ${el.prenom}`.trim())).join(', ')}${inconnus.length > 12 ? '…' : ''}</span></p>
@@ -426,6 +521,7 @@ async function importerNotesExcel(c, fichier) {
   boutonsModale('Importer'));
   const r = await resultat;
   if (r.action !== 'ok') return;
+  if (enPoints && r.data.commePronote !== 'on') plan.evals.forEach(x => { x.coef = x.coefFichier; });
   // Les choix de l'enseignant : ignorer, mettre à jour l'évaluation du carnet, ou importer à part (titre « … (2) »).
   const pris = new Set(evalsDe(c.id).map(e => sansAccent(e.titre) + '|' + e.date));
   plan.evals = plan.evals.filter((x, i) => {
@@ -471,9 +567,10 @@ async function echangeExcelNotes() {
     <div class="bloc-excel">
       <h3>⬆ Importer</h3>
       <p class="aide">Un classeur de notes exporté par ${esc(profil().carnet)} (le tien, éventuellement complété dans Excel, ou celui d’un collègue),
-        ou le <b>relevé de notes exporté d’École Directe</b> (une colonne par évaluation : titre et date, coefficient, « noté sur », puis les notes).
+        ou le <b>relevé de notes exporté de Pronote</b> (.xlsx ou .csv, ou le tableau copié puis collé dans un fichier .txt)
+        ou <b>d’École Directe</b> (une colonne par évaluation : titre et date, coefficient, « noté sur », puis les notes).
         Tu verras ce qui sera repris avant de valider.</p>
-      <label class="bouton primaire">Choisir un fichier .xlsx ou .xls…<input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" data-fichier-excel hidden></label>
+      <label class="bouton primaire">Choisir un fichier .xlsx, .xls, .csv ou .txt…<input type="file" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain" data-fichier-excel hidden></label>
     </div>`,
   '<span class="espace"></span><button type="button" data-fermer>Fermer</button>');
   d.querySelector('[data-fichier-excel]').addEventListener('change', e => {

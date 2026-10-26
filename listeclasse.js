@@ -276,5 +276,5 @@ const ListeClasse = (() => {
     guideImport('liste', f => importer(f, c));
   }
 
-  return { importer, choisirFichier, voir, aDesInfos, age, effacerCoordonnees, separerNom, nomEtNiveau, lire };
+  return { importer, choisirFichier, voir, aDesInfos, age, effacerCoordonnees, separerNom, nomEtNiveau, lire, lireCsv };
 })();

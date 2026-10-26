@@ -54,7 +54,7 @@ une fonction de même nom dans deux fichiers écrase silencieusement l'autre. Ch
 | `referentiel.js` | Référentiels officiels (attendus, compétences, cycles 3/4, lycée, SVT…). |
 | `tableur.js` | Lecture / écriture `.xlsx` maison. |
 | `entrainement.js` | Onglet « Leçons » (id interne `entrainement`) : séances, données relevées, statuts, Excel. |
-| `notesexcel.js` | Notes et degrés ⇄ Excel. |
+| `notesexcel.js` | Notes et degrés ⇄ Excel ; import des relevés de notes de Pronote (.xlsx, .csv, .txt) et d’École Directe. |
 | `listeclasse.js` | Import de listes École Directe / Pronote. |
 | `reglages.js` | ⚙ Réglages, premier lancement (choix de la discipline, classe exemple). |
 | `outils.js` + `combine.js`, `natation.js`, `asns.js`, `videodelay.js`, `tableau.js`, `boxe.js`, `ece.js`, `labo.js` | Onglet « Outils » et ses outils. Les noms d'élèves s'y affichent via `nomEleveOutil()` (mode élève). `ece.js`, `labo.js` (schéma, gestes techniques, mise en commun, sécurité, binômes) et `tp.js` (fiches TP rangées dans la séance `s.tp`, commande au labo, banque de séances = collection `modeles`) = famille SVT, cachée en EPS. |
