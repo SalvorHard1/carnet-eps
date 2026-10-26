@@ -249,7 +249,8 @@ function analyserAppr(el, periode, eleves) {
     }
   }
   // Observations du prof : celles des leçons de la période, et ses fiches (modifiées pendant la période).
-  for (const s of Donnees.liste('suivis', x => x.eleveId === el.id && x.texte && !estSuiviAppr(x))) {
+  // (Pas l'espace professeur principal, pp.js : appréciation générale, bulletins, suivi.)
+  for (const s of Donnees.liste('suivis', x => x.eleveId === el.id && x.texte && !estSuiviAppr(x) && !x.pp)) {
     if (periode === 'annee' || !s.maj || periodeDe(new Date(s.maj).toLocaleDateString('sv')) === periode) observations.push(s.texte);
   }
   observations.push(...nonRendus);

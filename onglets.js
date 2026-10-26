@@ -13,8 +13,9 @@ const GROUPES_ONGLETS = [
   { id: 'suivi', nom: 'Suivi', vues: ['notes', 'entrainement', 'baremes'] },
   { id: 'outils', vues: ['outils'] },
   { id: 'agenda', vues: ['agenda'] },
+  { id: 'pp', vues: ['pp'] },
 ];
-const ICONES_ONGLETS = { eleves: '👥', appel: '✅', notes: '📝', entrainement: '📋', outils: '⏱', agenda: '📅', baremes: '📏' };
+const ICONES_ONGLETS = { eleves: '👥', appel: '✅', notes: '📝', entrainement: '📋', outils: '⏱', agenda: '📅', baremes: '📏', pp: '⭐' };
 const FAVORIS_MAX = 4;
 const ecranCompact = matchMedia('(max-width: 1199px), (hover: none) and (pointer: coarse)');
 
@@ -39,6 +40,9 @@ function majOnglets() {
   const g = GROUPES_ONGLETS.find(x => x.vues.includes(ui.vue));
   if (g && ui.vue !== (ui.dernierOnglet ||= {})[g.id]) { ui.dernierOnglet[g.id] = ui.vue; memoriserUi(); }
   const visibles = ongletsVisibles();
+  // (« Prof principal » apparaît ou disparaît quand on coche « Je suis PP » dans la fiche d'une classe.)
+  const boutonPP = $('#onglets [data-vue="pp"]');
+  if (boutonPP) boutonPP.hidden = !visibles.includes('pp');
   haut.innerHTML = disp === 'rideaux' ? htmlRideaux(visibles) : disp === 'favoris' ? htmlFavoris(visibles) : '';
   bas.innerHTML = disp === 'bas' ? visibles.map(v => boutonOnglet(v,
     `<span class="icone-onglet" aria-hidden="true">${ICONES_ONGLETS[v]}</span><span class="nom-onglet">${esc(nomOnglet(v))}</span>`)).join('') : '';

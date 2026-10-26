@@ -21,7 +21,7 @@ const PALETTES_DEGRES = {
 };
 const COULEURS_CA = { CA1: '#d64545', CA2: '#2e9e5b', CA3: '#8e5bd0', CA4: '#2f78d6', CA5: '#e8891a' };
 // (L'onglet des séances porte le nom que lui donne la discipline : « Leçons » en EPS.)
-const NOMS_ONGLETS = { eleves: 'Élèves', appel: 'Appel', notes: 'Notes', get entrainement() { return mot('lecons'); }, outils: 'Outils', agenda: 'Agenda', baremes: 'Barèmes' };
+const NOMS_ONGLETS = { eleves: 'Élèves', appel: 'Appel', notes: 'Notes', get entrainement() { return mot('lecons'); }, outils: 'Outils', agenda: 'Agenda', baremes: 'Barèmes', pp: 'Prof principal' };
 // Codes de la barre de saisie rapide (ceux des notes, puis ceux des leçons).
 const CODES_SAISIE = { ABS: 'Absent', DISP: 'Dispensé', NE: 'Non noté', BLE: 'Blessé', MAL: 'Malade', AUT: 'Autre', NR: 'Non rendu' };
 const TAILLES_TEXTE = { petite: ['Petite', 0.9], normale: ['Normale', 1], grande: ['Grande', 1.12], 'tres-grande': ['Très grande', 1.25] };
@@ -48,6 +48,14 @@ const REGLAGES_DEFAUT = {
     actives: ['attitude', 'competences', 'moteur', 'objectif'],
     bilan: true, ton: 'bienveillant', style: 'phrases', longueur: 300, // (400 jusqu'à la v0.93 : voir reglageAppr)
   },
+  // Appréciation générale du professeur principal (pp.js) : mêmes principes, plus l'adresse (il / vous), les seuils
+  // de la moyenne générale et les mentions proposées.
+  pp: {
+    ordre: ['resultats', 'travail', 'participation', 'comportement', 'progression', 'matieres', 'assiduite', 'objectif'],
+    actives: ['resultats', 'travail', 'participation', 'comportement', 'matieres', 'objectif'],
+    bilan: true, adresse: 'il', ton: 'bienveillant', style: 'phrases', longueur: 400, seuils: [10, 13, 16],
+    mentions: true, felicitations: 16, compliments: 14,
+  },
   // Discipline du carnet (discipline.js). Jamais exportée avec les réglages partagés : chaque collègue garde la sienne.
   discipline: { code: 'eps' },
 };
@@ -72,7 +80,9 @@ function ecrireReglage(nom, valeurs) {
 const seuilsDefaut = () => reglage('notes').seuils;
 // Bouton de la barre de saisie affiché : code de la discipline non décoché, ou code ajouté à la main dans les réglages.
 const codeVisible = (n, code) => (codesDiscipline().includes(code) ? !n.codesMasques.includes(code) : (n.codesAjoutes || []).includes(code));
-const ongletsVisibles = () => Object.keys(NOMS_ONGLETS).filter(v => !reglage('onglets').masques.includes(v));
+// (L'onglet « Prof principal » n'existe que si une classe est marquée « Je suis PP » : pp.js.)
+const ongletsVisibles = () => Object.keys(NOMS_ONGLETS).filter(v => !reglage('onglets').masques.includes(v)
+  && (v !== 'pp' || (typeof classesPP === 'function' && classesPP().length > 0)));
 
 /* ---------- Couleurs ---------- */
 
@@ -178,7 +188,7 @@ function appliquerReglages(forcer = false) {
 
   const o = reglage('onglets');
   document.querySelectorAll('#onglets button[data-vue]').forEach(b => {
-    b.hidden = o.masques.includes(b.dataset.vue);
+    b.hidden = !ongletsVisibles().includes(b.dataset.vue);
     b.textContent = (o.noms[b.dataset.vue] || '').trim() || NOMS_ONGLETS[b.dataset.vue];
   });
 }
@@ -639,6 +649,15 @@ function nettoyerReglage(nom, brut) {
     if (propre.ton && !['bienveillant', 'neutre', 'exigeant'].includes(propre.ton)) delete propre.ton;
     if (propre.style && !['phrases', 'telegraphique'].includes(propre.style)) delete propre.style;
     if ('longueur' in propre && !(propre.longueur >= 80 && propre.longueur <= 2000)) delete propre.longueur;
+  }
+  if (nom === 'pp') {
+    for (const k of ['ordre', 'actives']) if (propre[k]) propre[k] = propre[k].filter(x => REGLAGES_DEFAUT.pp.ordre.includes(x));
+    if (propre.ton && !['bienveillant', 'neutre', 'exigeant'].includes(propre.ton)) delete propre.ton;
+    if (propre.style && !['phrases', 'telegraphique'].includes(propre.style)) delete propre.style;
+    if (propre.adresse && !['il', 'vous'].includes(propre.adresse)) delete propre.adresse;
+    if ('longueur' in propre && !(propre.longueur >= 80 && propre.longueur <= 2000)) delete propre.longueur;
+    if (propre.seuils && (propre.seuils.length !== 3 || !propre.seuils.every(x => Number.isFinite(x) && x >= 0 && x <= 20))) delete propre.seuils;
+    for (const k of ['felicitations', 'compliments']) if (k in propre && !(propre[k] >= 0 && propre[k] <= 20)) delete propre[k];
   }
   return propre;
 }

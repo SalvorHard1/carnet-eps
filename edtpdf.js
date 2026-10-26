@@ -6,6 +6,111 @@
 // 2. EdtPdf : repère la grille (jours en colonnes, heures en lignes) et en déduit les créneaux de cours.
 // Rien n'est envoyé nulle part : le fichier est lu dans la mémoire du navigateur, puis oublié.
 
+// PDF protégé par le « gestionnaire standard » avec un mot de passe d'ouverture vide (cas des bulletins exportés) :
+// RC4 ou AES-128 (révisions 2 à 4), AES-256 (révisions 5 et 6). Un PDF qui demande vraiment un mot de passe est refusé.
+const PdfChiffre = (() => {
+  const octetsDe = s => { const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 255; return u; };
+  const coller = (...t) => { const r = new Uint8Array(t.reduce((n, x) => n + x.length, 0)); let k = 0; for (const x of t) { r.set(x, k); k += x.length; } return r; };
+  const REMPLISSAGE = octetsDe('\x28\xBF\x4E\x5E\x4E\x75\x8A\x41\x64\x00\x4E\x56\xFF\xFA\x01\x08\x2E\x2E\x00\xB6\xD0\x68\x3E\x80\x2F\x0C\xA9\xFE\x64\x53\x69\x7A');
+
+  // MD5 (absent de WebCrypto).
+  const K = Array.from({ length: 64 }, (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32) >>> 0);
+  const DEC = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
+  function md5(m) {
+    const n = ((m.length + 8) >> 6) + 1, x = new Uint32Array(n * 16);
+    for (let i = 0; i < m.length; i++) x[i >> 2] |= m[i] << ((i % 4) * 8);
+    x[m.length >> 2] |= 0x80 << ((m.length % 4) * 8);
+    x[n * 16 - 2] = (m.length * 8) >>> 0; x[n * 16 - 1] = Math.floor(m.length / 0x20000000);
+    let [a0, b0, c0, d0] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476];
+    for (let b = 0; b < n * 16; b += 16) {
+      let [a, bb, c, d] = [a0, b0, c0, d0];
+      for (let i = 0; i < 64; i++) {
+        const t = i >> 4;
+        const f = t === 0 ? (bb & c) | (~bb & d) : t === 1 ? (d & bb) | (~d & c) : t === 2 ? bb ^ c ^ d : c ^ (bb | ~d);
+        const g = t === 0 ? i : t === 1 ? (5 * i + 1) % 16 : t === 2 ? (3 * i + 5) % 16 : (7 * i) % 16;
+        const s = DEC[t * 4 + (i % 4)], v = (a + f + K[i] + x[b + g]) >>> 0;
+        a = d; d = c; c = bb; bb = (bb + ((v << s) | (v >>> (32 - s)))) >>> 0;
+      }
+      a0 = (a0 + a) >>> 0; b0 = (b0 + bb) >>> 0; c0 = (c0 + c) >>> 0; d0 = (d0 + d) >>> 0;
+    }
+    const r = new Uint8Array(16);
+    [a0, b0, c0, d0].forEach((v, k) => { for (let j = 0; j < 4; j++) r[k * 4 + j] = (v >>> (8 * j)) & 255; });
+    return r;
+  }
+  function rc4(cle, d) {
+    const S = Uint8Array.from({ length: 256 }, (_, i) => i), r = new Uint8Array(d.length);
+    for (let i = 0, j = 0; i < 256; i++) { j = (j + S[i] + cle[i % cle.length]) & 255; [S[i], S[j]] = [S[j], S[i]]; }
+    for (let k = 0, i = 0, j = 0; k < d.length; k++) {
+      i = (i + 1) & 255; j = (j + S[i]) & 255; [S[i], S[j]] = [S[j], S[i]];
+      r[k] = d[k] ^ S[(S[i] + S[j]) & 255];
+    }
+    return r;
+  }
+  const subtil = () => crypto.subtle;
+  const cleAes = (cle, usage) => subtil().importKey('raw', cle, 'AES-CBC', false, [usage]);
+  // AES-CBC : les 16 premiers octets sont le vecteur d'initialisation, remplissage PKCS#7.
+  async function aesFlux(cle, d) {
+    if (d.length < 32 || d.length % 16) return new Uint8Array(0);
+    try { return new Uint8Array(await subtil().decrypt({ name: 'AES-CBC', iv: d.subarray(0, 16) }, await cleAes(cle, 'decrypt'), d.subarray(16))); } catch { return new Uint8Array(0); }
+  }
+  // AES-CBC sans remplissage (clés des révisions 5-6) : on ajoute un bloc de remplissage chiffré pour que WebCrypto accepte.
+  async function aesBrut(cle, iv, d) {
+    const enc = await cleAes(cle, 'encrypt');
+    const bloc = new Uint8Array(await subtil().encrypt({ name: 'AES-CBC', iv: d.subarray(d.length - 16) }, enc, new Uint8Array(0)));
+    return new Uint8Array(await subtil().decrypt({ name: 'AES-CBC', iv }, await cleAes(cle, 'decrypt'), coller(d, bloc)));
+  }
+  const hachage = async (algo, d) => new Uint8Array(await subtil().digest(algo, d));
+  // Révision 6 : hachage itératif (ISO 32000-2, 7.6.4.3.4), mot de passe vide.
+  async function hachage6(sel, u = new Uint8Array(0)) {
+    let k = await hachage('SHA-256', sel);
+    for (let tour = 0; ; tour++) {
+      const un = coller(k, u), k1 = new Uint8Array(un.length * 64);
+      for (let i = 0; i < 64; i++) k1.set(un, i * un.length);
+      const enc = await cleAes(k.subarray(0, 16), 'encrypt');
+      const e = new Uint8Array(await subtil().encrypt({ name: 'AES-CBC', iv: k.subarray(16, 32) }, enc, k1)).subarray(0, k1.length);
+      const somme = e.subarray(0, 16).reduce((a, b) => a + b, 0) % 3;
+      k = await hachage(['SHA-256', 'SHA-384', 'SHA-512'][somme], e);
+      if (tour >= 63 && e[e.length - 1] <= tour - 32) return k.subarray(0, 32);
+    }
+  }
+
+  async function preparer(dict, id0, resoudre) {
+    const val = x => resoudre(x), chaine = x => octetsDe(val(x)?.b || '');
+    if (val(dict?.Filter)?.n !== 'Standard') throw new Error('Ce PDF est protégé d’une façon que l’appli ne sait pas lire.');
+    const V = val(dict.V) || 0, R = val(dict.R) || 2, O = chaine(dict.O), U = chaine(dict.U);
+    const refus = () => { throw new Error('Ce PDF est protégé par un mot de passe : l’appli ne peut pas le lire.'); };
+    // Méthode des flux : RC4 (V2), AESV2 (AES-128) ou AESV3 (AES-256).
+    let methode = V >= 5 ? 'AESV3' : 'V2';
+    if (V >= 4) {
+      const nomFiltre = val(dict.StmF)?.n || 'Identity', cf = val(val(dict.CF)?.[nomFiltre]);
+      methode = nomFiltre === 'Identity' ? 'aucun' : val(cf?.CFM)?.n || methode;
+    }
+    if (methode === 'aucun' || methode === 'None') return async d => d;
+    if (R >= 5) {
+      const cleU = R === 6 ? await hachage6(U.subarray(32, 40)) : await hachage('SHA-256', U.subarray(32, 40));
+      if (cleU.some((b, i) => b !== U[i])) refus();
+      const inter = R === 6 ? await hachage6(U.subarray(40, 48)) : await hachage('SHA-256', U.subarray(40, 48));
+      const cle = await aesBrut(inter, new Uint8Array(16), chaine(dict.UE));
+      return (d) => aesFlux(cle, d);
+    }
+    const n = R === 2 ? 5 : (val(dict.Length) || 40) / 8, P = val(dict.P) | 0;
+    let cle = md5(coller(REMPLISSAGE, O.subarray(0, 32), Uint8Array.of(P & 255, (P >> 8) & 255, (P >> 16) & 255, (P >>> 24) & 255),
+      octetsDe(id0), R >= 4 && val(dict.EncryptMetadata) === false ? Uint8Array.of(255, 255, 255, 255) : new Uint8Array(0))).subarray(0, n);
+    if (R >= 3) for (let i = 0; i < 50; i++) cle = md5(cle).subarray(0, n);
+    // Vérifie que le mot de passe vide ouvre bien le fichier.
+    let u = R === 2 ? rc4(cle, REMPLISSAGE) : rc4(cle, md5(coller(REMPLISSAGE, octetsDe(id0))));
+    if (R >= 3) for (let i = 1; i <= 19; i++) u = rc4(cle.map(b => b ^ i), u);
+    if (u.subarray(0, 16).some((b, i) => b !== U[i])) refus();
+    const aes = methode === 'AESV2';
+    return (d, num, gen) => {
+      const c = md5(coller(cle, Uint8Array.of(num & 255, (num >> 8) & 255, (num >> 16) & 255, gen & 255, (gen >> 8) & 255), aes ? octetsDe('sAlT') : new Uint8Array(0)))
+        .subarray(0, Math.min(n + 5, 16));
+      return aes ? aesFlux(c, d) : rc4(c, d);
+    };
+  }
+  return { preparer };
+})();
+
 const PdfTexte = (() => {
   class Nom { constructor(n) { this.n = n; } }
   class Chaine { constructor(b) { this.b = b; } } // octets bruts (une lettre par octet)
@@ -137,12 +242,12 @@ const PdfTexte = (() => {
   async function ouvrir(buffer) {
     const s = enChaine(new Uint8Array(buffer));
     if (!s.startsWith('%PDF')) throw new Error('Ce fichier n’est pas un PDF.');
-    if (/\/Encrypt\s/.test(s)) throw new Error('Ce PDF est protégé (chiffré) : l’appli ne peut pas le lire.');
 
     // Index des objets : la dernière définition gagne (mises à jour incrémentales).
-    const index = new Map();
-    for (const m of s.matchAll(/(\d+)\s+(\d+)\s+obj\b/g)) index.set(+m[1], m.index + m[0].length);
+    const index = new Map(), generation = new Map();
+    for (const m of s.matchAll(/(\d+)\s+(\d+)\s+obj\b/g)) { index.set(+m[1], m.index + m[0].length); generation.set(+m[1], +m[2]); }
     const cache = new Map(), dansFlux = new Map();
+    let dechiffrer = null; // PDF protégé (bulletins Pronote, École Directe…) : déchiffre un flux
 
     function objetBrut(num) {
       if (cache.has(num)) return cache.get(num);
@@ -158,7 +263,7 @@ const PdfTexte = (() => {
           // Longueur annoncée si elle tombe bien sur « endstream », sinon on cherche « endstream ».
           const lg = v.Length instanceof Ref ? resoudre(v.Length) : v.Length;
           const fin = typeof lg === 'number' && /^\s*endstream/.test(s.slice(debut + lg, debut + lg + 12)) ? debut + lg : s.indexOf('endstream', debut);
-          res = { dict: v, brut: s.slice(debut, fin) };
+          res = { dict: v, brut: s.slice(debut, fin), num, gen: generation.get(num) || 0 };
         } else res = v;
       } else if (dansFlux.has(num)) res = dansFlux.get(num);
       cache.set(num, res);
@@ -175,6 +280,7 @@ const PdfTexte = (() => {
       let filtres = resoudre(f.dict.Filter);
       filtres = filtres ? (filtres instanceof Array ? filtres : [filtres]).map(x => resoudre(x)?.n) : [];
       let octets = enOctets(f.brut);
+      if (dechiffrer && f.num !== undefined && resoudre(f.dict.Type)?.n !== 'XRef') octets = await dechiffrer(octets, f.num, f.gen);
       for (const filtre of filtres) {
         if (filtre === 'FlateDecode' || filtre === 'Fl') octets = await decompresser(octets);
         else if (filtre === 'ASCIIHexDecode' || filtre === 'AHx') octets = enOctets(lecteur('<' + enChaine(octets).replace(/>.*$/s, '') + '>').valeur().b);
@@ -182,6 +288,15 @@ const PdfTexte = (() => {
       }
       f.decode = enChaine(octets);
       return f.decode;
+    }
+
+    // PDF protégé sans mot de passe d'ouverture (seulement des restrictions d'impression, de copie…) : on le déchiffre.
+    const refChiffre = /\/Encrypt\s+(\d+)\s+\d+\s+R/.exec(s);
+    if (refChiffre || /\/Encrypt\s*<</.test(s)) {
+      const dict = refChiffre ? resoudre(new Ref(+refChiffre[1])) : lecteur(s, s.search(/\/Encrypt\s*<</) + 8).valeur();
+      const id = /\/ID\s*\[\s*(<[0-9a-fA-F\s]*>|\()/.exec(s);
+      const id0 = id ? lecteur(s, id.index + id[0].length - id[1].length).valeur() : null;
+      dechiffrer = await PdfChiffre.preparer(dict, id0 instanceof Chaine ? id0.b : '', resoudre);
     }
 
     // Objets rangés dans des flux d'objets (PDF récents).
@@ -463,7 +578,7 @@ const PdfTexte = (() => {
         items.push({ x, y, t, taille: corps, fin: x, vertical, finY });
         return;
       }
-      if (prec && Math.abs(prec.y - y) < corps * 0.3 && x >= prec.x && Math.abs(x - prec.fin) < corps * 0.6) {
+      if (prec && !prec.vertical && Math.abs(prec.y - y) < corps * 0.3 && x >= prec.x && Math.abs(x - prec.fin) < corps * 0.6) {
         prec.t += (x - prec.fin > corps * 0.2 && !prec.t.endsWith(' ') ? ' ' : '') + t;
         prec.fin = fin;
         return;

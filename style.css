@@ -1918,6 +1918,12 @@ body[data-densite="aeree"] .grille .cellule-presence { height: 56px; }
 /* Import de notes : une ligne par évaluation du fichier, avec ce qui sera fait */
 .liste-evals-import { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
 .liste-evals-import li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--bord); border-radius: 10px; }
+/* Vérification des moyennes à l'import (relevé Pronote) */
+.alerte-import { color: var(--danger); margin: 6px 0; }
+.verif-moyennes { margin-top: 4px; }
+.verif-moyennes > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.verif-moyennes .table-labo td, .verif-moyennes .table-labo th { padding: 4px 8px; }
+.ecart-moyenne th, .ecart-moyenne td { color: var(--danger); font-weight: 700; }
 .liste-evals-import li > span { flex: 1 1 240px; min-width: 0; }
 .liste-evals-import select { width: auto !important; flex: 0 1 260px; }
 .liste-evals-import .cas-doublon, .liste-evals-import .cas-identique { opacity: .75; }
@@ -2161,3 +2167,48 @@ body.mode-eleve .bandeau-recup { display: none; }
 .menu-cle .forme-sauvegarde { margin: 8px 4px 2px; font-size: 12px; }
 .arbre-sauvegarde { display: block; margin: 4px 0; padding-left: 10px; border-left: 3px solid var(--accent); font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 .arbre-sauvegarde small { font-family: system-ui, sans-serif; color: var(--texte2); }
+
+/* ---------- ⭐ Espace professeur principal (pp.js) ---------- */
+.pp-entete .pp-periodes { margin: 0; }
+.pp-sections { margin-bottom: 12px; }
+.pp-depot { cursor: pointer; }
+.pp-table { border-collapse: collapse; width: 100%; font-size: 14px; }
+.pp-table th, .pp-table td { padding: 5px 8px; border-bottom: 1px solid var(--bord); text-align: left; vertical-align: top; }
+.pp-table thead th { background: var(--surface2); position: sticky; top: 0; z-index: 1; }
+.pp-tableau td:not(:first-child), .pp-tableau th:not(:first-child) { text-align: center; white-space: nowrap; }
+.pp-tableau thead th { vertical-align: bottom; }
+.pp-tableau td:first-child { white-space: nowrap; }
+.pp-vertical { writing-mode: vertical-rl; transform: rotate(180deg); display: inline-block; max-height: 9em; font-weight: 600; font-size: 12px; }
+.pp-tableau tfoot th { background: var(--surface2); }
+.pp-n1 { background: color-mix(in srgb, var(--n1) 26%, transparent); }
+.pp-n2 { background: color-mix(in srgb, var(--n2) 22%, transparent); }
+.pp-n3 { background: color-mix(in srgb, var(--n3) 22%, transparent); }
+.pp-n4 { background: color-mix(in srgb, var(--n4) 26%, transparent); }
+.pp-hausse { color: var(--n4); font-weight: 600; white-space: nowrap; }
+.pp-baisse { color: var(--danger); font-weight: 600; white-space: nowrap; }
+.pp-bilan-classe, .pp-attente, .pp-alertes, .pp-conseil-resume { padding: 10px 12px; margin-bottom: 12px; }
+.pp-attente h3, .pp-alertes h3 { margin: 0 0 6px; font-size: 16px; }
+.pp-attente .ligne { align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.pp-alertes ul { margin: 0; padding-left: 20px; }
+.pp-alertes li { margin: 4px 0; }
+.pp-mention { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.pp-collegues { margin-top: 8px; }
+.pp-collegues summary { cursor: pointer; color: var(--texte2); }
+.pp-matieres th { width: 1%; white-space: nowrap; }
+.pp-matieres td:nth-child(2), .pp-matieres td:nth-child(3) { width: 1%; white-space: nowrap; text-align: center; }
+.pp-signal { display: inline-block; font-size: 12px; padding: 0 6px; border-radius: 10px; margin: 3px 4px 0 0; border: 1px solid var(--bord); }
+.pp-signal.plus { background: color-mix(in srgb, var(--n4) 14%, transparent); }
+.pp-signal.moins { background: color-mix(in srgb, var(--n1) 14%, transparent); }
+.pp-conseil-resume { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+.pp-grand { font-size: 20px; }
+.pp-notes { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 12px; font-weight: 600; }
+.pp-notes textarea { width: 100%; font-weight: normal; }
+.pp-suivi-eleve { padding: 8px 12px; margin-bottom: 8px; }
+.pp-suivi-eleve summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pp-suivi-eleve .outils { margin: 10px 0 6px; }
+.pp-journal { margin: 0; padding-left: 18px; }
+.pp-journal li { margin: 6px 0; }
+@media (max-width: 600px) {
+  .pp-table { font-size: 13px; }
+  .pp-matieres th { white-space: normal; }
+}

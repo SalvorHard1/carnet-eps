@@ -1,5 +1,5 @@
 'use strict';
-// Échange avec Excel : les notes et les degrés de maîtrise d'une classe en classeur .xlsx (bouton « ⇅ Excel » de l'onglet Notes).
+// Échange avec Excel : les notes et les degrés de maîtrise d'une classe en classeur .xlsx (bouton « 📥 Importer mes notes » de l'onglet Notes).
 // Même principe que pour les leçons (entrainement.js) :
 //   un onglet « Lisez-moi », un onglet « Synthèse » (moyennes, pour lire seulement), puis un onglet par évaluation :
 //   élèves en lignes ; colonnes Note, puis un degré (1 à 4) par compétence travaillée.
@@ -272,7 +272,8 @@ function lireNotesPronote(feuilles) {
       return {
         onglet: f.nom, fichierId: '', refId: '', titre, date, apsa: '', ca: '', colonnes: [], k,
         max: +sur.replace(',', '.') || 20, coef: +coef.replace(',', '.'),
-        lignes: eleves.map(({ nom, prenom, l }) => ({ id: '', nom: majuscules(nom), prenom, note: l[k] || '', degres: [] })),
+        lignes: eleves.map(({ nom, prenom, l }) => ({ id: '', nom: majuscules(nom), prenom, note: l[k] || '', degres: [],
+          moyenneFichier: kMoy >= 0 ? nombre(String(l[kMoy] || '').replace(',', '.')) : null })),
       };
     });
     // Moyennes de Pronote : l'appli refait les deux calculs pour savoir lequel Pronote a suivi
@@ -298,6 +299,35 @@ function lireNotesPronote(feuilles) {
     res.push(...lues);
   }
   return res;
+}
+
+// Vérification avant import : pour chaque élève, la moyenne du fichier (référence) et celle que le carnet calculera
+// avec ces devoirs (notes ramenées sur 20, pondérées par les coefficients choisis).
+function moyennesAComparer(evals, coefDe) {
+  const lignes = [];
+  evals[0]?.lignes.forEach((l0, i) => {
+    if (l0.moyenneFichier === null || l0.moyenneFichier === undefined) return;
+    let somme = 0, poids = 0;
+    for (const x of evals) {
+      const n = nombre(valeurImport(x.lignes[i].note, x.max)), coef = coefDe(x);
+      if (n === null || !coef) continue;
+      somme += (n / x.max) * 20 * coef; poids += coef;
+    }
+    const carnet = poids ? Math.round((somme / poids) * 100) / 100 : null;
+    lignes.push({ qui: `${l0.nom} ${l0.prenom}`.trim(), fichier: l0.moyenneFichier, carnet, ok: carnet !== null && Math.abs(carnet - l0.moyenneFichier) < 0.006 });
+  });
+  return lignes;
+}
+
+function htmlVerifMoyennes(lignes) {
+  const ok = lignes.filter(l => l.ok).length, ecarts = lignes.length - ok;
+  return `<p class="${ecarts ? 'alerte-import' : 'aide'}">${ecarts ? `⚠ <b>${ecarts} moyenne${ecarts > 1 ? 's' : ''} différente${ecarts > 1 ? 's' : ''}</b> de celles du fichier`
+      : `✔ <b>Les ${ok} moyennes sont identiques</b> à celles du fichier`}${ecarts && ok ? ` (${ok} identique${ok > 1 ? 's' : ''})` : ''}.</p>
+    <details class="verif-moyennes"${ecarts ? ' open' : ''}><summary>Voir élève par élève</summary>
+      <div class="table-defile"><table class="table-labo"><thead><tr><th>Élève</th><th>Fichier</th><th>Carnet</th><th>Écart</th></tr></thead>
+      <tbody>${lignes.map(l => `<tr class="${l.ok ? '' : 'ecart-moyenne'}"><th>${esc(l.qui)}</th><td>${fmt(l.fichier)}</td><td>${l.carnet === null ? '–' : fmt(l.carnet)}</td>
+        <td>${l.ok ? '✔' : l.carnet === null ? '⚠' : '⚠ ' + (l.carnet > l.fichier ? '+' : '') + fmt(Math.round((l.carnet - l.fichier) * 100) / 100)}</td></tr>`).join('')}</tbody></table></div>
+    </details>`;
 }
 
 // Calcul « en points » de Pronote reproduit dans le carnet : chaque coefficient est multiplié par barème / barème le plus courant
@@ -473,17 +503,22 @@ async function importerNotesExcel(c, fichier) {
   if (!lues.length) lues = lireNotesPronote(feuilles);
   if (!lues.length) lues = lireNotesEcoleDirecte(feuilles);
   if (!lues.length) throw new Error(`Aucune évaluation trouvée dans « ${fichier.name} » : il faut le classeur exporté par l’appli, le relevé de notes de Pronote (dates des devoirs, puis « 1 - /10 » dessous) ou celui d’École Directe (lignes « Coefficients » et « Noté sur » sous les titres des évaluations).`);
-  // Relevé Pronote : moyennes calculées « en points » (et non sur 20) ? → proposé : coefficients adaptés pour retrouver les mêmes moyennes.
+  // Relevé avec une colonne Moyenne (Pronote) : la moyenne du fichier sert de référence.
+  // Deux calculs possibles : « points » (total des points / total des barèmes, comme Pronote : un devoir sur 5 compte
+  // moitié moins qu'un sur 10 → coefficients adaptés au barème) ou « sur 20 » (coefficients du fichier, calcul habituel du carnet).
   const verif = lues[0].verifPronote;
-  const enPoints = verif?.total && verif.points > verif.sur20 && new Set(lues.map(x => x.max)).size > 1;
-  if (enPoints) { lues.forEach(x => { x.coefFichier = x.coef; }); coefsCommePronote(lues); }
+  const baremesDifferents = new Set(lues.map(x => x.max)).size > 1;
+  lues.forEach(x => { x.coefFichier = x.coef; });
+  if (baremesDifferents) { coefsCommePronote(lues); lues.forEach(x => { x.coefPoints = x.coef; x.coef = x.coefFichier; }); }
+  const enPoints = !!verif?.total && baremesDifferents && verif.points >= verif.sur20;
+  if (enPoints) lues.forEach(x => { x.coef = x.coefPoints; });
   const plan = preparerImportNotes(lues, c);
   analyserDoublonsImport(plan);
   const totalEleves = plan.reconnus.size + plan.inconnus.size;
   const inconnus = [...plan.inconnus.values()];
   const nbCas = cas => plan.evals.filter(x => x.cas === cas).length;
   const aVerifier = nbCas('conflit-carnet') + nbCas('conflit-fichier');
-  const { resultat } = ouvrirModale(`Importer dans ${c.nom}`, `
+  const { d, resultat } = ouvrirModale(`Importer dans ${c.nom}`, `
     <p><b>${esc(fichier.name)}</b></p>
     <ul class="bilan-import">
       <li>${plan.evals.length} évaluation${plan.evals.length > 1 ? 's' : ''} dans le fichier : ${[
@@ -497,7 +532,7 @@ async function importerNotesExcel(c, fichier) {
       <p class="aide">Seules les évaluations <b>uniques</b> sont importées : une évaluation identique (même titre, même date, mêmes notes)
         n’est pas recopiée. ${aVerifier ? '<b>⚠ Choisis quoi faire pour celles marquées « à vérifier ».</b>' : ''}</p>
       <ul class="liste-evals-import">${plan.evals.map((x, i) => `<li class="cas-${x.cas}">
-        <span><b>${esc(x.titre)}</b> <span class="aide">${esc(dateCourte(x.date))} · /${fmt(x.max)} · coef ${fmt(x.coef)}</span><br>
+        <span><b>${esc(x.titre)}</b> <span class="aide">${esc(dateCourte(x.date))} · /${fmt(x.max)} · coef <span data-coef-import="${i}">${fmt(x.coef)}</span></span><br>
           <small>${esc(LIBELLES_CAS_IMPORT[x.cas](x))}</small></span>
         <select name="act-${i}" ${x.cas.startsWith('conflit') ? 'required' : ''} aria-label="Que faire de ${esc(x.titre)} du ${esc(dateCourte(x.date))}">
           ${CHOIX_CAS_IMPORT[x.cas].map(([v, nom]) => `<option value="${v}">${esc(nom)}</option>`).join('')}</select></li>`).join('')}</ul>
@@ -506,12 +541,14 @@ async function importerNotesExcel(c, fichier) {
       <label class="case"><input type="radio" name="quoi" value="tout" checked><span>Les évaluations <b>et les notes / degrés</b> des élèves</span></label>
       <label class="case"><input type="radio" name="quoi" value="structure"><span>Seulement <b>les évaluations</b> (titres, dates, barèmes, compétences) — pour reprendre les évaluations d’un collègue avec tes élèves</span></label>
     </fieldset>
-    ${enPoints ? `<fieldset class="choix-import"><legend>Moyennes</legend>
-      <p class="aide">Dans ce relevé, Pronote additionne les points (${verif.points} moyenne${verif.points > 1 ? 's' : ''} sur ${verif.total} le confirment) :
-        un devoir sur 5 compte moitié moins qu’un devoir sur 10. Le carnet, lui, ramène chaque note sur 20.</p>
-      <label class="case"><input type="checkbox" name="commePronote" checked><span><b>Mêmes moyennes que Pronote</b> : coefficients adaptés au barème
-        (${[...new Map(plan.evals.map(x => [x.max, x])).values()].map(x => `/${fmt(x.max)} → coef ${fmt(x.coef)}`).join(', ')})</span></label>
-    </fieldset>` : verif?.total ? `<p class="aide">${verif.sur20 ? '✔' : '⚠'} Moyennes de Pronote retrouvées par le carnet pour ${verif.sur20} élève${verif.sur20 > 1 ? 's' : ''} sur ${verif.total}${verif.sur20 < verif.total ? ' (Pronote a pu compter autrement : devoir bonus ou facultatif, note ramenée sur 20…)' : ''}.</p>` : ''}
+    ${verif?.total ? `<fieldset class="choix-import"><legend>Vérification des moyennes</legend>
+      <p class="aide">La moyenne de chaque élève <b>dans le fichier</b> sert de référence : le carnet doit retrouver la même avec ces devoirs.</p>
+      ${baremesDifferents ? `<label class="case"><input type="radio" name="calcul" value="points" ${enPoints ? 'checked' : ''}><span><b>Les points s’additionnent</b> (calcul de Pronote) :
+          un devoir sur 5 compte moitié moins qu’un devoir sur 10 — coefficients adaptés
+          (${[...new Map(plan.evals.map(x => [x.max, x])).values()].map(x => `/${fmt(x.max)} → coef ${fmt(x.coefPoints)}`).join(', ')})</span></label>
+        <label class="case"><input type="radio" name="calcul" value="sur20" ${enPoints ? '' : 'checked'}><span><b>Chaque note ramenée sur 20</b>, avec les coefficients du fichier</span></label>` : ''}
+      <div data-verif-moyennes>${htmlVerifMoyennes(moyennesAComparer(plan.evals, x => x.coef))}</div>
+    </fieldset>` : ''}
     ${inconnus.length ? `<div class="inconnus-import">
       <p>${inconnus.length} élève${inconnus.length > 1 ? 's' : ''} du fichier ${inconnus.length > 1 ? 'ne sont' : 'n’est'} pas dans ${esc(c.nom)} :
         <span class="aide">${inconnus.slice(0, 12).map(el => esc(`${el.nom} ${el.prenom}`.trim())).join(', ')}${inconnus.length > 12 ? '…' : ''}</span></p>
@@ -519,9 +556,19 @@ async function importerNotesExcel(c, fichier) {
     </div>` : ''}
     <p class="aide">Rien n’est effacé : une case vide dans le fichier laisse la valeur du carnet telle quelle.</p>`,
   boutonsModale('Importer'));
+  // Changement de calcul : coefficients et comparaison des moyennes mis à jour aussitôt.
+  d.querySelectorAll('[name="calcul"]').forEach(btn => btn.addEventListener('change', () => {
+    plan.evals.forEach((x, i) => {
+      x.coef = btn.value === 'points' ? x.coefPoints : x.coefFichier;
+      const span = d.querySelector(`[data-coef-import="${i}"]`);
+      if (span) span.textContent = fmt(x.coef);
+    });
+    const ouvert = d.querySelector('.verif-moyennes')?.open;
+    d.querySelector('[data-verif-moyennes]').innerHTML = htmlVerifMoyennes(moyennesAComparer(plan.evals, x => x.coef));
+    if (ouvert) d.querySelector('.verif-moyennes').open = true;
+  }));
   const r = await resultat;
   if (r.action !== 'ok') return;
-  if (enPoints && r.data.commePronote !== 'on') plan.evals.forEach(x => { x.coef = x.coefFichier; });
   // Les choix de l'enseignant : ignorer, mettre à jour l'évaluation du carnet, ou importer à part (titre « … (2) »).
   const pris = new Set(evalsDe(c.id).map(e => sansAccent(e.titre) + '|' + e.date));
   plan.evals = plan.evals.filter((x, i) => {
@@ -551,26 +598,26 @@ async function importerNotesExcel(c, fichier) {
   '<span class="espace"></span><button type="button" data-fermer class="primaire">OK</button>');
 }
 
-// Bouton « ⇅ Excel » de l'onglet Notes.
+// Bouton « 📥 Importer mes notes » de l'onglet Notes (import École Directe / Pronote, et export Excel).
 async function echangeExcelNotes() {
   const c = classeActive();
   let fichier = null;
-  const { d, resultat } = ouvrirModale(`Excel — notes ${c.nom}`, `
+  const { d, resultat } = ouvrirModale(`📥 Importer mes notes — ${c.nom}`, `
+    <div class="bloc-excel">
+      <h3>⬆ Importer</h3>
+      <p><b>Import de toutes ses notes d’École Directe ou de Pronote</b> : le relevé de notes exporté de Pronote (.xlsx ou .csv,
+        ou le tableau copié puis collé dans un fichier .txt) ou d’École Directe (une colonne par évaluation).</p>
+      <p class="aide">Aussi : un classeur de notes exporté par ${esc(profil().carnet)} (le tien, éventuellement complété dans Excel, ou celui d’un collègue).
+        Tu verras ce qui sera repris, et la vérification des moyennes, avant de valider.</p>
+      <label class="bouton primaire">Choisir un fichier .xlsx, .xls, .csv ou .txt…<input type="file" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain" data-fichier-excel hidden></label>
+    </div>
     <div class="bloc-excel">
       <h3>⬇ Exporter</h3>
       <p class="aide">Toutes les évaluations de la classe dans un classeur .xlsx : une synthèse avec les moyennes, puis un onglet
         par évaluation (note et degrés de maîtrise). À garder, à ouvrir dans Excel ou LibreOffice, à donner à un collègue.</p>
       <p class="aide">⚠ Le classeur n’est pas chiffré, contrairement au carnet sur la clé : ne le laisse pas traîner.</p>
       <label class="case"><input type="checkbox" name="anonyme"> <span><b>Anonyme</b> — sans noms ni dispenses, pour partager (ne se réimporte pas)</span></label>
-      <button value="exporter" class="primaire">Exporter ${esc(c.nom)}</button>
-    </div>
-    <div class="bloc-excel">
-      <h3>⬆ Importer</h3>
-      <p class="aide">Un classeur de notes exporté par ${esc(profil().carnet)} (le tien, éventuellement complété dans Excel, ou celui d’un collègue),
-        ou le <b>relevé de notes exporté de Pronote</b> (.xlsx ou .csv, ou le tableau copié puis collé dans un fichier .txt)
-        ou <b>d’École Directe</b> (une colonne par évaluation : titre et date, coefficient, « noté sur », puis les notes).
-        Tu verras ce qui sera repris avant de valider.</p>
-      <label class="bouton primaire">Choisir un fichier .xlsx, .xls, .csv ou .txt…<input type="file" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain" data-fichier-excel hidden></label>
+      <button value="exporter">Exporter ${esc(c.nom)}</button>
     </div>`,
   '<span class="espace"></span><button type="button" data-fermer>Fermer</button>');
   d.querySelector('[data-fichier-excel]').addEventListener('change', e => {

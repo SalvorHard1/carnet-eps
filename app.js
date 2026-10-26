@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.114.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.115.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -610,6 +610,7 @@ function rendreVue() {
   if (ui.vue === 'outils') { v.innerHTML = htmlOutils(c); return; } // (certains outils marchent sans classe)
   if (ui.vue === 'agenda') { v.innerHTML = htmlAgenda(); apresAgenda(); return; } // (toutes les classes : agenda.js)
   if (ui.vue === 'baremes') { v.innerHTML = htmlBaremes(); return; } // (bibliothèque, sans classe : baremes.js)
+  if (ui.vue === 'pp') { v.innerHTML = htmlPP(); return; } // (la classe dont on est professeur principal : pp.js)
   if (!c) {
     v.innerHTML = `
       <div class="vide">
@@ -787,7 +788,7 @@ function htmlNotes(c) {
     <div class="outils">
       <h2>${esc(c.nom)}</h2>
       <button class="primaire" data-action="ajout-eval">+ Évaluation</button>
-      <button data-action="excel-notes" title="Exporter ou importer les notes et degrés de maîtrise de la classe (classeur Excel)">⇅ Excel</button>
+      <button data-action="excel-notes" title="Import de toutes ses notes d’École Directe ou de Pronote (l’export Excel des notes est aussi ici)">📥 Importer mes notes</button>
       <button data-action="appreciations" title="Appréciations du trimestre proposées par l’appli, d’après les notes et les ${motMin('lecons')}">✍ Appréciations</button>${typeof htmlBoutonsBilansSvt === 'function' ? htmlBoutonsBilansSvt(c) : ''}
       <label class="choix-tri">Période
         <select data-periode>
@@ -1542,6 +1543,8 @@ async function editerClasse(id) {
     <label>Niveau<select name="niveau">
       <option value="">—</option>${NIVEAUX.map(n => `<option ${c.niveau === n ? 'selected' : ''}>${n}</option>`).join('')}
     </select></label>
+    <label class="case"><input type="checkbox" name="pp" ${c.pp ? 'checked' : ''}> ⭐ Je suis professeur principal de cette classe
+      <span class="aide">(ajoute l’onglet « Prof principal » : bulletins, appréciation générale, conseil, suivi)</span></label>
     <fieldset class="competences">
       <legend>Correspondance note → degré de maîtrise (pour cette classe)</legend>
       <div class="ligne seuils">
@@ -1575,7 +1578,8 @@ async function editerClasse(id) {
     memoriserUi();
   } else if (r.action === 'ok') {
     const seuils = [+r.data.s2, +r.data.s3, +r.data.s4].sort((x, y) => x - y);
-    const enreg = Donnees.ecrire('classes', { ...c, id: c.id || Donnees.nouvelId(), nom: r.data.nom.trim(), niveau: r.data.niveau, seuils });
+    const enreg = Donnees.ecrire('classes', { ...c, id: c.id || Donnees.nouvelId(), nom: r.data.nom.trim(), niveau: r.data.niveau, seuils, pp: r.data.pp === 'on' });
+    if (enreg.pp && !c.pp) toast('Onglet « ⭐ Prof principal » ajouté.', 'ok');
     ui.classeId = enreg.id;
     memoriserUi();
     // Recalcul des degrés pré-remplis des évaluations qui suivent les seuils de la classe
