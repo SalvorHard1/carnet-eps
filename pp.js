@@ -751,6 +751,9 @@ function htmlPP() {
     `<button type="button" class="${x.id === c.id ? 'actif' : ''}" data-pp="classe" data-arg="${x.id}">${esc(x.nom)}${x.exemple ? ' <small>(exemple)</small>' : ''}</button>`).join('')}</div>` : ''}
       <div class="fiche-onglets pp-periodes">${periodesAnnee().map(p => `<button type="button" class="${p.id === periode ? 'actif' : ''}" data-pp="periode" data-arg="${p.id}">${p.code}</button>`).join('')}</div>
       <span class="aide">${lus} / ${eleves.length} bulletins lus</span>
+      <span class="espace"></span>
+      <button type="button" class="primaire pp-export" data-pp="fiches-pdf" ${lus ? '' : 'disabled'}
+        title="Un PDF pour la classe : récapitulatif, puis une fiche par élève (appréciation générale, mention, moyennes, absences, points d’attention, notes du conseil, suivi)">📄 Fiches bilan du conseil</button>
     </div>
     <nav class="fiche-onglets pp-sections">${Object.entries(SECTIONS_PP).map(([k, n]) => `<button type="button" class="${k === section ? 'actif' : ''}" data-pp="section" data-arg="${k}">${n}</button>`).join('')}</nav>
     <div class="pp-contenu">${section === 'bulletins' ? htmlBulletinsPP(c, periode, eleves) : section === 'tableau' ? htmlTableauPP(c, periode, eleves)
@@ -840,7 +843,6 @@ function htmlTableauPP(c, periode, eleves) {
   for (const { el } of lignes) { const m = appreciationPP(el, periode, r).mention; mentions[m] = (mentions[m] || 0) + 1; }
   const fragiles = matieres.map(n => ({ n, m: moyClasse(n) })).filter(x => x.m !== null).sort((a, b) => a.m - b.m).slice(0, 3);
   return `
-    <div class="outils"><button type="button" data-pp="fiches-pdf" title="Un PDF pour la classe : récapitulatif, puis une fiche par élève">📄 Fiches bilan du conseil (PDF)</button></div>
     <div class="carte pp-bilan-classe">
       <b>Bilan de la classe</b> · ${lignes.length} élèves · moyenne générale ${gen.length ? fmtD(gen.reduce((a, v) => a + v, 0) / gen.length) : '–'}
       · ${Object.entries(MENTIONS_PP).filter(([k]) => mentions[k] && k !== 'aucune').map(([k, n]) => `${mentions[k]} ${esc(n.toLowerCase())}`).join(', ') || 'aucune mention'}
@@ -934,9 +936,7 @@ function htmlConseilPP(c, periode, eleves) {
       <select data-pp-eleve-choix aria-label="Élève">${avec.map(x => `<option value="${x.id}" ${x.id === el.id ? 'selected' : ''}>${esc(x.nom)} ${esc(x.prenom)}</option>`).join('')}</select>
       <button type="button" data-pp="eleve" data-arg="${avec[i + 1]?.id || ''}" ${i < avec.length - 1 ? '' : 'disabled'} aria-label="Élève suivant">▶</button>
       <span class="aide">${i + 1} / ${avec.length}</span><span class="espace"></span>
-      <button type="button" data-pp="compte-rendu" title="Copie, pour chaque élève : moyenne, mention et notes du conseil">📋 Compte rendu du conseil</button>
-      <button type="button" data-pp="fiches-pdf" title="Un PDF pour la classe : récapitulatif, puis une fiche par élève (appréciation générale, mention, moyennes, absences, points d’attention, notes du conseil, suivi)">📄 Fiches bilan (PDF)</button>
-    </div>
+      <button type="button" data-pp="compte-rendu" title="Copie, pour chaque élève : moyenne, mention et notes du conseil">📋 Compte rendu du conseil</button>    </div>
     <div class="pp-conseil-resume carte">
       <b class="pp-grand">${esc(el.nom)} ${esc(el.prenom)}</b> ${besoins}
       <span>Moyenne générale <b class="${classeMoyPP(b.moyGen)}">${fmtMoyPP(b.moyGen)}</b>${b.moyGenClasse ? ` <small>(classe ${fmtD(b.moyGenClasse)})</small>` : ''}
@@ -954,32 +954,51 @@ function htmlConseilPP(c, periode, eleves) {
    Tout est relu au moment de l'export (mention, niveaux et textes choisis à la main compris). PDF : « Enregistrer au
    format PDF » dans la fenêtre d'impression, comme la fiche bilan de l'onglet Notes. */
 
+// Petits morceaux communs : moyenne en pastille colorée, évolution fléchée, mention en étiquette.
+const nivFichePP = n => (n === null || n === undefined ? '' : n < 8 ? 'n1' : n < 10 ? 'n2' : n < 14 ? 'n0' : n < 16 ? 'n3' : 'n4');
+const ecartPP = (b, bp) => (bp && b.moyGen !== null && b.moyGen !== undefined && bp.moyGen !== null && bp.moyGen !== undefined ? b.moyGen - bp.moyGen : null);
+const evolFichePP = e => (e === null ? '<span class="fc-neutre">–</span>'
+  : e >= 0.5 ? `<span class="fc-hausse">▲ +${fmtD(e)}</span>` : e <= -0.5 ? `<span class="fc-baisse">▼ −${fmtD(-e)}</span>` : `<span class="fc-neutre">= ${e < 0 ? '−' : '+'}${fmtD(Math.abs(e))}</span>`);
+const mentionFichePP = m => `<span class="fc-mention m-${m.startsWith('av') ? 'avert' : m}">${esc(m === 'aucune' ? 'Sans mention' : MENTIONS_PP[m])}</span>`;
+// Barre de 0 à 20 (élève), avec un trait pour la moyenne de la classe (SVG : pas de style en ligne).
+const barreFichePP = (v, cl) => `<svg class="fc-barre" viewBox="0 0 200 10" preserveAspectRatio="none" aria-hidden="true"><rect class="fond" width="200" height="10" rx="3"/>
+  <rect class="val ${nivFichePP(v)}" width="${Math.max(0, Math.min(20, v)) * 10}" height="10" rx="3"/>${cl === null || cl === undefined ? '' : `<rect class="classe" x="${Math.max(0, Math.min(20, cl)) * 10 - 1.5}" y="-2" width="3" height="14"/>`}</svg>`;
+
 function htmlFicheConseilPP(el, periode, r, c) {
   const b = bulletinPP(el.id, periode), x = appreciationPP(el, periode, r), d = x.analyse.details;
-  const prec = periodePrecPP(periode), bp = prec && bulletinPP(el.id, prec);
-  const ecart = bp && b.moyGen !== null && b.moyGen !== undefined && bp.moyGen !== null && bp.moyGen !== undefined ? b.moyGen - bp.moyGen : null;
-  const besoins = Object.values(BESOINS).filter(y => y.actif(el)).map(y => y.sigle).join(', ');
+  const prec = periodePrecPP(periode), ecart = ecartPP(b, prec && bulletinPP(el.id, prec));
+  const besoins = Object.values(BESOINS).filter(y => y.actif(el)).map(y => `<span class="fc-sigle">${esc(y.sigle)}</span>`).join('');
   const alertes = alertesPP(el, periode, r), notes = x.enreg?.notes || '';
   const journal = journalPP(el.id).slice(0, 4);
-  const abs = b.absences !== null && b.absences !== undefined ? `${b.absences} ½ j.` : '–';
-  return `<section class="fiche-conseil">
-    <h1>${esc(el.nom)} ${esc(el.prenom)}</h1>
-    <p class="sous-titre">${esc(c.nom)} · ${esc(nomPeriodePP(periode))}${besoins ? ` · ${esc(besoins)}` : ''}</p>
-    <table class="chiffres"><tr>
-      <td><small>Moyenne générale</small><b>${fmtMoyPP(b.moyGen)}</b>${b.moyGenClasse ? `<small>classe ${fmtD(b.moyGenClasse)}</small>` : ''}</td>
-      <td><small>Évolution</small><b>${ecart === null ? '–' : (ecart >= 0 ? '+' : '−') + fmtD(Math.abs(ecart))}</b></td>
-      <td><small>Absences</small><b>${esc(abs)}</b>${b.nonJustifiees ? `<small>dont ${b.nonJustifiees} non justifiée${b.nonJustifiees > 1 ? 's' : ''}</small>` : ''}</td>
-      <td><small>Retards</small><b>${b.retards ?? '–'}</b></td>
-      <td class="mention"><small>Mention</small><b>${esc(x.mention === 'aucune' ? '—' : MENTIONS_PP[x.mention])}</b></td>
-    </tr></table>
-    <h2>Appréciation générale</h2>
-    <p class="cadre">${esc(x.texte) || '<i>—</i>'}</p>
-    <h2>Moyennes par matière</h2>
-    <table class="matieres"><thead><tr><th>Matière</th><th>Élève</th><th>Classe</th></tr></thead><tbody>${b.matieres.filter(m => m.moy !== null).map(m => `<tr><td>${esc(nomMatierePP(m.brut))}</td><td><b>${fmtMoyPP(m.moy)}</b></td><td><small>${fmtMoyPP(m.moyClasse)}</small></td></tr>`).join('')}</tbody></table>
-    ${d.forts?.length || d.faibles?.length ? `<p>${d.forts.length ? `<b>Points forts :</b> ${esc(d.forts.map(y => y.nom).join(', '))}` : ''}${d.forts.length && d.faibles.length ? ' · ' : ''}${d.faibles.length ? `<b>À renforcer :</b> ${esc(d.faibles.map(y => y.nom).join(', '))}` : ''}</p>` : ''}
-    ${alertes.length ? `<h2>Points d’attention</h2><ul>${alertes.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
-    ${notes ? `<h2>Notes du conseil</h2><p class="cadre">${esc(notes).replace(/\n/g, '<br>')}</p>` : ''}
-    ${journal.length ? `<h2>Suivi</h2><ul>${journal.map(j => `<li><b>${dateCourtePP(j.date)}</b> · ${esc(TYPES_JOURNAL_PP[j.type] || 'Autre')}${j.objet ? ` — ${esc(j.objet)}` : ''}${j.suite ? ` <i>Suite : ${esc(j.suite)}</i>` : ''}${j.rappel && !j.fait ? ` (rappel le ${dateCourtePP(j.rappel)})` : ''}</li>`).join('')}</ul>` : ''}
+  const abs = b.absences !== null && b.absences !== undefined;
+  const matieres = b.matieres.filter(m => m.moy !== null && m.moy !== undefined);
+  const bloc = (titre, corps, cl = '') => `<div class="fc-bloc ${cl}"><h2>${titre}</h2>${corps}</div>`;
+  return `<section class="fiche-conseil fc">
+    <header class="fc-tete">
+      <div><p class="fc-sur">${esc(c.nom)} · ${esc(nomPeriodePP(periode))} · Conseil de classe</p>
+        <h1>${esc(el.nom)} <span>${esc(el.prenom)}</span></h1>${besoins ? `<p class="fc-sigles">${besoins}</p>` : ''}</div>
+      <div class="fc-decision"><small>Mention${x.enreg?.mention ? ' décidée' : ''}</small>${mentionFichePP(x.mention)}</div>
+    </header>
+    <div class="fc-kpis">
+      <div class="fc-kpi"><small>Moyenne générale</small><b class="fc-note ${nivFichePP(b.moyGen)}">${fmtMoyPP(b.moyGen)}</b><span>${b.moyGenClasse ? `classe ${fmtD(b.moyGenClasse)}` : '&nbsp;'}</span></div>
+      <div class="fc-kpi"><small>Évolution</small><b>${evolFichePP(ecart)}</b><span>${prec && ecart !== null ? `depuis ${esc(nomPeriodePP(prec))}` : '&nbsp;'}</span></div>
+      <div class="fc-kpi"><small>Absences</small><b>${abs ? b.absences : '–'}<i>${abs ? ' ½ j.' : ''}</i></b><span class="${b.nonJustifiees ? 'fc-alerte' : ''}">${b.nonJustifiees ? `dont ${b.nonJustifiees} non justifiée${b.nonJustifiees > 1 ? 's' : ''}` : abs && b.absences ? 'toutes justifiées' : '&nbsp;'}</span></div>
+      <div class="fc-kpi"><small>Retards</small><b>${b.retards ?? '–'}</b><span>&nbsp;</span></div>
+    </div>
+    <div class="fc-bloc fc-appr"><h2>Appréciation générale</h2><p>${esc(x.texte) || '<i>—</i>'}</p></div>
+    <div class="fc-colonnes">
+      ${bloc('Résultats par matière', `<div class="fc-matieres">${matieres.map(m => `<span class="nom">${esc(nomMatierePP(m.brut))}</span>${barreFichePP(m.moy, m.moyClasse)}<b class="${nivFichePP(m.moy)}">${fmtMoyPP(m.moy)}</b>`).join('')}</div>
+        <p class="fc-legende"><span class="fc-trait"></span> moyenne de la classe</p>`, 'fc-gauche')}
+      <div class="fc-droite">
+        ${d.forts?.length || d.faibles?.length ? bloc('Points d’appui', `${d.forts.length ? `<p><small>Points forts</small>${d.forts.map(y => `<span class="fc-pastille plus">${esc(y.nom)}</span>`).join('')}</p>` : ''}
+          ${d.faibles.length ? `<p><small>À renforcer</small>${d.faibles.map(y => `<span class="fc-pastille moins">${esc(y.nom)}</span>`).join('')}</p>` : ''}`) : ''}
+        ${alertes.length ? bloc('⚠ Points d’attention', `<ul>${alertes.map(a => `<li>${esc(a)}</li>`).join('')}</ul>`, 'fc-attention') : ''}
+        ${notes ? bloc('Notes du conseil', `<p>${esc(notes).replace(/\n/g, '<br>')}</p>`, 'fc-notes') : ''}
+        ${journal.length ? bloc('Suivi', `<ul class="fc-journal">${journal.map(j => `<li><b>${dateCourtePP(j.date)}</b> ${esc(TYPES_JOURNAL_PP[j.type] || 'Autre')}${j.objet ? ` — ${esc(j.objet)}` : ''}${j.suite ? `<br><i>Suite : ${esc(j.suite)}</i>` : ''}${j.rappel && !j.fait ? `<br><i>Rappel le ${dateCourtePP(j.rappel)}</i>` : ''}</li>`).join('')}</ul>`) : ''}
+        ${!alertes.length && !notes && !journal.length ? bloc('Points d’attention', '<p class="fc-rien">Rien à signaler.</p>') : ''}
+      </div>
+    </div>
+    <footer class="fc-pied">${esc(c.nom)} · ${esc(nomPeriodePP(periode))} · édité le ${dateCourtePP(aujourdhui())}</footer>
   </section>`;
 }
 
@@ -989,24 +1008,34 @@ function exporterFichesPP() {
   enregistrerTextePP();
   const periode = periodePP(c), r = reglagePP(), eleves = elevesDe(c.id).filter(el => bulletinPP(el.id, periode));
   if (!eleves.length) return toast(`Aucun bulletin lu pour ${nomPeriodePP(periode)} : rien à exporter.`, 'erreur');
-  const prec = periodePrecPP(periode);
+  const prec = periodePrecPP(periode), mentions = {};
+  let attention = 0;
   const lignes = eleves.map(el => {
-    const b = bulletinPP(el.id, periode), x = appreciationPP(el, periode, r), bp = prec && bulletinPP(el.id, prec);
-    const e = bp && b.moyGen !== null && b.moyGen !== undefined && bp.moyGen !== null && bp.moyGen !== undefined ? b.moyGen - bp.moyGen : null;
-    return `<tr><td>${esc(el.nom)} ${esc(el.prenom)}</td><td><b>${fmtMoyPP(b.moyGen)}</b></td><td>${e === null ? '' : (e >= 0 ? '+' : '−') + fmtD(Math.abs(e))}</td>
-      <td>${b.absences ?? ''}${b.nonJustifiees ? ` (${b.nonJustifiees} NJ)` : ''}</td><td>${x.mention === 'aucune' ? '' : esc(MENTIONS_PP[x.mention])}</td><td>${alertesPP(el, periode, r).length || ''}</td></tr>`;
+    const b = bulletinPP(el.id, periode), x = appreciationPP(el, periode, r), n = alertesPP(el, periode, r).length;
+    mentions[x.mention] = (mentions[x.mention] || 0) + 1;
+    if (n) attention++;
+    return `<tr><td class="nom">${esc(el.nom)} ${esc(el.prenom)}</td><td><b class="fc-note ${nivFichePP(b.moyGen)}">${fmtMoyPP(b.moyGen)}</b></td>
+      <td>${evolFichePP(ecartPP(b, prec && bulletinPP(el.id, prec)))}</td>
+      <td>${b.absences ?? ''}${b.nonJustifiees ? ` <small class="fc-alerte">${b.nonJustifiees} NJ</small>` : ''}</td>
+      <td>${x.mention === 'aucune' ? '' : mentionFichePP(x.mention)}</td><td>${n ? `<span class="fc-compte">⚠ ${n}</span>` : ''}</td></tr>`;
   });
   const gens = eleves.map(el => bulletinPP(el.id, periode).moyGen).filter(v => v !== null && v !== undefined);
-  const mentions = {};
-  for (const el of eleves) { const m = appreciationPP(el, periode, r).mention; mentions[m] = (mentions[m] || 0) + 1; }
+  const moy = gens.length ? gens.reduce((a, v) => a + v, 0) / gens.length : null;
   let zone = $('#zone-impression');
   if (!zone) { zone = document.createElement('div'); zone.id = 'zone-impression'; document.body.append(zone); }
   zone.innerHTML = `<div class="impression-pp">
-    <section class="fiche-conseil">
-      <h1>Conseil de classe — ${esc(c.nom)} — ${esc(nomPeriodePP(periode))}</h1>
-      <p class="sous-titre">${eleves.length} élèves · moyenne de la classe ${gens.length ? fmtD(gens.reduce((a, v) => a + v, 0) / gens.length) : '–'} ·
-        ${Object.entries(MENTIONS_PP).filter(([k]) => mentions[k] && k !== 'aucune').map(([k, n]) => `${mentions[k]} ${esc(n.toLowerCase())}`).join(', ') || 'aucune mention'} · édité le ${dateCourtePP(aujourdhui())}</p>
-      <table><thead><tr><th>Élève</th><th>Moy.</th><th>Évol.</th><th>Abs. (½ j.)</th><th>Mention</th><th>Points d’attention</th></tr></thead><tbody>${lignes.join('')}</tbody></table>
+    <section class="fiche-conseil fc">
+      <header class="fc-tete"><div><p class="fc-sur">${esc(nomPeriodePP(periode))} · récapitulatif · édité le ${dateCourtePP(aujourdhui())}</p>
+        <h1>Conseil de classe <span>${esc(c.nom)}</span></h1></div></header>
+      <div class="fc-kpis">
+        <div class="fc-kpi"><small>Élèves</small><b>${eleves.length}</b><span>&nbsp;</span></div>
+        <div class="fc-kpi"><small>Moyenne de la classe</small><b class="fc-note ${nivFichePP(moy)}">${fmtMoyPP(moy)}</b><span>&nbsp;</span></div>
+        <div class="fc-kpi"><small>Mentions</small><b>${eleves.length - (mentions.aucune || 0)}</b><span>&nbsp;</span></div>
+        <div class="fc-kpi"><small>Élèves à suivre</small><b>${attention}</b><span>avec un point d’attention</span></div>
+      </div>
+      <p class="fc-repartition">${Object.keys(MENTIONS_PP).filter(k => mentions[k] && k !== 'aucune').map(k => `${mentionFichePP(k)}<b>× ${mentions[k]}</b>`).join('') || '<span class="fc-rien">Aucune mention</span>'}</p>
+      <table class="fc-table"><thead><tr><th>Élève</th><th>Moyenne</th><th>Évolution</th><th>Absences (½ j.)</th><th>Mention</th><th>Attention</th></tr></thead><tbody>${lignes.join('')}</tbody></table>
+      <footer class="fc-pied">${esc(c.nom)} · ${esc(nomPeriodePP(periode))} · une fiche par élève dans les pages suivantes</footer>
     </section>
     ${eleves.map(el => htmlFicheConseilPP(el, periode, r, c)).join('')}</div>`;
   // (Nom proposé pour le PDF : celui de la page.)

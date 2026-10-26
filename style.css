@@ -2213,21 +2213,88 @@ body.mode-eleve .bandeau-recup { display: none; }
   .pp-matieres th { white-space: normal; }
 }
 .pp-points { flex-basis: 100%; color: var(--attention); font-weight: 600; }
-/* Fiches bilan du conseil (PDF, pp.js) : une page par élève */
-@media print {
-  #zone-impression .impression-pp { font-size: 10pt; }
-  #zone-impression .fiche-conseil { break-after: page; }
-  #zone-impression .fiche-conseil:last-child { break-after: auto; }
-  #zone-impression .fiche-conseil h1 { font-size: 16pt; margin: 0; color: #1f6f5c; }
-  #zone-impression .fiche-conseil h2 { font-size: 11pt; margin: 9pt 0 3pt; color: #1f6f5c; }
-  #zone-impression .fiche-conseil .sous-titre { margin: 2pt 0 8pt; color: #444; }
-  #zone-impression .fiche-conseil .chiffres td { width: 20%; text-align: center; }
-  #zone-impression .fiche-conseil .chiffres small { display: block; color: #555; font-size: 8pt; }
-  #zone-impression .fiche-conseil .chiffres b { display: block; font-size: 12pt; }
-  #zone-impression .fiche-conseil .chiffres .mention b { color: #1f6f5c; }
-  #zone-impression .fiche-conseil .cadre { border: 1px solid #999; border-radius: 4pt; padding: 5pt 7pt; margin: 0; }
-  #zone-impression .fiche-conseil .matieres { width: auto; min-width: 60%; }
-  #zone-impression .fiche-conseil .matieres td { padding: 1pt 6pt; }
-  #zone-impression .fiche-conseil ul { margin: 0; padding-left: 14pt; }
-  #zone-impression .fiche-conseil li { margin: 1pt 0; }
-}
+.pp-entete .pp-export { margin-left: auto; }
+/* Fiches bilan du conseil (PDF, pp.js) : récapitulatif puis une page par élève. Couleurs fixes : c'est du papier. */
+#zone-impression .impression-pp { page: conseil; font: 9.5pt/1.4 "Segoe UI", system-ui, sans-serif; color: #1d2a26; }
+@page conseil { margin: 11mm 12mm; }
+#zone-impression .fc { print-color-adjust: exact; -webkit-print-color-adjust: exact; display: flex; flex-direction: column; gap: 9pt; break-after: page; }
+#zone-impression .fc:last-child { break-after: auto; }
+#zone-impression .fc h1 { font-size: 21pt; font-weight: 800; letter-spacing: -.02em; margin: 0; line-height: 1.1; color: #fff; text-transform: uppercase; }
+#zone-impression .fc h1 span { text-transform: none; font-weight: 400; }
+#zone-impression .fc h2 { font-size: 7.5pt; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #1f6f5c; margin: 0 0 5pt; }
+#zone-impression .fc p { margin: 0; }
+#zone-impression .fc small { font-size: 7pt; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #6b7a75; }
+#zone-impression .fc-tete { display: flex; justify-content: space-between; align-items: center; gap: 12pt; padding: 13pt 16pt; border-radius: 10pt;
+  background: linear-gradient(120deg, #1f6f5c, #2d8f78); color: #fff; }
+#zone-impression .fc-sur { font-size: 8pt; opacity: .85; margin-bottom: 3pt !important; }
+#zone-impression .fc-sigles { margin-top: 5pt !important; display: flex; gap: 4pt; }
+#zone-impression .fc-sigle { font-size: 7.5pt; font-weight: 700; padding: 1pt 6pt; border-radius: 10pt; background: rgba(255, 255, 255, .22); }
+#zone-impression .fc-decision { display: flex; flex-direction: column; align-items: flex-end; gap: 3pt; text-align: right; }
+#zone-impression .fc-decision small { color: rgba(255, 255, 255, .8); }
+#zone-impression .fc-decision .fc-mention { font-size: 10.5pt; padding: 4pt 11pt; box-shadow: 0 0 0 1.5pt #fff; }
+/* Mentions : une couleur par décision */
+#zone-impression .fc-mention { display: inline-block; font-weight: 700; font-size: 8pt; padding: 1pt 8pt; border-radius: 20pt; white-space: nowrap; }
+#zone-impression .m-felicitations { background: #fdf0c4; color: #8a5a00; }
+#zone-impression .m-compliments { background: #d8f0e2; color: #17643a; }
+#zone-impression .m-encouragements { background: #dbeafb; color: #1d4f8a; }
+#zone-impression .m-avert { background: #fbdcdc; color: #a11d1d; }
+#zone-impression .m-aucune { background: #eef1f0; color: #5d6b66; }
+/* Chiffres clés */
+#zone-impression .fc-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7pt; }
+#zone-impression .fc-kpi { display: flex; flex-direction: column; gap: 1pt; padding: 7pt 10pt; border-radius: 8pt; background: #f2f6f4; border: 1px solid #e1e9e6; }
+#zone-impression .fc-kpi b { font-size: 17pt; font-weight: 800; line-height: 1.15; }
+#zone-impression .fc-kpi b i { font-size: 8.5pt; font-style: normal; font-weight: 600; color: #6b7a75; }
+#zone-impression .fc-kpi span { font-size: 7.5pt; color: #6b7a75; }
+#zone-impression .fc-kpi .fc-note { align-self: flex-start; }
+#zone-impression .fc-note { display: inline-block; padding: 0 5pt; border-radius: 5pt; }
+#zone-impression .fc .n1 { color: #b3261e; } #zone-impression .fc .n2 { color: #c25e00; }
+#zone-impression .fc .n3 { color: #2e8540; } #zone-impression .fc .n4 { color: #13693a; }
+#zone-impression .fc .fc-note.n1 { background: #fde3e1; } #zone-impression .fc .fc-note.n2 { background: #feecd9; }
+#zone-impression .fc .fc-note.n3 { background: #e2f3e5; } #zone-impression .fc .fc-note.n4 { background: #cfeedd; }
+#zone-impression .fc-hausse { color: #13693a; font-weight: 700; white-space: nowrap; }
+#zone-impression .fc-baisse { color: #b3261e; font-weight: 700; white-space: nowrap; }
+#zone-impression .fc-neutre { color: #6b7a75; white-space: nowrap; }
+#zone-impression .fc-kpi .fc-hausse, #zone-impression .fc-kpi .fc-baisse, #zone-impression .fc-kpi .fc-neutre { font-size: 14pt; }
+#zone-impression .fc .fc-alerte { color: #b3261e; font-weight: 600; }
+/* Blocs */
+#zone-impression .fc-bloc { padding: 9pt 11pt; border-radius: 8pt; border: 1px solid #e1e9e6; break-inside: avoid; }
+#zone-impression .fc-appr { border: 0; border-left: 3.5pt solid #1f6f5c; border-radius: 0 8pt 8pt 0; background: #f2f6f4; }
+#zone-impression .fc-appr p { font-size: 10.5pt; line-height: 1.5; }
+#zone-impression .fc-colonnes { display: grid; grid-template-columns: 1.25fr 1fr; gap: 9pt; align-items: start; }
+#zone-impression .fc-droite { display: flex; flex-direction: column; gap: 9pt; }
+#zone-impression .fc-matieres { display: grid; grid-template-columns: auto 1fr 2.6em; gap: 3.5pt 7pt; align-items: center; }
+#zone-impression .fc-matieres .nom { font-size: 8.5pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 11em; }
+#zone-impression .fc-matieres b { text-align: right; font-size: 9pt; }
+#zone-impression .fc-barre { width: 100%; height: 7pt; display: block; overflow: visible; }
+#zone-impression .fc-barre .fond { fill: #e8eeeb; }
+#zone-impression .fc-barre .val { fill: #7fa89c; }
+#zone-impression .fc-barre .val.n1 { fill: #d9534f; } #zone-impression .fc-barre .val.n2 { fill: #f0a04b; }
+#zone-impression .fc-barre .val.n3 { fill: #5cb86f; } #zone-impression .fc-barre .val.n4 { fill: #1f8a4c; }
+#zone-impression .fc-barre .classe { fill: #1d2a26; }
+#zone-impression .fc-legende { margin-top: 6pt !important; font-size: 7pt; color: #6b7a75; display: flex; align-items: center; gap: 4pt; }
+#zone-impression .fc-trait { display: inline-block; width: 1.5pt; height: 8pt; background: #1d2a26; }
+#zone-impression .fc-bloc p + p { margin-top: 5pt; }
+#zone-impression .fc-bloc p small { display: block; margin-bottom: 2pt; }
+#zone-impression .fc-pastille { display: inline-block; font-size: 8pt; font-weight: 600; padding: 1pt 7pt; border-radius: 20pt; margin: 0 3pt 3pt 0; }
+#zone-impression .fc-pastille.plus { background: #d8f0e2; color: #17643a; }
+#zone-impression .fc-pastille.moins { background: #feecd9; color: #9a4b00; }
+#zone-impression .fc-attention { background: #fff6e5; border-color: #f3d9a4; }
+#zone-impression .fc-attention h2 { color: #9a5b00; }
+#zone-impression .fc ul { margin: 0; padding-left: 12pt; }
+#zone-impression .fc li { margin: 2pt 0; }
+#zone-impression .fc-notes { background: #f7f8fc; border-color: #dfe3f0; }
+#zone-impression .fc-notes h2 { color: #3b4f8a; }
+#zone-impression .fc-journal { list-style: none; padding: 0 !important; }
+#zone-impression .fc-journal li { padding-left: 8pt; border-left: 2pt solid #cfdcd7; }
+#zone-impression .fc-journal i { color: #5d6b66; }
+#zone-impression .fc-rien { color: #6b7a75; font-style: italic; }
+#zone-impression .fc-pied { margin-top: 2pt; padding-top: 5pt; border-top: 1px solid #e1e9e6; font-size: 7pt; color: #8a9893; }
+/* Récapitulatif de la classe */
+#zone-impression .fc-repartition { display: flex; flex-wrap: wrap; align-items: center; gap: 4pt 6pt; }
+#zone-impression .fc-repartition b { margin-right: 8pt; font-size: 9pt; }
+#zone-impression .fc-table { border-collapse: separate; border-spacing: 0; width: 100%; }
+#zone-impression .fc-table th, #zone-impression .fc-table td { border: 0; border-bottom: 1px solid #e8eeeb; padding: 4pt 7pt; vertical-align: middle; background: none; }
+#zone-impression .fc-table th { font-size: 7pt; letter-spacing: .06em; text-transform: uppercase; color: #6b7a75; border-bottom: 1.5pt solid #1f6f5c; }
+#zone-impression .fc-table tbody tr:nth-child(even) td { background: #f7faf9; }
+#zone-impression .fc-table td.nom { font-weight: 600; }
+#zone-impression .fc-compte { font-size: 8pt; font-weight: 700; color: #9a5b00; background: #fff1d6; padding: 1pt 6pt; border-radius: 20pt; white-space: nowrap; }
