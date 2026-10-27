@@ -2253,6 +2253,24 @@ body.mode-eleve .bandeau-recup { display: none; }
 .pp-conseil-resume { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
 /* Photos du trombinoscope dans l'espace PP */
 .pp-nom-photo { display: inline-flex; align-items: center; gap: 8px; text-align: left; }
+/* 📥 Bulletins : trombinoscope de la classe, une tête par élève (bulletin lu ou non) */
+.pp-trombi { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+.pp-tete-eleve { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 8px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--bord); text-align: center; }
+.pp-tete-eleve.lu { border-color: color-mix(in srgb, var(--accent) 45%, var(--bord)); }
+.pp-tete-eleve:not(.lu) { opacity: .7; }
+.pp-tete-bouton { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 0; border: 0; background: none; color: var(--texte); min-height: 0; font-size: 13px; line-height: 1.25; }
+.pp-tete-bouton:disabled { opacity: 1; cursor: default; }
+.pp-tete-bouton b { margin-top: 4px; word-break: break-word; }
+.pp-tete { display: block; width: 100%; max-width: 96px; aspect-ratio: 4 / 5; border-radius: 10px; object-fit: cover; }
+.pp-tete.sans-photo { display: grid; place-items: center; font-size: 1.6rem; font-weight: 700; color: var(--texte2); background: var(--surface2); }
+.pp-tete-eleve:not(.lu) .pp-tete { filter: grayscale(.8); }
+.pp-tete-moy { margin-top: 3px; padding: 0 8px; border-radius: 10px; font-weight: 700; font-size: 14px; background: var(--surface2); }
+.pp-tete-eleve small { font-size: 11px; line-height: 1.3; }
+.pp-tete-pied { display: flex; align-items: center; justify-content: center; gap: 2px; margin-top: auto; }
+.pp-tete-pied .icone-petit { flex: none; opacity: .6; }
+.pp-tete-pied .icone-petit:hover, .pp-tete-pied .icone-petit:focus-visible { opacity: 1; }
+@media (max-width: 600px) { .pp-trombi { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; } }
 .pp-tableau .pp-nom-photo .mini-photo { width: 28px; height: 28px; }
 .pp-conseil-resume:has(.photo-fiche) { align-items: center; }
 .pp-conseil-resume ~ .pp-carte .tete-appr .mini-photo { display: none; } /* (conseil : la grande photo est déjà au-dessus) */

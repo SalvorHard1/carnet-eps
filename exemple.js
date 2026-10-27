@@ -203,6 +203,46 @@ function datesExemple(n = 12) {
 }
 const decalerJours = (date, n) => { const d = new Date(date + 'T12:00'); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
+// Trombinoscope de la classe exemple : des portraits dessinés (SVG), jamais de vraies photos.
+// Teint, cheveux, coiffure et couleurs tirés au sort d'après le rang de l'élève (toujours le même portrait).
+const PEAUX_EXEMPLE = ['#f6d9c5', '#efc8a8', '#e0ad86', '#c68b62', '#a06a45', '#6e4630'];
+const CHEVEUX_EXEMPLE = ['#2a1c15', '#3f2a1e', '#5c3a22', '#8a5a2e', '#c99a55', '#151515', '#a4492a'];
+const FONDS_EXEMPLE = ['#cfe2f6', '#d6efe1', '#f6e3cc', '#e6d9f2', '#f3d8de', '#dfe7ee', '#f4efc9'];
+const HAUTS_EXEMPLE = ['#3d6fb6', '#d0543f', '#2f8f6b', '#e0a43a', '#7a56b0', '#44505c', '#c2477a', '#2c9bb0'];
+function portraitExemple(sexe, k) {
+  const alea = hasardExemple(900 + k * 7), au = l => l[Math.floor(alea() * l.length)];
+  const peau = au(PEAUX_EXEMPLE), ch = au(CHEVEUX_EXEMPLE), haut = au(HAUTS_EXEMPLE), coiffure = Math.floor(alea() * 3);
+  const fille = sexe === 'F';
+  const derriere = fille ? [
+    '<path d="M19 46Q15 18 40 17Q65 18 61 46L64 82Q40 90 16 82Z"/>', // longs
+    '<path d="M20 46Q17 18 40 17Q63 18 60 46L61 62Q40 68 19 62Z"/>', // mi-longs
+    '<path d="M21 42Q19 18 40 17Q61 18 59 42Z"/><circle cx="62" cy="34" r="8"/>', // queue de cheval
+  ][coiffure] : '';
+  const devant = fille
+    ? '<path d="M22 44Q21 20 40 20Q59 20 58 44Q55 31 44 29Q33 33 22 44Z"/>'
+    : ['<path d="M22 40Q21 20 40 19Q59 20 58 40Q54 28 40 28Q27 28 22 40Z"/>', // courts
+      '<path d="M22 42Q20 19 40 18Q60 19 58 42Q56 30 48 27Q36 33 22 42Z"/>', // mèche
+      '<path d="M22 40Q20 20 40 19Q60 20 58 40Z"/><circle cx="25" cy="31" r="5"/><circle cx="32" cy="24" r="6"/><circle cx="41" cy="22" r="6"/><circle cx="50" cy="24" r="6"/><circle cx="56" cy="31" r="5"/>', // bouclés
+    ][coiffure];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 100"><rect width="80" height="100" fill="${au(FONDS_EXEMPLE)}"/>
+<g fill="${ch}">${derriere}</g><path d="M6 100Q8 77 40 75Q72 77 74 100Z" fill="${haut}"/><rect x="33" y="56" width="14" height="20" rx="6" fill="${peau}"/>
+<path d="M33 70Q40 76 47 70V76H33Z" fill="#000" opacity=".12"/><circle cx="23" cy="46" r="4" fill="${peau}"/><circle cx="57" cy="46" r="4" fill="${peau}"/>
+<ellipse cx="40" cy="44" rx="17" ry="20" fill="${peau}"/><g fill="${ch}">${devant}</g>
+<g fill="#2b2420"><circle cx="33" cy="46" r="2.1"/><circle cx="47" cy="46" r="2.1"/></g>
+<path d="M29.5 40.5Q33 38.5 36.5 40.5M43.5 40.5Q47 38.5 50.5 40.5" stroke="${ch}" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+<g fill="#e8857a" opacity=".3"><circle cx="29" cy="52" r="3"/><circle cx="51" cy="52" r="3"/></g>
+<path d="M35 54.5Q40 ${alea() < 0.5 ? 59 : 57.5} 45 54.5" stroke="#8a4636" stroke-width="1.7" fill="none" stroke-linecap="round"/></svg>`;
+  return 'data:image/svg+xml,' + encodeURIComponent(svg.replace(/\n/g, ''));
+}
+// Classes exemples créées avant les portraits : on les leur donne une fois (marque `portraits`),
+// sans remplacer une photo existante ; retirées ensuite à la main, elles ne reviennent pas.
+function completerPortraitsExemple() {
+  for (const c of Donnees.liste('classes', x => x.exemple && !x.portraits && x.id.startsWith('exemple-'))) {
+    for (const el of elevesDe(c.id)) if (!el.photo) Donnees.ecrire('eleves', { ...el, photo: portraitExemple(el.sexe, el.ordre ?? 0) });
+    Donnees.ecrire('classes', { ...Donnees.get('classes', c.id), portraits: true });
+  }
+}
+
 // jeu : la classe exemple de la discipline (par défaut), ou une de EXEMPLES_EN_PLUS (préfixe d'identifiants à elle).
 function creerClasseExemple(jeu = jeuExemple()) {
   const P = jeu.prefixe || 'exemple-', idC = idClasseExemple(jeu);
@@ -211,14 +251,14 @@ function creerClasseExemple(jeu = jeuExemple()) {
   const bruit = ampleur => (alea() * 2 - 1) * ampleur;
   const dates = datesExemple(), auj = aujourdhui(), cree = Date.now();
   const c = Donnees.ecrire('classes', {
-    id: idC, nom: jeu.nom, niveau: jeu.niveau, exemple: true, creneaux: structuredClone(jeu.creneaux),
+    id: idC, nom: jeu.nom, niveau: jeu.niveau, exemple: true, portraits: true, creneaux: structuredClone(jeu.creneaux),
   });
 
   // Élèves (dispense en cours depuis la 9e leçon ; elle finit dans 10 jours)
   const eleves = jeu.eleves.map(([nom, prenom, sexe, niveau, plus = {}], k) => {
     const { bavard, tenue, passive, nonRendu, ...fiche } = plus;
     const el = Donnees.ecrire('eleves', {
-      id: P + 'e' + (k + 1), classeId: c.id, ordre: k, nom, prenom, sexe, remarque: '', ...fiche,
+      id: P + 'e' + (k + 1), classeId: c.id, ordre: k, nom, prenom, sexe, remarque: '', photo: portraitExemple(sexe, k), ...fiche,
       ...(plus.dispense ? { dispense: true, dispDebut: dates[8], dispFin: decalerJours(auj > dates[11] ? auj : dates[11], 10), remarque: 'Entorse de la cheville (certificat).' } : {}),
     });
     return { el, niveau, bavard, tenue, passive, nonRendu };

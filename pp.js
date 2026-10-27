@@ -853,17 +853,23 @@ function htmlBulletinsPP(c, periode, eleves) {
         <select data-pp-rattacher="${i}" aria-label="Élève de ce bulletin"><option value="">Choisir l’élève…</option>
           ${eleves.map(el => `<option value="${el.id}">${esc(el.nom)} ${esc(el.prenom)}</option>`).join('')}</select>
         <button type="button" class="lien" data-pp="ignorer" data-arg="${i}">Ignorer</button></div>`).join('')}</div>` : ''}
-    <div class="carte"><table class="pp-table">
-      <thead><tr><th>Élève</th><th>Bulletin ${esc(nomPeriodePP(periode))}</th><th>Moy. gén.</th><th>Absences</th><th></th></tr></thead>
-      <tbody>${eleves.map(el => {
+    <div class="pp-trombi">${eleves.map(el => {
+    // Trombinoscope de la classe : chaque tête dit si son bulletin de la période est lu.
     const b = bulletinPP(el.id, periode);
-    return `<tr><td>${esc(el.nom)} ${esc(el.prenom)}</td>
-          <td>${b ? `✔ ${b.matieres.length} matières, ${b.matieres.filter(m => m.appr).length} appréciations` : '<span class="aide">—</span>'}</td>
-          <td>${b ? fmtMoyPP(b.moyGen) : ''}</td>
-          <td>${b && b.absences !== null && b.absences !== undefined ? `${b.absences} ½ j.${b.nonJustifiees ? ` (${b.nonJustifiees} NJ)` : ''}${b.retards ? ` · ${b.retards} ret.` : ''}` : ''}</td>
-          <td>${b ? `<button type="button" class="icone-petit" data-pp="suppr-bulletin" data-arg="${el.id}" title="Retirer ce bulletin" aria-label="Retirer le bulletin de ${esc(el.prenom)}">🗑</button>` : ''}</td></tr>`;
-  }).join('')}</tbody></table></div>`;
+    const abs = b?.absences ? `${b.absences} ½ j. d’abs.${b.nonJustifiees ? ` (${b.nonJustifiees} NJ)` : ''}` : '';
+    return `<div class="pp-tete-eleve${b ? ' lu' : ''}">
+        <button type="button" class="pp-tete-bouton" ${b ? `data-pp="voir-eleve" data-arg="${el.id}" title="Préparer ${esc(el.prenom)} pour le conseil"` : 'disabled'}>
+          ${teteElevePP(el)}<b>${esc(el.nom)}</b><span>${esc(el.prenom)}</span>
+          ${b ? `<span class="pp-tete-moy ${classeMoyPP(b.moyGen)}">${fmtMoyPP(b.moyGen)}</span>` : '<span class="aide">pas de bulletin</span>'}</button>
+        ${b ? `<div class="pp-tete-pied"><small class="aide" title="${esc(`${b.matieres.length} matières, ${b.matieres.filter(m => m.appr).length} appréciations${b.retards ? `, ${b.retards} retards` : ''}`)}">✔ ${b.matieres.length} mat.${abs ? ` · ${esc(abs)}` : ''}</small>
+          <button type="button" class="icone-petit" data-pp="suppr-bulletin" data-arg="${el.id}" title="Retirer ce bulletin" aria-label="Retirer le bulletin de ${esc(el.prenom)}">🗑</button></div>` : ''}
+      </div>`;
+  }).join('')}</div>`;
 }
+
+// Photo du trombinoscope, ou les initiales en attendant.
+const teteElevePP = el => Trombi.mini(el, 'pp-tete')
+  || `<span class="pp-tete sans-photo" aria-hidden="true">${esc(`${(el.prenom || '').trim()[0] || ''}${(el.nom || '').trim()[0] || ''}`.toUpperCase())}</span>`;
 
 async function importerBulletinsPP(fichiers) {
   const c = classePP();
