@@ -49,23 +49,28 @@
     </div>
   </header>
 
-  <!-- Menu « Enregistrer » : l'état, enregistrer (et, sur tablette, récupérer), l'endroit choisi, l'aide.
-       Les textes suivent l'endroit choisi sur cet appareil : clé, dossier ou Drive (app.js › ouvrirMenuCle). -->
+  <!-- Menu « Enregistrer » : l'état, « Enregistrer / Récupérer » (sur tablette : deux boutons côte à côte), puis
+       les trois endroits (Drive, clé, ordinateur : celui choisi sur cet appareil est coloré), l'aide.
+       Les textes suivent l'endroit choisi (app.js › ouvrirMenuCle). -->
   <div class="menu-cle" id="menu-cle" role="menu" hidden>
     <p class="menu-cle-etat" id="menu-cle-etat"></p>
-    <button class="choix-cle primaire" data-menu-cle="enregistrer" role="menuitem">
-      <span class="choix-icone" aria-hidden="true">⬆</span>
-      <span class="choix-texte"><b data-menu-texte="enregistrer">Enregistrer</b><small></small></span>
-    </button>
-    <label class="bouton choix-cle" data-menu-cle-fichier role="menuitem">
-      <span class="choix-icone" aria-hidden="true">⬇</span>
-      <span class="choix-texte"><b data-menu-texte="recuperer">Récupérer</b><small>Choisis les <b>.json</b> du dossier, un ou plusieurs : l’appli prend le plus récent</small></span>
-      <input type="file" accept=".json,application/json" multiple data-importer hidden>
-    </label>
-    <button class="choix-cle destination-menu" data-menu-cle="destination" role="menuitem">
-      <span class="choix-icone" aria-hidden="true" data-menu-texte="icone">🔑</span>
-      <span class="choix-texte"><b data-menu-texte="destination">Clé USB</b><small>Endroit choisi sur cet appareil — toucher pour changer</small></span>
-    </button>
+    <div class="gestes-cle">
+      <button class="choix-cle primaire" data-menu-cle="enregistrer" role="menuitem">
+        <span class="choix-icone" aria-hidden="true">⇅</span>
+        <span class="choix-texte"><b data-menu-texte="enregistrer">Enregistrer / Récupérer</b><small></small></span>
+      </button>
+      <label class="bouton choix-cle primaire" data-menu-cle-fichier role="menuitem">
+        <span class="choix-icone" aria-hidden="true">⬇</span>
+        <span class="choix-texte"><b data-menu-texte="recuperer">Récupérer</b><small>Choisis les <b>.json</b>, un ou plusieurs</small></span>
+        <input type="file" accept=".json,application/json" multiple data-importer hidden>
+      </label>
+    </div>
+    <div class="endroits-cle" role="group" aria-label="Endroit d’enregistrement sur cet appareil">
+      <button type="button" class="endroit-cle" data-menu-endroit="drive" aria-pressed="false"><span aria-hidden="true">☁</span>Drive</button>
+      <button type="button" class="endroit-cle" data-menu-endroit="cle" aria-pressed="false"><span aria-hidden="true">🔑</span>Clé</button>
+      <button type="button" class="endroit-cle" data-menu-endroit="dossier" aria-pressed="false"><span aria-hidden="true" data-menu-texte="icone-dossier">💻</span><span data-menu-texte="dossier">Ordinateur</span></button>
+    </div>
+    <p class="menu-cle-couple" id="menu-cle-couple" hidden></p>
     <p class="forme-sauvegarde" id="menu-cle-forme"></p>
     <button class="lien menu-cle-aide" data-menu-cle="aide" role="menuitem">Aide et dépannage…</button>
   </div>

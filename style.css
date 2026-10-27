@@ -660,6 +660,15 @@ button.badge-disp:hover { filter: brightness(1.1); }
 .choix-cle b { font-size: 15px; }
 .choix-cle small { font-size: 12px; font-weight: 400; opacity: .85; }
 .menu-cle-aide { align-self: center; padding: 6px; font-size: 13px; }
+/* Enregistrer / Récupérer (tablette : deux boutons côte à côte), puis les trois endroits, celui choisi coloré */
+.gestes-cle { display: flex; gap: 8px; }
+.gestes-cle .choix-cle { flex: 1; min-width: 0; }
+.gestes-cle .choix-cle + .choix-cle:not([hidden]) { padding: 10px; gap: 8px; }
+.endroits-cle { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.endroit-cle { flex-direction: column; gap: 2px; min-height: 58px; padding: 6px 4px; border-radius: 12px; font-size: 13px; font-weight: 600; }
+.endroit-cle span[aria-hidden] { font-size: 22px; line-height: 1; }
+.menu-cle-couple { margin: 0 4px; font-size: 12px; color: var(--texte2); }
+.endroit-cle.actif { background: #2a7fb8; border-color: #2a7fb8; color: #fff; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px #2a7fb8; }
 
 /* Aide et dépannage : « 🆘 Mes données » (copie de secours / restaurer) en gros, le reste replié */
 .mes-donnees { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }

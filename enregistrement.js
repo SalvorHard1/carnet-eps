@@ -92,12 +92,107 @@ async function choisirDestination(preselection) {
     return choisirDestination('drive');
   }
   if (choix === 'drive') ui.driveAverti = true;
+  return appliquerDestination(choix);
+}
+
+// Les trois boutons Drive / Clé / Ordinateur du menu Enregistrer : changement direct, sauf s'il y a d'abord
+// un avertissement à lire (Drive jamais accepté sur cet appareil, dossier de la tablette) → la fenêtre habituelle.
+// Renvoie true si c'est réglé sans fenêtre.
+function changerDestinationMenu(choix) {
+  if (!DESTINATIONS[choix]) return true;
+  if ((choix === 'drive' && !ui.driveAverti) || (choix === 'dossier' && !Cle.accesDirect && ui.destination !== 'dossier')) return false;
+  appliquerDestination(choix);
+  return true;
+}
+
+function appliquerDestination(choix) {
   const change = choix !== ui.destination;
   ui.destination = choix;
   memoriserUi();
   majPastille();
   if (change) toast(`${DESTINATIONS[choix].icone} Le carnet sera enregistré : ${DESTINATIONS[choix].nom}`, 'ok');
   return choix;
+}
+
+/* ---------- Enregistrement couplé (ordinateur) ----------
+   Chaque endroit déjà utilisé sur cet ordinateur garde son dossier (clé, dossier, Drive). À chaque enregistrement
+   (à la main ou automatique), après l'endroit choisi, l'appli met aussi à jour les AUTRES dossiers retenus qui sont
+   joignables : clé branchée, Drive présent. Elle lit d'abord leur carnet et le réunit (Donnees.fusionner : rien n'est
+   écrasé, le plus récent de chaque élément gagne), puis réécrit partout la même version complète.
+   Jamais d'écriture dans un dossier dont le carnet n'a pas pu être lu (autre mot de passe, fichier illisible). */
+
+const cleDossierDe = id => (id === 'cle' ? 'dossier' : 'dossier-' + id);
+
+// Les dossiers retenus des autres endroits (un même dossier retenu deux fois n'est pris qu'une fois).
+async function dossiersAnnexes(principal) {
+  const liste = [], vus = principal ? [principal] : [];
+  for (const id of Object.keys(DESTINATIONS)) {
+    if (id === destinationActive()) continue;
+    const dossier = await Cle.dossierMemorise(cleDossierDe(id));
+    if (!dossier || Cle.estDossierCopies(dossier)) continue;
+    let double = false;
+    for (const v of vus) if (await v.isSameEntry(dossier).catch(() => false)) double = true;
+    if (double) continue;
+    vus.push(dossier);
+    liste.push({ id, dossier });
+  }
+  return liste;
+}
+
+// Appelée par synchroniser (app.js) une fois le dossier principal réécrit. Renvoie { n, faits, absents, autreMdp }
+// (n = éléments récupérés dans les autres dossiers ; s'il y en a, le dossier principal est réécrit aussi).
+async function enregistrerAnnexes(principal, mdp, { silencieux = false, copie = false } = {}) {
+  const bilan = { n: 0, faits: [], absents: [], autreMdp: [] };
+  if (!Cle.accesDirect || !mdp) return bilan;
+  const joignables = [];
+  for (const { id, dossier } of await dossiersAnnexes(principal)) {
+    const x = DESTINATIONS[id];
+    try {
+      // À la main, l'appli peut demander l'autorisation ; en automatique, seulement si elle est déjà donnée.
+      const ok = silencieux ? (await dossier.queryPermission({ mode: 'readwrite' })) === 'granted' : await Cle.autoriser(dossier);
+      if (!ok) { bilan.absents.push(x); continue; }
+      const h = await Cle.fichierCarnet(dossier); // (clé débranchée : erreur → « absente »)
+      const texte = await Cle.lire(h);
+      if (texte.trim()) bilan.n += Donnees.fusionner(await Cle.dechiffrer(texte, mdp));
+      if (!silencieux) { // carnets posés à côté (ex. par la tablette sur le Drive), chacun réuni une fois
+        const dejaVus = Donnees.meta().carnetsReunis || {}, reunis = {};
+        for (const c of await Cle.autresCarnets(dossier)) {
+          if (dejaVus[c.nom] === c.date) continue;
+          try { bilan.n += Donnees.fusionner(await Cle.dechiffrer(c.texte, mdp)); reunis[c.nom] = c.date; } catch (e) { if (!(e instanceof Cle.ErreurMdp)) throw e; }
+        }
+        if (Object.keys(reunis).length) Donnees.reglerMeta('carnetsReunis', { ...dejaVus, ...reunis });
+      }
+      joignables.push({ x, dossier, h });
+    } catch (e) {
+      if (e instanceof Cle.ErreurMdp) bilan.autreMdp.push(x); // carnet chiffré autrement : on n'y touche pas
+      else bilan.absents.push(x);
+    }
+  }
+  if (!joignables.length) return bilan;
+  if (bilan.n) migrerTout();
+  const sortie = await Cle.chiffrer(Donnees.exporter(), mdp);
+  if (bilan.n) {
+    try { await Cle.ecrire(await Cle.fichierCarnet(principal), sortie); } catch (e) { console.warn('Dossier principal non réécrit :', e); }
+  }
+  for (const { x, dossier, h } of joignables) {
+    try {
+      await Cle.ecrire(h, sortie);
+      if (copie) {
+        await Cle.copieDatee(dossier, sortie);
+        try { await Cle.nettoyerCopies(dossier); } catch (e) { console.warn('Ménage des copies datées impossible :', e); }
+      }
+      bilan.faits.push(x);
+    } catch { bilan.absents.push(x); }
+  }
+  return bilan;
+}
+
+// Une ligne pour le message d'enregistrement : « Aussi à jour : ☁ Drive · Absente : 🔑 Clé USB ».
+function texteAnnexes(b) {
+  const noms = l => l.map(x => `${x.icone} ${x.nom}`).join(', ');
+  return [b.faits.length ? `Aussi à jour : ${noms(b.faits)}` : '',
+    b.absents.length ? `Pas joignable (pas mis à jour) : ${noms(b.absents)}` : '',
+    b.autreMdp.length ? `⚠ Autre mot de passe, laissé tel quel : ${noms(b.autreMdp)}` : ''].filter(Boolean).join('\n');
 }
 
 // Premier enregistrement sur cet appareil : on demande où (sauf si le carnet a déjà été enregistré : on garde la clé).

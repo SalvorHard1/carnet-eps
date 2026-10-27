@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.139.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.140.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2180,7 +2180,7 @@ async function importerTexte(texte, { sauvegarde = false } = {}) {
 
 // Ordinateur : lit carnet-eps.json dans le dossier de la clé, fusionne, puis réécrit le tout
 // (avec, sur demande, une copie datée dans « Sauvegardes »).
-async function synchroniser(dossier, { silencieux = false, copie = false } = {}) {
+async function synchroniser(dossier, { silencieux = false, copie = false, annexes: avecAnnexes = true } = {}) {
   const x = destEnr();
   if (!(await Cle.autoriser(dossier))) throw new Error(`Accès au dossier refusé (${x.nom}).`);
   let h, texte;
@@ -2257,6 +2257,11 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
       try { await c.rep.removeEntry(c.fichier); supprimes++; } catch (e) { console.warn('Fichier de la tablette non supprimé :', c.nom, e); }
     }
   }
+  // Enregistrement couplé : les autres dossiers retenus et joignables (clé branchée, Drive…) — enregistrement.js.
+  let annexes = null;
+  if (avecAnnexes) {
+    try { annexes = await enregistrerAnnexes(dossier, mdp, { silencieux, copie }); n += annexes.n; } catch (e) { console.warn('Enregistrement couplé impossible :', e); }
+  }
   if (!silencieux) etatAuto = null;
   const envoye = texteChangements(Donnees.marquerEnvoi());
   if (silencieux && !n) return; // ne pas redessiner : la saisie en cours n'est pas interrompue
@@ -2266,6 +2271,7 @@ async function synchroniser(dossier, { silencieux = false, copie = false } = {})
   toast(`${x.icone} Enregistré ${x.sur} ✔ (dossier « ${dossier.name} »)${recup}`
     + `\n${envoye ? '⬆ Envoyé : ' + envoye : 'Rien de nouveau à envoyer depuis cet appareil.'}`
     + (repris.length ? `\nRepris aussi : ${repris.join(', ')}` : '')
+    + (annexes && texteAnnexes(annexes) ? '\n' + texteAnnexes(annexes) : '')
     + (supprimes ? `\n${supprimes} fichier${supprimes > 1 ? 's' : ''} de la tablette retiré${supprimes > 1 ? 's' : ''} du dossier (contenu gardé dans le carnet)` : '')
     + (ignores.length ? `\n⚠ Laissé de côté (autre mot de passe) : ${ignores.map(c => c.nom).join(', ')}` : ''), ignores.length ? 'erreur' : 'ok');
   return { ignores: ignores.map(c => c.nom) };
@@ -2342,6 +2348,10 @@ async function changerMotDePasse() {
       await Cle.copieDatee(dossier, sortie);
     } catch {
       throw new Error('Impossible d’écrire sur la clé : le mot de passe n’a PAS été changé (le carnet de la clé garde l’ancien).');
+    }
+    // Les autres dossiers retenus et joignables (déjà réunis à l'étape 2) passent aussi au nouveau mot de passe.
+    for (const { dossier: autre } of await dossiersAnnexes(dossier)) {
+      try { if ((await autre.queryPermission({ mode: 'readwrite' })) === 'granted') await Cle.ecrire(await Cle.fichierCarnet(autre), sortie); } catch { /* absent : il gardera l'ancien */ }
     }
     // 5. Le nouveau devient celui de cet appareil.
     mdpSession = nouveau;
@@ -2559,15 +2569,32 @@ function ouvrirMenuCle(ouvrir) {
     // Ordinateur : « Enregistrer » lit aussi le dossier (ce qui vient des autres appareils) ; tablette : « Récupérer » à part.
     const texte = cle => $(`[data-menu-texte="${cle}"]`, menu);
     const choisi = !!ui.destination; // (pas encore choisi : la question est posée au premier enregistrement)
-    texte('enregistrer').textContent = choisi ? `Enregistrer ${x.sur}` : 'Enregistrer';
-    texte('recuperer').textContent = choisi ? `Récupérer ${x.depuis}` : 'Récupérer un carnet';
-    texte('icone').textContent = choisi ? x.icone : '📍';
-    texte('destination').textContent = choisi ? x.nom : 'Choisir l’endroit : clé, dossier ou Drive';
-    $('[data-menu-cle="destination"] small', menu).textContent = choisi ? 'Endroit choisi sur cet appareil — toucher pour changer' : 'Où enregistrer, sur cet appareil';
+    texte('enregistrer').textContent = !Cle.accesDirect ? 'Enregistrer' : choisi ? `Enregistrer / Récupérer ${x.depuis}` : 'Enregistrer / Récupérer';
     $('[data-menu-cle-fichier]', menu).hidden = Cle.accesDirect;
+    $('[data-menu-cle="enregistrer"] .choix-icone', menu).textContent = Cle.accesDirect ? '⇅' : '⬆';
+    $('[data-menu-cle="enregistrer"] small', menu).textContent = !Cle.accesDirect ? (choisi ? x.sur : 'En partant')
+      : mdpSession ? 'Automatique ici · récupère aussi le travail des autres appareils' : 'Écrit ton carnet et récupère le travail des autres appareils';
+    $('[data-menu-cle-fichier] small', menu).innerHTML = choisi ? `${esc(x.depuis)} · un ou plusieurs <b>.json</b>` : 'Choisis les <b>.json</b>, un ou plusieurs';
+    // Les trois endroits : celui choisi sur cet appareil est coloré.
+    texte('dossier').textContent = Cle.accesDirect ? 'Ordinateur' : 'Tablette';
+    texte('icone-dossier').textContent = Cle.accesDirect ? '💻' : '📱';
+    menu.querySelectorAll('[data-menu-endroit]').forEach(b => {
+      const actif = choisi && b.dataset.menuEndroit === ui.destination;
+      b.classList.toggle('actif', actif);
+      b.setAttribute('aria-pressed', actif);
+      b.title = DESTINATIONS[b.dataset.menuEndroit].explication;
+    });
     $('#menu-cle-forme').innerHTML = htmlFormeSauvegarde(); // dossier (ordinateur) ou fichiers .json (tablette)
-    $('[data-menu-cle="enregistrer"] small', menu).textContent = !Cle.accesDirect ? 'En partant'
-      : mdpSession ? 'Automatique ici · récupère aussi le travail des autres appareils' : 'Et récupère le travail des autres appareils';
+    // Enregistrement couplé (enregistrement.js) : les autres dossiers déjà retenus sur cet ordinateur.
+    const couple = $('#menu-cle-couple');
+    couple.hidden = true;
+    if (Cle.accesDirect && choisi) {
+      Cle.dossierMemorise(cleDossierDest()).then(dossiersAnnexes).then(l => {
+        if (!l.length) return;
+        couple.textContent = `🔗 Mis à jour en même temps, s’ils sont là : ${l.map(a => `${DESTINATIONS[a.id].icone} ${DESTINATIONS[a.id].nom}`).join(', ')}`;
+        couple.hidden = false;
+      }).catch(() => {});
+    }
     // Juste sous la barre (sa hauteur varie avec la largeur de l'écran).
     menu.style.top = $('.barre').getBoundingClientRect().bottom + 6 + 'px';
   }
@@ -2586,10 +2613,15 @@ async function actionCle(action) {
 
 $('#menu-cle').addEventListener('click', e => {
   const choix = e.target.closest('[data-menu-cle]')?.dataset.menuCle;
+  const endroit = e.target.closest('[data-menu-endroit]')?.dataset.menuEndroit;
+  if (endroit) { // (enregistrement.js) : le menu reste ouvert pour voir la nouvelle couleur
+    if (changerDestinationMenu(endroit)) return ouvrirMenuCle(true);
+    ouvrirMenuCle(false);
+    return lancer(() => choisirDestination(endroit));
+  }
   if (!choix) return;
   ouvrirMenuCle(false);
   if (choix === 'aide') return lancer(panneauCle);
-  if (choix === 'destination') return lancer(choisirDestination); // (enregistrement.js)
   lancer(() => actionCle(sauvegarder));
 });
 $('#menu-cle').addEventListener('change', e => {
