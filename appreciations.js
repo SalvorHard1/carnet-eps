@@ -437,7 +437,7 @@ const PHRASES_APPR = {
     4: { p: ['{S} assume avec beaucoup de sérieux les rôles confiés (arbitre, juge, observateur).', '{S} fait preuve d’une excellente méthode de travail.', 'Les rôles confiés sont assumés avec beaucoup de sérieux.'],
       t: ['Rôles très bien assumés.', 'Excellente méthode de travail.'] },
     3: { p: ['{S} tient correctement les rôles confiés et s’organise bien.', '{S} travaille avec méthode.', 'Les rôles confiés sont bien tenus et le travail est méthodique.', 'Le travail dans les rôles confiés est d’un bon niveau.'], t: ['Rôles bien assumés.', 'Travail méthodique.'] },
-    2: { p: { b: ['{S} doit encore gagner en rigueur dans les rôles et l’organisation.'], n: ['La méthode de travail et la tenue des rôles restent à améliorer.', 'La méthode de travail et la tenue des rôles sont à revoir.'],
+    2: { p: { b: ['{S} doit encore gagner en rigueur dans les rôles et l’organisation.'], n: ['La méthode de travail et la tenue des rôles restent à améliorer.', 'La méthode de travail et la tenue des rôles sont à revoir.', 'L’organisation et la tenue des rôles restent à améliorer.'],
       x: ['{S} manque de rigueur dans les rôles et l’organisation.'] },
     t: { b: ['Rigueur à développer dans les rôles.'], n: ['Méthode à améliorer.'], x: ['Manque de rigueur.'] } },
     1: { p: { b: ['{S} a besoin d’aide pour s’organiser et tenir les rôles confiés.'], n: ['{S} peine à s’organiser et à tenir les rôles confiés.'],
@@ -511,6 +511,51 @@ function hasardAppr(texte) {
 }
 const choisirAppr = (liste, graine) => liste[Math.floor(hasardAppr(graine) * liste.length)];
 const selonTon = (x, ton) => (Array.isArray(x) ? x : x[ton[0] === 'b' ? 'b' : ton[0] === 'e' ? 'x' : 'n']);
+
+/* ---------- Objectif dit à l'élève (ici et dans l'espace PP, pp.js) ----------
+   Un but est écrit à l'infinitif, à la 3e personne (« consolider ses acquis », « s’investir davantage »). Pour varier
+   la phrase d'objectif, l'appli le dit aussi à l'élève : « Je te conseille de consolider tes acquis »,
+   « Afin de progresser, consolide tes acquis » (au vouvoiement : « vos acquis », « consolidez »). */
+// Impératif des verbes qui ne sont pas en -er : [tu, vous].
+const IMPERATIFS_APPR = {
+  fournir: ['fournis', 'fournissez'], investir: ['investis', 'investissez'], approfondir: ['approfondis', 'approfondissez'],
+  venir: ['viens', 'venez'], maintenir: ['maintiens', 'maintenez'], apprendre: ['apprends', 'apprenez'], prendre: ['prends', 'prenez'],
+  reprendre: ['reprends', 'reprenez'], mettre: ['mets', 'mettez'], poursuivre: ['poursuis', 'poursuivez'],
+};
+// → { tu : infinitif à la 2e personne (« t’investir », « tes acquis »), deTu : « de … » / « d’… », imp : impératif ou null }
+function butAdresse(but, vous = false) {
+  const poss = vous ? { ses: 'vos', son: 'votre', sa: 'votre' } : { ses: 'tes', son: 'ton', sa: 'ta' };
+  const adresser = t => t.replace(/(^|\s)(ses|son|sa)(?=\s)/g, (x, a, p) => a + poss[p])
+    .replace(/(^|\s)se /g, `$1${vous ? 'vous' : 'te'} `).replace(/(^|\s)s’/g, `$1${vous ? 'vous ' : 't’'}`);
+  const tu = adresser(but);
+  const deTu = (/^[aeiouâàéèêîôû]/i.test(tu) ? 'd’' : 'de ') + tu;
+  // Impératif : « mieux s’organiser … » → « organise-toi mieux … » ; inconnu ou deux verbes (« respecter et faire
+  // respecter ») : pas d'impératif.
+  let imp = null;
+  const m = but.match(/^(mieux )?(se |s’)?([a-zàâçéèêëîïôûù]+)(.*)$/);
+  if (m && !/\bet [a-zé]+(er|ir|re)\b/.test(m[4])) {
+    const [, adv, pron, verbe, reste] = m;
+    let f = IMPERATIFS_APPR[verbe]?.[vous ? 1 : 0];
+    if (!f && verbe.endsWith('er')) {
+      const radical = verbe.slice(0, -2);
+      f = vous ? radical + 'ez' : radical.replace(/é([^aeiouyéèêàâîôû]+)$/, 'è$1') + 'e'; // (persévérer → persévère)
+    }
+    if (f) imp = f + (pron ? (vous ? '-vous' : '-toi') : '') + (adv ? ' mieux' : '') + adresser(reste);
+  }
+  return { tu, deTu, imp };
+}
+// Début de phrase « pour la suite » : « Pour le prochain trimestre »… ; après la dernière période ou pour l'année :
+// « Pour l’année prochaine »… (Plusieurs : « trimestre » est souvent déjà écrit dans le bilan.)
+const suiteAppr = (periode, per) => (periode === 'annee' || periodesAnnee().at(-1)?.id === periode ? ['Pour l’année prochaine', 'L’an prochain']
+  : [`Pour le prochain ${per}`, 'Pour la suite', 'Dans les semaines à venir']);
+// Modèles de la phrase d'objectif : {but} (3e personne), {deTu} (« de consolider tes acquis »), {imp} (« consolide
+// tes acquis ») ; ceux qui demandent un impératif inconnu sont écartés. base : le but à la 3e personne, sans les
+// variantes {il|vous} de pp.js.
+function modelesObjectifAppr(modeles, but, vous, suite, base = but) {
+  const f = butAdresse(base, vous);
+  return modeles.filter(m => f.imp || !m.includes('{imp}'))
+    .map(m => m.replace(/\{Suite\}/g, suite).replace(/\{deTu\}/g, f.deTu).replace(/\{imp\}/g, f.imp || '').replace(/\{but\}/g, but));
+}
 
 function objectifAppr(niv, a, actives) {
   const notes = actives.filter(k => niv[k] && k !== 'objectif');
@@ -768,7 +813,8 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
       const n = liste.map(x => conflitsAppr(ecrit, voir(x), ignores)), min = Math.min(...n);
       return liste.filter((x, i) => n[i] === min);
     };
-    const choisir = (tout, graine) => {
+    // marge (mode court) : choisir au hasard parmi les phrases à peine plus longues que la plus courte (variété).
+    const choisir = (tout, graine, marge = 0) => {
       tout = moinsDeRepetitions(tout, brut);
       // L'appréciation commence par le prénom : la 1re phrase est prise parmi celles qui commencent par lui.
       const premiere = !dejaNomme && !tele ? tout.filter(x => x.startsWith('{S}')) : [];
@@ -777,7 +823,8 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
       // Phrase précédente en « Il / Elle » : on varie la tournure (« L’engagement est… », « Les résultats… »).
       const varie = dejaNomme && dernierPronom ? tout.filter(x => !x.startsWith('{S}')) : [];
       const liste = premiere.length ? premiere : sansSujet.length ? sansSujet : varie.length ? varie : tout;
-      const choix = court ? liste.reduce((x, y) => (y.length < x.length ? y : x)) : choisirAppr(liste, graine);
+      const min = Math.min(...liste.map(x => x.length));
+      const choix = court ? choisirAppr(liste.filter(x => x.length <= min + marge), graine) : choisirAppr(liste, graine);
       const enPronom = dejaNomme && sexe && choix.startsWith('{S}');
       if (enPronom && dernierPronom) { rappelPrenom = true; dernierPronom = false; } // (pas d'autre tournure : on redit le prénom)
       else dernierPronom = enPronom;
@@ -821,11 +868,15 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
       // (Sans répéter un mot déjà écrit : « Pour progresser, il faudra fournir davantage de travail pour progresser ».)
       const butsOk = moinsDeRepetitions(buts);
       const but = o.texte || (court ? butsOk.reduce((x, y) => (y.length < x.length ? y : x)) : choisirAppr(butsOk, g('but')));
-      const modeles = tele ? (o.cle === 'haut' ? ['Objectif : {but}.'] : ['Objectif : {but}.', 'À travailler : {but}.'])
-        : o.cle === 'haut' ? (ton === 'bienveillant' ? ['Bravo ! Il faut maintenant {but}.', 'Bravo, il faut {but} !'] : ['Il faut maintenant {but}.', 'Objectif : {but}.'])
-          : ton === 'exigeant' ? ['{S} doit maintenant {but}.', 'Il faut impérativement {but}.']
-            : ton === 'bienveillant' ? ['Objectif pour la suite : {but}. Courage !', 'Pour progresser, il faudra {but}. Courage !'] : ['Objectif : {but}.', 'Il faut maintenant {but}.'];
-      let t = remplir(choisir(modeles.map(m => m.replace('{but}', but)), g('objectif')), 0);
+      // (Plusieurs tournures, dont certaines adressées à l'élève : « Je te conseille… », « Afin de progresser, consolide… ».)
+      const modeles = tele ? (o.cle === 'haut' ? ['Objectif : {but}.', 'Pour la suite : {but}.'] : ['Objectif : {but}.', 'À travailler : {but}.', 'Pour la suite : {but}.', 'Axe de progrès : {but}.'])
+        : o.cle === 'haut' ? (ton === 'bienveillant' ? ['Bravo ! Il faut maintenant {but}.', 'Bravo, il faut {but} !', 'Bravo ! {Suite}, {imp}.', 'Bravo ! Je te conseille maintenant {deTu}.']
+          : ['Il faut maintenant {but}.', '{Suite}, il faudra {but}.', 'Je te conseille, pour la suite, {deTu}.'])
+          : ton === 'exigeant' ? ['{S} doit maintenant {but}.', 'Il faut impérativement {but}.', '{Suite}, il faudra impérativement {but}.', 'Je te demande, pour la suite, {deTu}.']
+            : ton === 'bienveillant' ? ['{Suite}, il faudra {but}. Courage !', 'Je te conseille, pour la suite, {deTu}. Courage !', 'Afin de progresser, {imp}. Courage !', 'Pour progresser, il faudra {but}. Courage !']
+              : ['{Suite}, il faudra {but}.', 'Je te conseille, pour la suite, {deTu}.', 'Afin de progresser, {imp}.', 'Il faut maintenant {but}.'];
+      const suite = choisirAppr(moinsDeRepetitions(suiteAppr(periode, per)), g('suite'));
+      let t = remplir(choisir(modelesObjectifAppr(modeles, but, false, suite), g('objectif'), 20), 0);
       t = t[0].toUpperCase() + t.slice(1);
       ajouter({ cle: 'objectif', texte: t });
     }

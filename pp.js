@@ -548,12 +548,14 @@ function redigerPP(el, periode, a, perso, r, graine = 0) {
       const n = tout.map(x => conflitsAppr(ecrit, voir(x), ignores)), min = Math.min(...n);
       return tout.filter((x, i) => n[i] === min);
     };
-    const choisir = (tout, graine) => {
+    // marge (mode court) : choisir au hasard parmi les phrases à peine plus longues que la plus courte (variété).
+    const choisir = (tout, graine, marge = 0) => {
       let liste = moinsDeRepetitions(tout);
       // Pas deux phrases de suite en « Il / Elle… » (ou « Vous… ») quand une autre tournure existe.
       const varie = dernierPronom ? liste.filter(x => !x.startsWith('{S}')) : [];
       if (varie.length) liste = varie;
-      const choix = court ? liste.reduce((x, y) => (brut(y).length < brut(x).length ? y : x)) : choisirAppr(liste, graine);
+      const min = Math.min(...liste.map(x => brut(x).length));
+      const choix = court ? choisirAppr(liste.filter(x => brut(x).length <= min + marge), graine) : choisirAppr(liste, graine);
       dernierPronom = (vous || (dejaNomme && !!sexe)) && choix.startsWith('{S}');
       return choix;
     };
@@ -609,11 +611,17 @@ function redigerPP(el, periode, a, perso, r, graine = 0) {
       // (Sans répéter ce qui est déjà écrit : « Il doit se mettre au travail… Il faut se mettre au travail ».)
       const buts = moinsDeRepetitions(OBJECTIFS_PP[cle]);
       const but = court ? buts.reduce((x, y) => (y.length < x.length ? y : x)) : choisirAppr(buts, g('but'));
-      const modeles = tele ? ['Objectif : {but}.']
-        : cle === 'haut' ? (ton === 'bienveillant' ? ['Bravo ! Il faut {but}.', 'Bravo, il faut {but} !'] : ['Il faut {but}.'])
-          : ton === 'exigeant' ? ['{S} {doit|devez} impérativement {but}.', 'Il faut impérativement {but}.']
-            : ton === 'bienveillant' ? ['Il faut maintenant {but}. Courage !', 'Pour progresser, il faudra {but}. Courage !'] : ['Il faut maintenant {but}.', 'Objectif : {but}.'];
-      let t = remplir(choisir(modeles.map(m => m.replace('{but}', but)), g('objectif')), 'objectif');
+      // (Plusieurs tournures, dont certaines adressées à l'élève — voir butAdresse, appreciations.js.)
+      const modeles = tele ? (cle === 'haut' ? ['Objectif : {but}.', 'Pour la suite : {but}.'] : ['Objectif : {but}.', 'Pour la suite : {but}.', 'Axe de progrès : {but}.'])
+        : cle === 'haut' ? (ton === 'bienveillant' ? ['Bravo ! Il faut {but}.', 'Bravo, il faut {but} !', 'Bravo ! {Suite}, {imp}.', 'Bravo ! Je {te|vous} conseille maintenant {deTu}.']
+          : ['Il faut {but}.', '{Suite}, il faudra {but}.', 'Je {te|vous} conseille, pour la suite, {deTu}.'])
+          : ton === 'exigeant' ? ['{S} {doit|devez} impérativement {but}.', 'Il faut impérativement {but}.', '{Suite}, il faudra impérativement {but}.', 'Je {te|vous} demande, pour la suite, {deTu}.']
+            : ton === 'bienveillant' ? ['Il faut maintenant {but}. Courage !', 'Pour progresser, il faudra {but}. Courage !', '{Suite}, il faudra {but}. Courage !', 'Je {te|vous} conseille, pour la suite, {deTu}. Courage !', 'Afin de progresser, {imp}. Courage !']
+              : ['Il faut maintenant {but}.', '{Suite}, il faudra {but}.', 'Je {te|vous} conseille, pour la suite, {deTu}.', 'Afin de progresser, {imp}.'];
+      // (Le but adressé à l'élève part de la forme à la 3e personne : « {se|vous} mettre » → « se mettre ».)
+      const but3 = but.replace(/\{([^{}|]*)\|([^{}]*)\}/g, '$1');
+      const suite = choisirAppr(moinsDeRepetitions(suiteAppr(periode, per)), g('suite'));
+      let t = remplir(choisir(modelesObjectifAppr(modeles, but, vous, suite, but3), g('objectif'), 20), 'objectif');
       ajouter({ cle: 'objectif', texte: t[0].toUpperCase() + t.slice(1) });
     }
     return morceaux;
