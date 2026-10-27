@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.131.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.135.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -365,6 +365,7 @@ const BESOINS = {
   },
   bep: {
     sigle: 'BEP', nom: 'Besoin éducatif particulier', actif: el => !!el.bep, champInfo: 'bepInfo', champDocs: 'bepDocs',
+    titre: 'BEP (Besoins éducatifs particuliers)', // titre de la fenêtre (sinon le sigle)
     aide: 'Type de besoin (dys, TDAH, PAP, PPS…), aménagements utiles en cours, consignes, placement, tutorat…',
   },
 };
@@ -388,7 +389,7 @@ async function editerBesoin(id, type) {
   const el = Donnees.get('eleves', id), b = BESOINS[type];
   const actif = b.actif(el);
   let docs = docsBesoin(el, type);
-  const { d, resultat } = ouvrirModale(`${b.sigle} — ${el.nom} ${el.prenom}`, `
+  const { d, resultat } = ouvrirModale(`${b.titre || b.sigle} — ${el.nom} ${el.prenom}`, `
     <label class="case interrupteur"><input type="checkbox" name="actif" ${actif || (!el[b.champInfo] && !docs.length) ? 'checked' : ''}>
       <span class="badge-${type}">${b.sigle}</span> ${b.nom}</label>
     <label>Informations<textarea name="info" rows="7" autofocus placeholder="${esc(b.aide)}">${esc(el[b.champInfo] || '')}</textarea></label>
@@ -435,8 +436,8 @@ async function editerBesoin(id, type) {
 async function voirBesoin(id, type) {
   const el = Donnees.get('eleves', id), b = BESOINS[type];
   const info = el[b.champInfo], docs = docsBesoin(el, type);
-  const { d, resultat } = ouvrirModale(`${b.sigle} — ${el.nom} ${el.prenom}`, `
-    <p class="aide">${b.nom}</p>
+  const { d, resultat } = ouvrirModale(`${b.titre || b.sigle} — ${el.nom} ${el.prenom}`, `
+    ${b.titre ? '' : `<p class="aide">${b.nom}</p>`}
     <div class="lecture-besoin ${type}">${info ? esc(info) : '<span class="aide">Aucune information saisie.</span>'}</div>
     ${docs.length ? `<ul class="liste-docs">${docs.map(doc => ligneDoc({ ...doc, retirable: false })).join('')}</ul>` : ''}`,
   `<button value="modifier">Modifier</button><span class="espace"></span><button type="button" data-fermer class="primaire">Fermer</button>`);
@@ -853,8 +854,53 @@ document.addEventListener('input', e => {
   i.closest('table').querySelectorAll(`input.cellule[size][data-col="${CSS.escape(i.dataset.col)}"]`).forEach(x => { x.size = n; });
 });
 
+/* ---------- Tri des colonnes de la grille de notes ----------
+   ▲ / ▼ sous le titre d'une colonne (note, partie, compétence, moyenne) : du plus faible au plus fort, ou l'inverse.
+   Toucher à nouveau la flèche active revient à l'ordre de la classe. Les élèves sans valeur (ABS, DISP, case vide…)
+   restent en bas. Simple affichage, oublié en changeant de classe. Pendant la saisie, les lignes ne bougent pas :
+   l'élève noté se replace au prochain affichage. */
+let triNotes = null; // { classeId, col, sens: 1 | -1, ordre: [ids des élèves] }
+let figerTriNotes = false;
+
+// col : « note|éval », « part|éval|partie », « comp|éval|attendu » ou « moy|période ».
+function valeurTriNotes(col, el) {
+  const [type, id, ...reste] = col.split('|'), x = reste.join('|');
+  if (type === 'moy') return moyenneEleve(el.id, evalsDeColonne(evalsDe(el.classeId), id));
+  const e = Donnees.get('evals', id);
+  if (!e) return null;
+  if (type === 'part') return nombre(Donnees.note(e.id, el.id, clePartie({ id: x })));
+  return nombre(Donnees.note(e.id, el.id, type === 'comp' ? x : undefined));
+}
+
+function ordreNotes(c, eleves) {
+  if (triNotes?.classeId !== c.id) { triNotes = null; return eleves; }
+  if (!figerTriNotes || !triNotes.ordre) {
+    const v = new Map(eleves.map(el => [el.id, valeurTriNotes(triNotes.col, el)]));
+    triNotes.ordre = [...eleves].sort((a, b) => {
+      const x = v.get(a.id), y = v.get(b.id);
+      return x === null || y === null ? (x === null) - (y === null) : (x - y) * triNotes.sens;
+    }).map(el => el.id);
+  }
+  const pos = new Map(triNotes.ordre.map((id, i) => [id, i]));
+  return [...eleves].sort((a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9));
+}
+
+const flechesTri = col => `<span class="tri-col">${[[1, '▲', 'croissant (du plus faible au plus fort)'], [-1, '▼', 'décroissant (du plus fort au plus faible)']]
+  .map(([s, f, t]) => `<button type="button"${triNotes?.col === col && triNotes.sens === s ? ' class="actif"' : ''} data-tri-notes="${esc(col)}" data-sens="${s}"
+    title="Trier : ordre ${t}" aria-label="Trier : ordre ${t}">${f}</button>`).join('')}</span>`;
+
+// (capture : passe avant l'ouverture de l'évaluation quand on touche son titre)
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-tri-notes]');
+  if (!b) return;
+  e.stopPropagation();
+  const col = b.dataset.triNotes, sens = +b.dataset.sens;
+  triNotes = triNotes?.col === col && triNotes.sens === sens ? null : { classeId: classeActive().id, col, sens };
+  rendreVue();
+}, true);
+
 function htmlNotes(c) {
-  const eleves = elevesDe(c.id);
+  const eleves = ordreNotes(c, elevesDe(c.id));
   const vue = periodeAffichee(), periodes = periodesAnnee();
   const toutes = evalsDe(c.id);
   const evals = evalsDeColonne(toutes, vue);
@@ -902,15 +948,16 @@ function htmlNotes(c) {
               <div class="eval-titre">${esc(e.titre)}</div>
               <div class="eval-info">${esc(e.apsa || '')}</div>
               <div class="eval-info">${dateCourte(e.date)} · /${fmt(e.max)}${e.coef !== 1 ? ' · coef ' + fmt(e.coef) : ''}</div>
+              ${nb ? '' : flechesTri('note|' + e.id)}
             </th>`;
           }).join('')}
-          ${colsMoy.map(m => `<th class="col-moy${classeAnnee(m)}" rowspan="2">${m.titre}<div class="eval-info">${esc(m.info)}</div></th>`).join('')}
+          ${colsMoy.map(m => `<th class="col-moy${classeAnnee(m)}" rowspan="2">${m.titre}<div class="eval-info">${esc(m.info)}</div>${flechesTri('moy|' + m.id)}</th>`).join('')}
         </tr>
         <tr class="entete-comp">
           ${evals.filter(e => nbSousColonnes(e)).map(e => `
-            ${partiesEval(e).map(p => `<th class="sous-comp sous-partie${classeCa(e)}" title="${esc((p.groupe ? p.groupe + ' › ' : '') + p.nom)} : sur ${fmt(p.max)} pts${p.source ? '\n' + { perf: 'Tape la performance : les points se calculent', degre: 'Touche le degré (1 à 4) : haut de la fourchette', palier: 'Choisis le palier atteint', case: 'Coche si le critère est rempli' }[p.source.type] : ''}">${esc(resumeTexte(p.nom, 14))}<div class="eval-info">/${fmt(p.max)}</div></th>`).join('')}
-            <th class="sous-note${classeCa(e)}">${partiesEval(e).length ? `Total<div class="eval-info">/${fmt(e.max)}</div>` : 'Note'}</th>
-            ${competencesEval(e).map(a => `<th class="sous-comp${classeCa(e)}" title="${esc(a.code + ' : ' + a.texte)}">${esc(a.code)}</th>`).join('')}`).join('')}
+            ${partiesEval(e).map(p => `<th class="sous-comp sous-partie${classeCa(e)}" title="${esc((p.groupe ? p.groupe + ' › ' : '') + p.nom)} : sur ${fmt(p.max)} pts${p.source ? '\n' + { perf: 'Tape la performance : les points se calculent', degre: 'Touche le degré (1 à 4) : haut de la fourchette', palier: 'Choisis le palier atteint', case: 'Coche si le critère est rempli' }[p.source.type] : ''}">${esc(resumeTexte(p.nom, 14))}<div class="eval-info">/${fmt(p.max)}</div>${flechesTri(`part|${e.id}|${p.id}`)}</th>`).join('')}
+            <th class="sous-note${classeCa(e)}">${partiesEval(e).length ? `Total<div class="eval-info">/${fmt(e.max)}</div>` : 'Note'}${flechesTri('note|' + e.id)}</th>
+            ${competencesEval(e).map(a => `<th class="sous-comp${classeCa(e)}" title="${esc(a.code + ' : ' + a.texte)}">${esc(a.code)}${flechesTri(`comp|${e.id}|${a.id}`)}</th>`).join('')}`).join('')}
         </tr></thead>
         <tbody>
           ${eleves.map((el, i) => {
@@ -1227,6 +1274,40 @@ function htmlEleves(c) {
         <p class="aide">Astuce : « 📥 École Directe / Pronote » avec la liste de classe exportée (.xlsx ou .csv), ou copie la liste depuis Pronote ou un tableur, puis « Coller une liste ».</p></div>`}`;
 }
 
+/* ---------- ↶ Retour en arrière / ↷ retour vers l'avant (boutons à côté d'« Enregistrer »,
+   ou Ctrl+Z / Ctrl+Y hors d'un champ de saisie) ---------- */
+function majBoutonAnnuler() {
+  const b = $('#btn-annuler'), r = $('#btn-refaire');
+  if (!b || !r) return;
+  b.disabled = !Donnees.peutAnnuler();
+  b.title = b.disabled ? 'Rien à annuler pour l’instant' : 'Revenir en arrière : annule la dernière modification (Ctrl+Z)';
+  r.disabled = !Donnees.peutRefaire();
+  r.title = r.disabled ? 'Rien à refaire pour l’instant' : 'Retour vers l’avant : refait ce qui vient d’être annulé (Ctrl+Y)';
+}
+function retourArriere() {
+  const n = Donnees.annuler();
+  majBoutonAnnuler();
+  if (!n) return toast('Rien à annuler.');
+  rendre();
+  toast('↶ Dernière modification annulée.');
+}
+function retourAvant() {
+  const n = Donnees.refaire();
+  majBoutonAnnuler();
+  if (!n) return toast('Rien à refaire.');
+  rendre();
+  toast('↷ Modification refaite.');
+}
+document.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const k = e.key.toLowerCase(), avant = k === 'y' || (k === 'z' && e.shiftKey); // (Ctrl+Maj+Z : refaire aussi)
+  if (k !== 'z' && k !== 'y') return;
+  // Dans un champ de saisie, ces raccourcis gardent leur rôle habituel (le texte tapé) ; pas pendant une fenêtre ouverte.
+  if (e.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open]') || enModeEleve()) return;
+  e.preventDefault();
+  if (avant) retourAvant(); else retourArriere();
+});
+
 function majPastille() {
   // Un seul bouton « Enregistrer » : sa couleur et son texte indiquent l'état ; son icône, l'endroit choisi
   // sur cet appareil (clé, dossier, Drive : enregistrement.js).
@@ -1234,14 +1315,17 @@ function majPastille() {
   const [etat, texte, info] =
     etatAuto === 'encours' ? ['encours', 'Enregistrement…', `Enregistrement ${x.sur} en cours`]
     : !m.dernierEnvoi ? ['jamais', 'Enregistrer', `Ce carnet n’est encore que dans ce navigateur — cliquer pour l’enregistrer (${ui.destination ? x.nom : 'clé, dossier ou Drive'}) ou récupérer un carnet`]
-    : m.modifieLe <= m.dernierEnvoi ? ['ok', 'À jour · ' + quandCourt(m.dernierEnvoi), `Tout est enregistré ${x.sur} — dernier enregistrement : ` + dateHeure(m.dernierEnvoi)]
+    : m.modifieLe <= m.dernierEnvoi ? ['ok', 'Enregistré', `Tout est enregistré ${x.sur} — dernier enregistrement : ` + dateHeure(m.dernierEnvoi)]
     : etatAuto === 'erreur' ? ['erreur', x.introuvable, `Enregistrement impossible : ${x.verifier}, puis clique ici`]
     : ['attente', 'Enregistrer', `Des modifications ne sont pas encore enregistrées ${x.sur} — cliquer pour enregistrer`];
   const b = $('#btn-sauver');
   b.className = 'sauver etat-' + etat + (etat === 'attente' && !Cle.accesDirect ? ' rappel' : '');
   b.title = info;
-  $('.sauver-icone', b).textContent = etat === 'ok' ? '✔' : ui.destination ? x.icone : '💾';
+  $('.sauver-icone', b).textContent = etat === 'ok' || !ui.destination ? '💾' : x.icone;
   $('#etat-cle').textContent = texte;
+  // Heure du dernier enregistrement, à côté de « Enregistré » (cachée sur tablette en portrait, faute de place).
+  $('#etat-cle').insertAdjacentHTML('beforeend', etat === 'ok'
+    ? `<span class="etat-heure"> · ${esc(quandCourt(m.dernierEnvoi).replace(/^auj\. /, ''))}</span>` : '');
 }
 
 /* ---------- Tablette : rappel d'enregistrer sur la clé ----------
@@ -1560,7 +1644,8 @@ function recalculerBareme(e, eleveId) {
 // Redessine la grille des notes en gardant le focus sur la case active (ou celle qu'on vient de toucher).
 function rafraichirNotes(repli) {
   const a = document.activeElement?.dataset?.ligne !== undefined ? document.activeElement.dataset : repli?.dataset;
-  rendreVue();
+  figerTriNotes = true; // (colonnes triées : les lignes ne bougent pas pendant la saisie)
+  try { rendreVue(); } finally { figerTriNotes = false; }
   if (a?.ligne !== undefined) cellule(a.ligne, a.col)?.focus();
 }
 
@@ -2837,6 +2922,8 @@ document.addEventListener('click', e => {
     case 'guide': return lancer(afficherGuide);
     case 'sauvegarder': return lancer(sauvegarder);
     case 'maj-appli': return lancer(boutonVersion);
+    case 'annuler': return retourArriere();
+    case 'refaire': return retourAvant();
     case 'ajout-classe': basculerMenu(false); return lancer(() => editerClasse());
     case 'exemple': ui.classeId = creerClasseExemple().id; memoriserUi(); return rendre();
     case 'suppr-exemple': return lancer(async () => {
@@ -3025,11 +3112,31 @@ window.visualViewport?.addEventListener('scroll', placerBarreSaisie);
 // Même carnet ouvert dans deux onglets : on se resynchronise.
 Donnees.surAutreOnglet(() => lancer(async () => { await Donnees.charger(); rendre(); }));
 
-// Fermeture avec des modifications pas encore sur la clé : le navigateur demande confirmation
-// (sur ordinateur, seulement si le carnet a déjà été sauvegardé une fois sur la clé).
+// Fermeture avec des modifications pas encore enregistrées : le navigateur demande confirmation dans sa propre
+// fenêtre (il interdit d'en montrer une autre à ce moment-là). Si l'on reste, l'appli affiche au milieu de l'écran
+// ce qui n'est pas enregistré, avec un bouton pour le faire tout de suite.
+// (Sur ordinateur, un carnet jamais enregistré ne retient la fermeture que s'il a de vraies classes.)
+const retenirFermeture = () => aEnregistrer()
+  && (!Cle.accesDirect || Donnees.meta().dernierEnvoi || classesTriees().some(c => !c.exemple));
 window.addEventListener('beforeunload', e => {
-  if (aEnregistrer() && (!Cle.accesDirect || Donnees.meta().dernierEnvoi)) e.preventDefault();
+  if (!retenirFermeture()) return;
+  e.preventDefault();
+  e.returnValue = ''; // (anciens navigateurs)
+  setTimeout(alerteFermeture, 300); // ne s'exécute que si l'on est resté dans l'appli
 });
+
+function alerteFermeture() {
+  if (!retenirFermeture() || $('dialog.alerte-fermeture')) return;
+  const m = Donnees.meta(), x = destEnr(), attente = texteChangements(Donnees.enAttente());
+  const { resultat } = ouvrirModale('⚠ Carnet pas enregistré',
+    `<p class="alerte-fermeture-texte">${m.dernierEnvoi
+      ? `Des modifications ne sont pas encore enregistrées ${esc(x.sur)}${attente ? ` : <b>${esc(attente)}</b>` : ''}.`
+      : 'Ce carnet n’est encore que dans ce navigateur : il n’a jamais été enregistré.'}</p>
+     <p>Enregistre-le avant de quitter l’application, pour ne rien perdre.</p>`,
+    '<span class="espace"></span><button type="button" data-fermer>Plus tard</button><button value="ok" class="primaire">Enregistrer maintenant</button>',
+    'alerte-fermeture');
+  resultat.then(r => { if (r.action === 'ok') lancer(() => actionCle(sauvegarder)); });
+}
 
 // Tablette : retour dans l'appli (après être passé à une autre appli) → rappel si besoin.
 document.addEventListener('visibilitychange', () => { if (!document.hidden) rappelerCle(); });
@@ -3048,9 +3155,12 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) rapp
   migrerTout();
   Donnees.surChangement(majPastille);
   Donnees.surChangement(planifierSauvegardeAuto);
+  Donnees.surChangement(majBoutonAnnuler);
   const demarrage = reglage('onglets').demarrage; // onglet choisi pour le lancement (⚙ Réglages → Onglets)
   if (demarrage) ui.vue = demarrage;
   rendre();
+  Donnees.oublierHistorique(); // (mises à jour faites au démarrage : pas à annuler)
+  majBoutonAnnuler();
   if (typeof verifierVerrouDemarrage === 'function') verifierVerrouDemarrage(); // 🔒 fermée depuis longtemps : verrouillée
   rappelerCle();
   // Premier lancement sur cet appareil : quelques réglages pour démarrer, puis le principe de l'enregistrement.
@@ -3058,6 +3168,8 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) rapp
   if (!enModeEleve()) {
     lancer(async () => {
       await premierLancement();
+      Donnees.oublierHistorique(); // (réglages de bienvenue, classe exemple : pas à annuler)
+      majBoutonAnnuler();
       if (!ui.guideVu) await afficherGuide();
       if (typeof afficherBandeauRecuperer === 'function') await afficherBandeauRecuperer();
     });

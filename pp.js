@@ -9,7 +9,7 @@
 // Rangement : collection `suivis` (chiffrée sur la clé avec le reste), marqués `pp: true` :
 //   « pp bulletin P1 », « pp appréciation P1 » (texte, niveaux, mention, notes du conseil), « pp journal » (suivi).
 
-const SECTIONS_PP = { bulletins: '📥 Bulletins', tableau: '📊 Tableau', appreciations: '✍ Appréciations', conseil: '🗣 Conseil', suivi: '🗂 Suivi' };
+const SECTIONS_PP = { bulletins: '📥 Bulletins', tableau: '📊 Tableau', appreciations: '✍ Appréciations', conseil: '🗣 Conseil', suivi: '🗂 Suivi', infos: '📎 Incorporer des informations' };
 const classesPP = () => classesTriees().filter(c => c.pp);
 const idBulletinPP = (eleveId, periode) => idSuivi(eleveId, 'pp bulletin ' + periode);
 const idApprPP = (eleveId, periode) => idSuivi(eleveId, 'pp appréciation ' + periode);
@@ -292,6 +292,15 @@ const RUBRIQUES_PP = {
 };
 const MENTIONS_PP = { felicitations: 'Félicitations', compliments: 'Compliments', encouragements: 'Encouragements',
   avTravail: 'Avertissement travail', avComportement: 'Avertissement comportement', aucune: 'Aucune' };
+// Liste des mentions de l'établissement : celles de base (sauf celles retirées dans les réglages, r.mentionsMasquees)
+// + celles saisies à la main (« Tableau d'honneur »…, r.mentionsPerso). Une mention saisie est enregistrée chez l'élève
+// sous la clé « perso:Intitulé » : elle garde son nom même si on la retire ensuite de la liste.
+const nomMentionPP = k => MENTIONS_PP[k] || (k?.startsWith('perso:') ? k.slice(6) : k || 'Aucune');
+const estAvertPP = k => k === 'avTravail' || k === 'avComportement' || (!!k?.startsWith('perso:') && /avertissement|mise en garde|bl[aâ]me/i.test(k));
+const mentionsPP = (r = reglagePP()) => [...Object.keys(MENTIONS_PP).filter(k => k !== 'aucune' && !r.mentionsMasquees.includes(k)),
+  ...r.mentionsPerso.map(n => 'perso:' + n), 'aucune'];
+// Mentions présentes dans un décompte, dans l'ordre de la liste (puis celles qui n'y sont plus).
+const ordreMentionsPP = (compte, r) => [...new Set([...mentionsPP(r), ...Object.keys(compte)])].filter(k => compte[k] && k !== 'aucune');
 const ADRESSES_PP = { il: '3e personne (« Léa travaille… Elle… »)', vous: 'Vouvoiement (« Vous travaillez… »)' };
 
 // Période précédente (pour la progression) : P2 → P1.
@@ -395,7 +404,12 @@ function rubriquesPP(r, a, perso = {}) {
 }
 
 // Mention proposée (désactivable dans les réglages) d'après la moyenne et les niveaux de l'appréciation.
+// Une mention retirée de la liste n'est jamais proposée : on descend à la suivante (félicitations → compliments…).
 function mentionProposeePP(niv, a, r) {
+  const m = mentionCalculeePP(niv, a, r), l = mentionsPP(r);
+  return [m, ...({ felicitations: ['compliments', 'encouragements'], compliments: ['encouragements'] }[m] || [])].find(k => l.includes(k)) || 'aucune';
+}
+function mentionCalculeePP(niv, a, r) {
   if (!r.mentions) return 'aucune';
   const m = a.details.moy;
   if (niv.comportement === 1) return 'avComportement';
@@ -694,6 +708,8 @@ function reglagePP() {
   if (!ADRESSES_PP[r.adresse]) r.adresse = 'il';
   r.longueur = Math.max(80, Math.min(2000, +r.longueur || 300));
   if (!(Array.isArray(r.seuils) && r.seuils.length === 3 && r.seuils.every(Number.isFinite))) r.seuils = [10, 13, 16];
+  r.mentionsMasquees = Array.isArray(r.mentionsMasquees) ? r.mentionsMasquees.filter(k => MENTIONS_PP[k] && k !== 'aucune') : [];
+  r.mentionsPerso = Array.isArray(r.mentionsPerso) ? [...new Set(r.mentionsPerso.map(n => String(n).replace(/\s+/g, ' ').trim()).filter(Boolean))] : [];
   return r;
 }
 
@@ -725,6 +741,14 @@ function htmlReglagePP(r) {
       <label class="etroit">4 dès<input type="number" name="pp-s4" min="0" max="20" step="0.5" value="${r.seuils[2]}"></label>
     </div>
     <label class="case"><input type="checkbox" name="pp-mentions" ${r.mentions ? 'checked' : ''}> Proposer une mention</label>
+    <div class="pp-liste-mentions"><span>Mentions de l’établissement :</span>
+      ${mentionsPP(r).filter(k => k !== 'aucune').map(k => `<span class="pp-chip-mention${estAvertPP(k) ? ' avert' : ''}">${esc(nomMentionPP(k))}<button type="button" class="icone-petit"
+        data-pp="mention-retirer" data-arg="${esc(k)}" title="Retirer de la liste" aria-label="Retirer ${esc(nomMentionPP(k))}">✕</button></span>`).join('')}
+      <span class="pp-ajout-mention"><input type="text" name="pp-mention-nouvelle" maxlength="60" placeholder="ex. Tableau d’honneur" aria-label="Nouvelle mention">
+        <button type="button" data-pp="mention-ajouter">+ Ajouter</button></span>
+      ${r.mentionsMasquees.length ? `<span class="aide">Retirées : ${r.mentionsMasquees.map(k => `<button type="button" class="lien" data-pp="mention-remettre" data-arg="${k}" title="Remettre dans la liste">↺ ${esc(MENTIONS_PP[k])}</button>`).join(' ')}</span>` : ''}
+      <span class="aide">« ✎ Saisie manuelle… », en bas de la liste des mentions d’un élève, ajoute aussi un intitulé ici. Une mention retirée n’est plus proposée par l’appli.</span>
+    </div>
     <p><button type="button" data-pp="reglages-base" title="Résultats, travail, comportement et objectif ; 300 caractères ; 3e personne, bienveillant, en phrases">↺ Réglages de base</button></p>
     <div class="ligne">
       <label class="etroit">Félicitations dès<input type="number" name="pp-felicitations" min="0" max="20" step="0.5" value="${r.felicitations}"></label>
@@ -803,7 +827,7 @@ function htmlPP() {
     </div>
     <nav class="fiche-onglets pp-sections">${Object.entries(SECTIONS_PP).map(([k, n]) => `<button type="button" class="${k === section ? 'actif' : ''}" data-pp="section" data-arg="${k}">${n}</button>`).join('')}</nav>
     <div class="pp-contenu">${section === 'bulletins' ? htmlBulletinsPP(c, periode, eleves) : section === 'tableau' ? htmlTableauPP(c, periode, eleves)
-    : section === 'appreciations' ? htmlAppreciationsPP(c, periode, eleves) : section === 'conseil' ? htmlConseilPP(c, periode, eleves) : htmlSuiviPP(c, periode, eleves)}</div>`;
+    : section === 'appreciations' ? htmlAppreciationsPP(c, periode, eleves) : section === 'conseil' ? htmlConseilPP(c, periode, eleves) : section === 'infos' ? htmlInfosPP(c, periode, eleves) : htmlSuiviPP(c, periode, eleves)}</div>`;
 }
 
 const fmtMoyPP = n => (n === null || n === undefined ? '–' : fmtD(n));
@@ -894,7 +918,7 @@ function htmlTableauPP(c, periode, eleves) {
   return `
     <div class="carte pp-bilan-classe">
       <b>Bilan de la classe</b> · ${lignes.length} élèves · moyenne générale ${gen.length ? fmtD(gen.reduce((a, v) => a + v, 0) / gen.length) : '–'}
-      · ${Object.entries(MENTIONS_PP).filter(([k]) => mentions[k] && k !== 'aucune').map(([k, n]) => `${mentions[k]} ${esc(n.toLowerCase())}`).join(', ') || 'aucune mention'}
+      · ${ordreMentionsPP(mentions, r).map(k => `${mentions[k]} ${esc(MENTIONS_PP[k] ? nomMentionPP(k).toLowerCase() : nomMentionPP(k))}`).join(', ') || 'aucune mention'}
       ${fragiles.length ? `<br><span class="aide">Matières les plus fragiles : ${fragiles.map(x => `${esc(x.n)} (${fmtD(x.m)})`).join(', ')}</span>` : ''}
     </div>
     <div class="carte grille-scroll"><table class="pp-table pp-tableau">
@@ -907,7 +931,7 @@ function htmlTableauPP(c, periode, eleves) {
           <td>${htmlRangPP(x.analyse.details.position)}</td>
           <td>${d === null ? '' : d >= 0.5 ? `<span class="pp-hausse">▲ ${fmtD(d)}</span>` : d <= -0.5 ? `<span class="pp-baisse">▼ ${fmtD(-d)}</span>` : '='}</td>
           <td>${b.absences ?? ''}${b.nonJustifiees ? ` <small>(${b.nonJustifiees} NJ)</small>` : ''}</td>
-          <td>${m !== 'aucune' ? esc(MENTIONS_PP[m]) : ''}${x.enreg?.mention ? ' <span class="aide" title="Choisie par toi (proposée : ' + esc(MENTIONS_PP[x.mentionCalculee]) + ')">✎</span>' : ''}</td>
+          <td>${m !== 'aucune' ? esc(nomMentionPP(m)) : ''}${x.enreg?.mention ? ' <span class="aide" title="Choisie par toi (proposée : ' + esc(nomMentionPP(x.mentionCalculee)) + ')">✎</span>' : ''}</td>
           ${matieres.map(n => { const v = moyDe(b, n); return `<td class="${classeMoyPP(v)}">${fmtMoyPP(v)}</td>`; }).join('')}</tr>`;
   }).join('')}</tbody>
       <tfoot><tr><th>Moyenne</th><th>${gen.length ? fmtD(gen.reduce((a, v) => a + v, 0) / gen.length) : '–'}</th><th></th><th></th><th></th><th></th>${matieres.map(n => `<th>${fmtMoyPP(moyClasse(n))}</th>`).join('')}</tr></tfoot>
@@ -935,8 +959,9 @@ function htmlCartePP(el, periode, r, eleves) {
     <div class="tete-appr"><b>${esc(el.nom)} ${esc(el.prenom)}</b> <span class="aide">moy. ${fmtMoyPP(b.moyGen)}</span>
       ${manuel ? '<span class="badge-appr">modifiée à la main</span>' : ''}
       <span class="espace"></span>
-      <label class="pp-mention">Mention<select data-pp-mention aria-label="Mention de ${esc(el.prenom)}">${Object.entries(MENTIONS_PP).map(([k, n]) =>
-    `<option value="${k}" ${k === mention ? 'selected' : ''}>${esc(n)}${k === mentionCalculee ? ' (proposée)' : ''}</option>`).join('')}</select></label>
+      <label class="pp-mention">Mention<select data-pp-mention aria-label="Mention de ${esc(el.prenom)}">${[...new Set([...mentionsPP(r), mention])].map(k =>
+    `<option value="${esc(k)}" ${k === mention ? 'selected' : ''}>${esc(nomMentionPP(k))}${k === mentionCalculee ? ' (proposée)' : ''}</option>`).join('')}
+        <option value="__saisie">✎ Saisie manuelle…</option></select></label>
       ${manuel ? '<button type="button" data-pp-carte="reproposer" title="Remplacer ton texte par la proposition de l’appli">🔄 Reproposer</button>'
     : '<button type="button" data-pp-carte="autre" title="Mêmes niveaux, autres phrases">🎲 Autre formulation</button>'}
       <button type="button" data-pp-carte="copier">📋 Copier</button></div>
@@ -1009,7 +1034,7 @@ const nivFichePP = n => (n === null || n === undefined ? '' : n < 8 ? 'n1' : n <
 const ecartPP = (b, bp) => (bp && b.moyGen !== null && b.moyGen !== undefined && bp.moyGen !== null && bp.moyGen !== undefined ? b.moyGen - bp.moyGen : null);
 const evolFichePP = e => (e === null ? '<span class="fc-neutre">–</span>'
   : e >= 0.5 ? `<span class="fc-hausse">▲ +${fmtD(e)}</span>` : e <= -0.5 ? `<span class="fc-baisse">▼ −${fmtD(-e)}</span>` : `<span class="fc-neutre">= ${e < 0 ? '−' : '+'}${fmtD(Math.abs(e))}</span>`);
-const mentionFichePP = m => `<span class="fc-mention m-${m.startsWith('av') ? 'avert' : m}">${esc(m === 'aucune' ? 'Sans mention' : MENTIONS_PP[m])}</span>`;
+const mentionFichePP = m => `<span class="fc-mention m-${estAvertPP(m) ? 'avert' : MENTIONS_PP[m] ? m : 'perso'}">${esc(m === 'aucune' ? 'Sans mention' : nomMentionPP(m))}</span>`;
 // Barre de 0 à 20 (élève), avec un trait pour la moyenne de la classe (SVG : pas de style en ligne).
 const barreFichePP = (v, cl) => `<svg class="fc-barre" viewBox="0 0 200 10" preserveAspectRatio="none" aria-hidden="true"><rect class="fond" width="200" height="10" rx="3"/>
   <rect class="val ${nivFichePP(v)}" width="${Math.max(0, Math.min(20, v)) * 10}" height="10" rx="3"/>${cl === null || cl === undefined ? '' : `<rect class="classe" x="${Math.max(0, Math.min(20, cl)) * 10 - 1.5}" y="-2" width="3" height="14"/>`}</svg>`;
@@ -1019,7 +1044,7 @@ function htmlFicheConseilPP(el, periode, r, c) {
   const prec = periodePrecPP(periode), ecart = ecartPP(b, prec && bulletinPP(el.id, prec));
   const besoins = Object.values(BESOINS).filter(y => y.actif(el)).map(y => `<span class="fc-sigle">${esc(y.sigle)}</span>`).join('');
   const alertes = alertesPP(el, periode, r), notes = x.enreg?.notes || '';
-  const journal = journalPP(el.id).slice(0, 4);
+  const journal = journalPP(el.id).slice(0, 4), infos = blocsFicheInfosPP(el, periode);
   const abs = b.absences !== null && b.absences !== undefined;
   const matieres = b.matieres.filter(m => m.moy !== null && m.moy !== undefined);
   const bloc = (titre, corps, cl = '') => `<div class="fc-bloc ${cl}"><h2>${titre}</h2>${corps}</div>`;
@@ -1043,9 +1068,10 @@ function htmlFicheConseilPP(el, periode, r, c) {
         ${d.forts?.length || d.faibles?.length ? bloc('Points d’appui', `${d.forts.length ? `<p><small>Points forts</small>${d.forts.map(y => `<span class="fc-pastille plus">${esc(y.nom)}</span>`).join('')}</p>` : ''}
           ${d.faibles.length ? `<p><small>À renforcer</small>${d.faibles.map(y => `<span class="fc-pastille moins">${esc(y.nom)}</span>`).join('')}</p>` : ''}`) : ''}
         ${alertes.length ? bloc('⚠ Points d’attention', `<ul>${alertes.map(a => `<li>${esc(a)}</li>`).join('')}</ul>`, 'fc-attention') : ''}
+        ${infos}
         ${notes ? bloc('Notes du conseil', `<p>${esc(notes).replace(/\n/g, '<br>')}</p>`, 'fc-notes') : ''}
         ${journal.length ? bloc('Suivi', `<ul class="fc-journal">${journal.map(j => `<li><b>${dateCourtePP(j.date)}</b> ${esc(TYPES_JOURNAL_PP[j.type] || 'Autre')}${j.objet ? ` — ${esc(j.objet)}` : ''}${j.suite ? `<br><i>Suite : ${esc(j.suite)}</i>` : ''}${j.rappel && !j.fait ? `<br><i>Rappel le ${dateCourtePP(j.rappel)}</i>` : ''}</li>`).join('')}</ul>`) : ''}
-        ${!alertes.length && !notes && !journal.length ? bloc('Points d’attention', '<p class="fc-rien">Rien à signaler.</p>') : ''}
+        ${!alertes.length && !notes && !journal.length && !infos ? bloc('Points d’attention', '<p class="fc-rien">Rien à signaler.</p>') : ''}
       </div>
     </div>
     <footer class="fc-pied">${esc(c.nom)} · ${esc(nomPeriodePP(periode))} · édité le ${dateCourtePP(aujourdhui())}</footer>
@@ -1083,7 +1109,7 @@ function exporterFichesPP() {
         <div class="fc-kpi"><small>Mentions</small><b>${eleves.length - (mentions.aucune || 0)}</b><span>&nbsp;</span></div>
         <div class="fc-kpi"><small>Élèves à suivre</small><b>${attention}</b><span>avec un point d’attention</span></div>
       </div>
-      <p class="fc-repartition">${Object.keys(MENTIONS_PP).filter(k => mentions[k] && k !== 'aucune').map(k => `${mentionFichePP(k)}<b>× ${mentions[k]}</b>`).join('') || '<span class="fc-rien">Aucune mention</span>'}</p>
+      <p class="fc-repartition">${ordreMentionsPP(mentions, r).map(k => `${mentionFichePP(k)}<b>× ${mentions[k]}</b>`).join('') || '<span class="fc-rien">Aucune mention</span>'}</p>
       <table class="fc-table"><thead><tr><th>Élève</th><th>Moyenne</th><th>Évolution</th><th>Absences (½ j.)</th><th>Mention</th><th>Attention</th></tr></thead><tbody>${lignes.join('')}</tbody></table>
       <footer class="fc-pied">${esc(c.nom)} · ${esc(nomPeriodePP(periode))} · une fiche par élève dans les pages suivantes</footer>
     </section>
@@ -1107,11 +1133,12 @@ function alertesPP(el, periode, r) {
   const b = bulletinPP(el.id, periode), res = [];
   const auj = aujourdhui();
   for (const j of journalPP(el.id)) if (j.rappel && !j.fait && j.rappel <= auj) res.push(`⏰ Rappel du ${dateCourtePP(j.rappel)} : ${j.objet || TYPES_JOURNAL_PP[j.type]}`);
+  res.push(...alertesInfosPP(el, periode)); // (tableaux d'absences, de vie scolaire, d'infirmerie incorporés : ppinfos.js)
   if (!b) return res;
   // D'après ce qui est décidé : niveaux et mention choisis à la main l'emportent sur ceux calculés par l'appli.
   const x = appreciationPP(el, periode, r), a = x.analyse, niv = x.propose.niveaux, perso = x.enreg?.niveaux || {};
   const qui = k => (k in perso ? ' (choisi par toi)' : a.details.neg[k]?.length ? ` (${a.details.neg[k].join(', ')})` : '');
-  if (x.mention === 'avTravail' || x.mention === 'avComportement') res.push(`${MENTIONS_PP[x.mention]} ${x.enreg?.mention ? 'décidé' : 'proposé'}`);
+  if (estAvertPP(x.mention)) res.push(`${nomMentionPP(x.mention)} ${MENTIONS_PP[x.mention] ? (x.enreg?.mention ? 'décidé' : 'proposé') : '(choisi par toi)'}`);
   if (b.moyGen !== null && b.moyGen !== undefined && b.moyGen < 10) res.push(`Moyenne générale ${fmtD(b.moyGen)}`);
   const pos = a.details.position;
   if (pos?.nettement && (niv.resultats || 0) <= 2) res.push(`Nettement en retrait par rapport à la classe : ${fmtD(a.details.moy)} pour ${fmtD(pos.moyClasse)}${pos.rang ? ` (rang ${pos.rang}/${pos.n})` : ''}`);
@@ -1132,17 +1159,18 @@ function htmlSuiviPP(c, periode, eleves) {
   return `
     <div class="carte pp-alertes"><h3>⚠ Élèves à suivre — ${esc(nomPeriodePP(periode))}</h3>
       ${alertes.length ? `<ul>${alertes.map(({ el, l }) => `<li><button type="button" class="lien" data-pp="ouvrir-suivi" data-arg="${el.id}"><b>${esc(el.nom)} ${esc(el.prenom)}</b></button> : ${l.map(esc).join(' · ')}</li>`).join('')}</ul>`
-    : '<p class="aide">Aucune alerte (moyenne sous 10, nettement sous celle de la classe, baisse d’au moins 1,5 point, 3 matières sous 10, travail ou comportement signalés, absences, rappels).</p>'}</div>
+    : '<p class="aide">Aucune alerte (moyenne sous 10, nettement sous celle de la classe, baisse d’au moins 1,5 point, 3 matières sous 10, travail ou comportement signalés, absences, rappels, seuils des 📎 informations incorporées).</p>'}</div>
     <div class="pp-suivi">${eleves.map(el => {
-    const j = journalPP(el.id), ouvert = etatPP.suiviOuverts?.has(el.id);
+    const j = journalPP(el.id), ouvert = etatPP.suiviOuverts?.has(el.id), infos = htmlSuiviInfosPP(el, periode);
     return `<details class="carte pp-suivi-eleve" data-pp-suivi="${el.id}"${ouvert ? ' open' : ''}>
         <summary><b>${esc(el.nom)} ${esc(el.prenom)}</b> ${Object.entries(BESOINS).filter(([, x]) => x.actif(el)).map(([k, x]) => `<span class="badge-${k}">${x.sigle}</span>`).join(' ')}
-          <span class="aide">${j.length ? `${j.length} note${j.length > 1 ? 's' : ''} · dernière le ${dateCourtePP(j[0].date)}` : ''}</span></summary>
+          <span class="aide">${j.length ? `${j.length} note${j.length > 1 ? 's' : ''} · dernière le ${dateCourtePP(j[0].date)}` : ''}${infos ? `${j.length ? ' · ' : ''}📎 informations incorporées` : ''}</span></summary>
         <div class="outils">
           <button type="button" class="primaire" data-pp="note-suivi" data-arg="${el.id}">+ Note de suivi</button>
           ${Object.keys(BESOINS).map(k => boutonBesoin(el, k)).join('')}
           ${j.length ? `<button type="button" data-pp="copier-suivi" data-arg="${el.id}">📋 Copier le suivi</button>` : ''}
         </div>
+        ${infos}
         ${j.length ? `<ul class="pp-journal">${j.map(x => `<li>
           <b>${dateCourtePP(x.date)}</b> · ${esc(TYPES_JOURNAL_PP[x.type] || 'Autre')}${x.objet ? ` — ${esc(x.objet)}` : ''}
           ${x.suite ? `<br><span class="aide">Suite : ${esc(x.suite)}</span>` : ''}
@@ -1175,6 +1203,37 @@ async function editerNotePP(eleveId, noteId) {
   }
   (etatPP.suiviOuverts ||= new Set()).add(eleveId);
   rendreVue();
+}
+
+/* ---------- Mentions saisies à la main ---------- */
+
+// Ajoute un intitulé à la liste des mentions (une mention de base retirée qui porte ce nom est remise) → sa clé.
+function ajouterMentionPP(saisie) {
+  const nom = String(saisie).replace(/\s+/g, ' ').trim().slice(0, 60), sa = sansAccent(nom);
+  if (!nom) return null;
+  if (sa === 'aucune') return 'aucune';
+  const r = reglagePP(), base = Object.keys(MENTIONS_PP).find(k => k !== 'aucune' && sansAccent(MENTIONS_PP[k]) === sa);
+  if (base) { ecrireReglage('pp', { mentionsMasquees: r.mentionsMasquees.filter(k => k !== base) }); return base; }
+  const deja = r.mentionsPerso.find(n => sansAccent(n) === sa);
+  if (!deja) ecrireReglage('pp', { mentionsPerso: [...r.mentionsPerso, nom] });
+  return 'perso:' + (deja || nom);
+}
+
+// « ✎ Saisie manuelle… » dans la liste des mentions d'un élève.
+async function saisirMentionPP(eleveId) {
+  const el = Donnees.get('eleves', eleveId), c = classePP(), periode = periodePP(c);
+  const { resultat } = ouvrirModale(`Mention — ${el.nom} ${el.prenom}`, `
+    <label>Intitulé<input type="text" name="nom" maxlength="60" required autofocus placeholder="ex. Tableau d’honneur"></label>
+    <p class="aide">L’intitulé est gardé dans la liste des mentions de tous les élèves (⚙ Réglages de l’appréciation générale,
+      où tu peux aussi retirer les mentions de base que ton établissement n’utilise pas).</p>`, boutonsModale('Enregistrer'));
+  const res = await resultat;
+  const k = res.action === 'ok' ? ajouterMentionPP(res.data.nom || '') : null;
+  if (k) ecrirePP(eleveId, periode, { mention: k === appreciationPP(el, periode).mentionCalculee ? '' : k });
+  const form = $('#vue [data-pp-reglages]');
+  if (form) form.innerHTML = htmlReglagePP(reglagePP());
+  if (k && $('#vue [data-pp-liste]')) reglagesModifiesPP(); // (la nouvelle mention apparaît dans la liste de chaque élève)
+  else dessinerCartePP(eleveId);
+  $(`#vue [data-pp-eleve="${eleveId}"] [data-pp-mention]`)?.focus();
 }
 
 /* ---------- Événements ---------- */
@@ -1225,9 +1284,22 @@ async function actionPP(action, arg, b) {
     }
     case 'fiches-pdf': return exporterFichesPP();
     case 'reglages-base': {
-      Donnees.ecrire('reglages', { ...Donnees.get('reglages', 'pp'), id: 'pp', ...structuredClone(REGLAGES_DEFAUT.pp) });
+      // (La liste des mentions de l'établissement est gardée.)
+      const { mentionsMasquees, mentionsPerso } = reglagePP();
+      Donnees.ecrire('reglages', { ...Donnees.get('reglages', 'pp'), id: 'pp', ...structuredClone(REGLAGES_DEFAUT.pp), mentionsMasquees, mentionsPerso });
       $('#vue [data-pp-reglages]').innerHTML = htmlReglagePP(reglagePP());
       return reglagesModifiesPP();
+    }
+    case 'mention-retirer': case 'mention-remettre': case 'mention-ajouter': {
+      const r = reglagePP();
+      if (action === 'mention-ajouter') {
+        const champ = $('#vue [name="pp-mention-nouvelle"]');
+        if (!ajouterMentionPP(champ?.value || '')) return champ?.focus();
+      } else if (arg.startsWith('perso:')) ecrireReglage('pp', { mentionsPerso: r.mentionsPerso.filter(n => n !== arg.slice(6)) });
+      else ecrireReglage('pp', { mentionsMasquees: action === 'mention-retirer' ? [...r.mentionsMasquees, arg] : r.mentionsMasquees.filter(k => k !== arg) });
+      $('#vue [data-pp-reglages]').innerHTML = htmlReglagePP(reglagePP());
+      reglagesModifiesPP();
+      return $('#vue [name="pp-mention-nouvelle"]')?.[action === 'mention-ajouter' ? 'focus' : 'blur']();
     }
     case 'copier-toutes': {
       const r = reglagePP();
@@ -1237,7 +1309,7 @@ async function actionPP(action, arg, b) {
       const r = reglagePP();
       const lignes = eleves.filter(el => bulletinPP(el.id, periode)).map(el => {
         const x = appreciationPP(el, periode, r), b = bulletinPP(el.id, periode);
-        return `${el.nom} ${el.prenom} — moy. ${fmtMoyPP(b.moyGen)}${x.mention !== 'aucune' ? ' — ' + MENTIONS_PP[x.mention] : ''}`
+        return `${el.nom} ${el.prenom} — moy. ${fmtMoyPP(b.moyGen)}${x.mention !== 'aucune' ? ' — ' + nomMentionPP(x.mention) : ''}`
           + (x.enreg?.notes ? `\n    ${x.enreg.notes.replace(/\n/g, '\n    ')}` : '');
       });
       return copierTexte(`Conseil de classe ${c.nom} — ${nomPeriodePP(periode)}\n\n${lignes.join('\n')}`);
@@ -1315,6 +1387,7 @@ document.addEventListener('change', e => {
     etatPP.importes = etatPP.importes.filter(y => y !== x);
     return rendreVue();
   }
+  if (t.matches('[data-pp-mention]') && t.value === '__saisie') return lancer(() => saisirMentionPP(t.closest('[data-pp-eleve]').dataset.ppEleve));
   if (t.matches('[data-pp-mention]')) {
     const carte = t.closest('[data-pp-eleve]'), c = classePP(), periode = periodePP(c);
     const x = appreciationPP(Donnees.get('eleves', carte.dataset.ppEleve), periode);
@@ -1359,6 +1432,12 @@ document.addEventListener('input', e => {
   }, 800);
 });
 document.addEventListener('focusout', e => { if (ui.vue === 'pp' && e.target.matches?.('#vue [data-pp-texte], #vue [data-pp-notes]')) enregistrerTextePP(); });
+// Entrée dans « Nouvelle mention » : ajoute (au lieu d'envoyer le formulaire des réglages).
+document.addEventListener('keydown', e => {
+  if (ui.vue !== 'pp' || e.key !== 'Enter' || !e.target.matches?.('#vue [name="pp-mention-nouvelle"]')) return;
+  e.preventDefault();
+  lancer(() => actionPP('mention-ajouter'));
+});
 
 // Panneaux dépliés : gardés ouverts après un nouveau rendu.
 document.addEventListener('toggle', e => {

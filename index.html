@@ -39,6 +39,9 @@
     <nav class="onglets-compact" id="onglets-compact" aria-label="Onglets" hidden></nav>
     <button class="icone btn-verrou" id="btn-verrou" title="Verrouiller le carnet maintenant" aria-label="Verrouiller le carnet" hidden>🔒</button>
     <div class="groupe-sauvegarde">
+      <!-- ↶ Retour en arrière / ↷ retour vers l'avant (donnees.js › annuler, refaire). -->
+      <button class="btn-annuler" id="btn-annuler" data-action="annuler" title="Rien à annuler pour l’instant" aria-label="Revenir en arrière" disabled>↶</button>
+      <button class="btn-annuler" id="btn-refaire" data-action="refaire" title="Rien à refaire pour l’instant" aria-label="Retour vers l’avant" disabled>↷</button>
       <!-- Un seul bouton pour tout ce qui touche à la clé : sa couleur donne l'état, il ouvre le menu de la clé. -->
       <button class="sauver" id="btn-sauver" data-action="cle" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-cle">
         <span class="sauver-icone" aria-hidden="true">💾</span><span id="etat-cle">Enregistrer</span>
@@ -137,6 +140,7 @@
   <script src="exemple.js"></script>
   <script src="appreciations.js"></script>
   <script src="pp.js"></script>
+  <script src="ppinfos.js"></script>
   <script src="baremes.js"></script>
   <script src="importbareme.js"></script>
   <script src="verrou.js"></script>

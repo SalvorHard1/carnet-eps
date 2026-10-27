@@ -63,6 +63,7 @@ const Donnees = (() => {
   }
 
   async function charger() {
+    oublier(); // (données relues : l'historique ne correspond plus)
     if (!base) {
       try { base = await ouvrirBase(); } catch (e) { console.warn('IndexedDB indisponible, repli sur localStorage :', e); }
     }
@@ -217,7 +218,56 @@ const Donnees = (() => {
     return res;
   }
 
+  /* ---------- ↶ Retour en arrière ----------
+     Avant chaque écriture, la version précédente de l'élément est gardée (en mémoire, le temps de la session).
+     Un « pas » = les écritures d'un même geste (moins de 0,4 s d'écart), ou la frappe continue dans une même fiche.
+     Annuler réécrit ces versions avec une heure neuve : elles l'emportent aussi à la fusion avec la clé.
+     ↷ Refaire : un pas annulé peut être refait, tant qu'aucune nouvelle modification n'a été faite entre-temps. */
+  const PAS_MAX = 50;
+  let historique = [], aRefaire = [], enAnnulation = false;
+  const oublier = () => { historique = []; aRefaire = []; };
+  function noterAvant(col, id) {
+    if (enAnnulation) return;
+    aRefaire = []; // (nouvelle modification : ce qui avait été annulé ne peut plus être refait)
+    const cle = col + '|' + id, t = Date.now(), dernier = historique[historique.length - 1];
+    const memeGeste = dernier && (t - dernier.fin < 400 || (t - dernier.fin < 2000 && dernier.avant.size === 1 && dernier.avant.has(cle)));
+    const pas = memeGeste ? dernier : { avant: new Map() };
+    if (!memeGeste) { historique.push(pas); if (historique.length > PAS_MAX) historique.shift(); }
+    pas.fin = t;
+    if (!pas.avant.has(cle)) pas.avant.set(cle, db[col][id] ? structuredClone(db[col][id]) : null);
+  }
+  // Remet les éléments d'un pas dans les versions données ; renvoie leurs versions d'avant (pour le sens inverse).
+  function remettre(versions) {
+    const actuelles = new Map();
+    enAnnulation = true;
+    try {
+      for (const [cle, v] of [...versions].reverse()) {
+        const i = cle.indexOf('|'), col = cle.slice(0, i), id = cle.slice(i + 1); // (l'id d'une note contient des « | »)
+        actuelles.set(cle, db[col][id] ? structuredClone(db[col][id]) : null);
+        if (!v || v.supprime) { if (db[col][id] && !db[col][id].supprime) ecrire(col, { id, supprime: true }); continue; }
+        const { maj, majChamps, majChampsPour, ...fiche } = v;
+        ecrire(col, fiche);
+      }
+    } finally { enAnnulation = false; }
+    return new Map([...actuelles].reverse());
+  }
+  // Annule le dernier pas ; renvoie le nombre d'éléments remis comme avant (0 : rien à annuler).
+  function annuler() {
+    const pas = historique.pop();
+    if (!pas) return 0;
+    aRefaire.push({ avant: remettre(pas.avant) });
+    return pas.avant.size;
+  }
+  // Refait le dernier pas annulé (0 : rien à refaire).
+  function refaire() {
+    const pas = aRefaire.pop();
+    if (!pas) return 0;
+    historique.push({ avant: remettre(pas.avant), fin: 0 }); // (fin 0 : la prochaine modification fera un nouveau pas)
+    return pas.avant.size;
+  }
+
   function ecrire(col, obj) {
+    noterAvant(col, obj.id);
     noterAttente(col, obj);
     const t = horodatage();
     if (PAR_CHAMP.has(col) && !obj.supprime) daterChamps(obj, db[col][obj.id], t);
@@ -278,6 +328,7 @@ const Donnees = (() => {
       throw new Error('Format de carnet inconnu (fichier d’une version plus récente de l’appli ?).');
     }
     let n = 0;
+    oublier(); // (après une fusion, revenir en arrière écraserait ce qui vient d'arriver)
     for (const c of COLLECTIONS) {
       for (const [id, o] of Object.entries(autre[c] || {})) {
         const mien = db[c][id];
@@ -319,6 +370,7 @@ const Donnees = (() => {
   return {
     CLE_STOCKAGE, charger, nouvelId, ecrire, supprimer, get, liste, note, noteComplete, ecrireNote,
     fusionner, exporter, marquerEnvoi, reglerMeta, enAttente, fusionnerFiche, antidater, // (fusionnerFiche : exposée pour les tests)
+    annuler, refaire, peutAnnuler: () => historique.length > 0, peutRefaire: () => aRefaire.length > 0, oublierHistorique: oublier,
     meta: () => db?.meta ?? vide().meta,
     surChangement: f => auditeurs.push(f),
     surAutreOnglet: f => canal?.addEventListener('message', f),

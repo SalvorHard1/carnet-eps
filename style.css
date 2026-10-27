@@ -128,6 +128,15 @@ button, .bouton {
 /* Bouton de sauvegarde unique : la couleur donne l'état */
 .barre .groupe-sauvegarde { margin-left: auto; display: flex; align-items: center; gap: 4px; flex-shrink: 100; min-width: 0; }
 #etat-cle { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* ↶ Retour en arrière : grisé tant qu'il n'y a rien à annuler */
+.barre .btn-annuler {
+  flex-shrink: 0; min-width: 40px; padding: 4px 8px; border-radius: 20px;
+  font-size: 22px; font-weight: 700; line-height: 1; background: rgba(255, 255, 255, .18);
+}
+.barre .btn-annuler:hover:not(:disabled) { background: rgba(255, 255, 255, .3); }
+.barre .btn-annuler:disabled { opacity: .4; cursor: default; background: transparent; }
+.etat-heure { font-weight: 600; }
+@media (max-width: 899px) { .etat-heure { display: none; } } /* tablette en portrait : « Enregistré » seul */
 .barre .sauver {
   max-width: 100%; min-width: 0;
   border-radius: 20px; font-weight: 700; white-space: nowrap; gap: 8px; padding: 8px 16px;
@@ -213,6 +222,7 @@ main { flex: 1; min-width: 0; overflow: auto; padding: 16px; padding-bottom: cal
   .onglets { margin-left: 0; gap: 2px; }
   .onglets button { padding: 8px 7px; font-size: 14px; }
   .barre .sauver { padding: 8px 10px; }
+  .barre .btn-annuler { min-width: 30px; padding: 4px 4px; font-size: 20px; }
 }
 
 /* 🗂 Onglets sur tablette et téléphone (onglets.js) : rideaux, favoris + « Plus », ou barre en bas. */
@@ -2184,6 +2194,19 @@ body.mode-eleve .bandeau-recup { display: none; }
 .carte-destination small { display: block; color: var(--texte2); font-size: 13px; font-weight: 400; margin-top: 2px; }
 .avertissement-drive { padding: 10px 14px; border-radius: 12px; border: 1px solid #f28c18; background: color-mix(in srgb, #f28c18 12%, var(--surface)); }
 .avertissement-drive p { margin: 0 0 8px; }
+/* Tri des colonnes de la grille de notes : ▲ ▼ sous le titre */
+.tri-col { display: flex; justify-content: center; gap: 2px; margin-top: 3px; }
+.grille th .tri-col button {
+  min-height: 0; min-width: 0; padding: 1px 5px; border: 1px solid var(--bord); border-radius: 6px;
+  background: var(--surface); color: var(--texte2); font-size: 10px; line-height: 1.3; cursor: pointer;
+}
+.grille th .tri-col button:hover { color: var(--texte); border-color: var(--texte2); }
+.grille th .tri-col button.actif { background: var(--accent); border-color: var(--accent); color: var(--accent-texte); }
+@media (pointer: coarse) { .grille th .tri-col button { padding: 3px 7px; font-size: 11px; } } /* (au doigt, un peu plus grand) */
+/* Alerte quand on veut quitter sans avoir enregistré */
+.modale.alerte-fermeture { border: 3px solid #f28c18; }
+.alerte-fermeture h2 { color: var(--attention); }
+.alerte-fermeture-texte { padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, #f28c18 12%, var(--surface)); }
 .modale .avertissement-drive label.case { flex-direction: row; align-items: center; gap: 8px; font-weight: 700; }
 .deja-carnet { font-weight: 600; }
 .forme-sauvegarde { margin: 6px 0; padding: 8px 12px; border-radius: 10px; background: var(--surface2); font-size: 13px; line-height: 1.45; color: var(--texte); }
@@ -2215,6 +2238,11 @@ body.mode-eleve .bandeau-recup { display: none; }
 .pp-alertes ul { margin: 0; padding-left: 20px; }
 .pp-alertes li { margin: 4px 0; }
 .pp-mention { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.pp-liste-mentions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 6px 0 10px; }
+.pp-chip-mention { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 10px; border-radius: 14px; border: 1px solid var(--bord); background: color-mix(in srgb, var(--n4) 12%, transparent); font-size: 14px; }
+.pp-chip-mention.avert { background: color-mix(in srgb, var(--n1) 14%, transparent); }
+.pp-ajout-mention { display: inline-flex; gap: 6px; align-items: center; }
+.pp-ajout-mention input { width: 14em; }
 .pp-collegues { margin-top: 8px; }
 .pp-collegues summary { cursor: pointer; color: var(--texte2); }
 .pp-matieres th { width: 1%; white-space: nowrap; }
@@ -2231,6 +2259,18 @@ body.mode-eleve .bandeau-recup { display: none; }
 .pp-suivi-eleve .outils { margin: 10px 0 6px; }
 .pp-journal { margin: 0; padding-left: 18px; }
 .pp-journal li { margin: 6px 0; }
+.pp-infos-eleve { margin: 4px 0 8px; padding-left: 18px; }
+.pp-infos-eleve li { margin: 4px 0; }
+.pp-infos-apercu, .pp-infos-source { padding: 10px 12px; margin-bottom: 12px; }
+.pp-infos-apercu h3, .pp-infos-source h3 { margin: 0 0 6px; font-size: 16px; }
+.pp-infos-apercu .ligne { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.pp-infos-apercu label { display: flex; flex-direction: column; gap: 2px; }
+.pp-infos-apercu label.pp-infos-case { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; }
+.pp-infos-colonnes input[type=number] { width: 6em; }
+.pp-infos-apercu input[data-pp-infos-nom] { min-width: min(24em, 80vw); }
+.pp-infos-colonnes td:first-child { width: 1%; text-align: center; }
+.pp-infos-defile { overflow-x: auto; }
+.pp-infos-source > .outils h3 { margin: 0; }
 @media (max-width: 600px) {
   .pp-table { font-size: 13px; }
   .pp-matieres th { white-space: normal; }
@@ -2262,6 +2302,7 @@ body.mode-eleve .bandeau-recup { display: none; }
 #zone-impression .m-encouragements { background: #dbeafb; color: #1d4f8a; }
 #zone-impression .m-avert { background: #fbdcdc; color: #a11d1d; }
 #zone-impression .m-aucune { background: #eef1f0; color: #5d6b66; }
+#zone-impression .m-perso { background: #ece4fb; color: #4b2a8a; }
 /* Chiffres clés */
 #zone-impression .fc-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7pt; }
 #zone-impression .fc-kpi { display: flex; flex-direction: column; gap: 1pt; padding: 7pt 10pt; border-radius: 8pt; background: #f2f6f4; border: 1px solid #e1e9e6; }
@@ -2307,6 +2348,9 @@ body.mode-eleve .bandeau-recup { display: none; }
 #zone-impression .fc li { margin: 2pt 0; }
 #zone-impression .fc-notes { background: #f7f8fc; border-color: #dfe3f0; }
 #zone-impression .fc-notes h2 { color: #3b4f8a; }
+#zone-impression .fc-infos { background: #f4f9f7; border-color: #d3e6de; }
+#zone-impression .fc-infos h2 { color: #2c6b55; }
+#zone-impression .fc-infos .fc-alerte { color: #b3261e; }
 #zone-impression .fc-journal { list-style: none; padding: 0 !important; }
 #zone-impression .fc-journal li { padding-left: 8pt; border-left: 2pt solid #cfdcd7; }
 #zone-impression .fc-journal i { color: #5d6b66; }

@@ -67,6 +67,7 @@ une fonction de même nom dans deux fichiers écrase silencieusement l'autre. Ch
 | `appel.js` | Onglet « Appel » (écrit dans la leçon du jour, indicateur `presence`). |
 | `exemple.js` | Classe exemple fictive (ids fixes `exemple-…`). |
 | `appreciations.js` | Appréciations rédigées par l'appli (banques de phrases, règles) + relecture grammaticale locale. |
+| `ppinfos.js` | Espace Prof principal › 📎 Incorporer des informations : tableaux d’absences, de vie scolaire, d’infirmerie (Excel, CSV, Word .docx, PDF) lus par l’appli ; valeurs par élève et période (`suivis` « pp infos … »), seuils → élèves à suivre (`alertesPP`), blocs de la fiche bilan du conseil. |
 | `baremes.js` | Onglet « Barèmes ». |
 | `verrou.js` | Verrouillage automatique de l'écran. |
 | `app.js` | Vues principales, classes, élèves, notes, navigation, mises à jour. |
