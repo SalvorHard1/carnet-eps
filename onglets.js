@@ -22,9 +22,12 @@ const ecranCompact = matchMedia('(max-width: 1199px), (hover: none) and (pointer
 const dispositionOnglets = () => (DISPOSITIONS_ONGLETS[ui.disposition] ? ui.disposition : 'rideaux');
 const dispositionActive = () => (ecranCompact.matches && !enModeEleve() ? dispositionOnglets() : null);
 const nomOnglet = v => (reglage('onglets').noms[v] || '').trim() || NOMS_ONGLETS[v];
+// Barre du haut : « Prof principal » devient « PP » sur téléphone (sauf si l'onglet a été renommé).
+const libelleBarre = v => (v === 'pp' && !(reglage('onglets').noms.pp || '').trim()
+  ? `<span class="libelle-long">${esc(NOMS_ONGLETS.pp)}</span><span class="libelle-court">PP</span>` : esc(nomOnglet(v)));
 const favorisOnglets = visibles => reglage('onglets').favoris.filter(v => visibles.includes(v)).slice(0, FAVORIS_MAX);
-const boutonOnglet = (v, contenu) =>
-  `<button type="button" data-vue="${v}" class="${v === ui.vue ? 'actif' : ''}" ${v === ui.vue ? 'aria-current="page"' : ''}>${contenu}</button>`;
+const boutonOnglet = (v, contenu, etiquette = '') =>
+  `<button type="button" data-vue="${v}" class="${v === ui.vue ? 'actif' : ''}" ${v === ui.vue ? 'aria-current="page"' : ''} ${etiquette ? `aria-label="${esc(etiquette)}"` : ''}>${contenu}</button>`;
 const boutonRideau = (id, actif, contenu, etiquette = '') =>
   `<button type="button" class="${actif ? 'actif' : ''}" data-rideau="${id}" aria-haspopup="menu" aria-expanded="false" ${etiquette ? `aria-label="${esc(etiquette)}"` : ''}>${contenu}</button>`;
 
@@ -44,14 +47,32 @@ function majOnglets() {
   const boutonPP = $('#onglets [data-vue="pp"]');
   if (boutonPP) boutonPP.hidden = !visibles.includes('pp');
   haut.innerHTML = disp === 'rideaux' ? htmlRideaux(visibles) : disp === 'favoris' ? htmlFavoris(visibles) : '';
+  montrerOngletActif(haut);
   bas.innerHTML = disp === 'bas' ? visibles.map(v => boutonOnglet(v,
     `<span class="icone-onglet" aria-hidden="true">${ICONES_ONGLETS[v]}</span><span class="nom-onglet">${esc(nomOnglet(v))}</span>`)).join('') : '';
+}
+
+// Barre trop étroite (téléphone) : les onglets défilent de côté dans la barre ; l'onglet ouvert reste visible.
+function montrerOngletActif(nav) {
+  const a = nav.querySelector('.actif');
+  if (a && nav.scrollWidth > nav.clientWidth) {
+    const r = a.getBoundingClientRect(), n = nav.getBoundingClientRect();
+    if (r.right > n.right) nav.scrollLeft += r.right - n.right + 4;
+    else if (r.left < n.left) nav.scrollLeft -= n.left - r.left + 4;
+  }
+  marquerSuiteOnglets(nav);
+}
+// Fondu au bord de la barre quand des onglets sont cachés de ce côté (il suffit de la faire glisser).
+function marquerSuiteOnglets(nav) {
+  const reste = nav.scrollWidth - nav.clientWidth;
+  nav.classList.toggle('suite-gauche', reste > 1 && nav.scrollLeft > 1);
+  nav.classList.toggle('suite-droite', reste > 1 && nav.scrollLeft < reste - 1);
 }
 
 function htmlRideaux(visibles) {
   return GROUPES_ONGLETS.map(g => {
     const vues = g.vues.filter(v => visibles.includes(v));
-    if (vues.length < 2) return vues.map(v => boutonOnglet(v, esc(nomOnglet(v)))).join('');
+    if (vues.length < 2) return vues.map(v => boutonOnglet(v, libelleBarre(v), nomOnglet(v))).join('');
     // Groupe en cours : un toucher déplie le rideau. Sinon : la dernière page du groupe, et ▾ pour les autres.
     if (vues.includes(ui.vue)) return `<span class="groupe-onglets actif">${boutonRideau(g.id, true, `${esc(nomOnglet(ui.vue))} <span class="chevron">▾</span>`)}</span>`;
     const v = vues.includes(ui.dernierOnglet?.[g.id]) ? ui.dernierOnglet[g.id] : vues[0];
@@ -63,7 +84,7 @@ function htmlRideaux(visibles) {
 function htmlFavoris(visibles) {
   const fav = favorisOnglets(visibles), autres = visibles.filter(v => !fav.includes(v));
   const ici = autres.includes(ui.vue);
-  return fav.map(v => boutonOnglet(v, esc(nomOnglet(v)))).join('')
+  return fav.map(v => boutonOnglet(v, libelleBarre(v), nomOnglet(v))).join('')
     + (autres.length ? boutonRideau('plus', ici, `${ici ? esc(nomOnglet(ui.vue)) : 'Plus'} <span class="chevron">▾</span>`) : '');
 }
 
@@ -103,7 +124,8 @@ document.addEventListener('click', e => {
   if (!e.target.closest?.('#rideau-onglets')) fermerRideau();
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#rideau-onglets')) fermerRideau(); });
-addEventListener('resize', () => fermerRideau());
+addEventListener('resize', () => { fermerRideau(); const n = document.getElementById('onglets-compact'); if (n) marquerSuiteOnglets(n); });
+document.getElementById('onglets-compact')?.addEventListener('scroll', e => marquerSuiteOnglets(e.target), { passive: true });
 // Tablette tournée, fenêtre agrandie… : la barre s'adapte. (addListener : anciens Safari.)
 const surEcranCompact = () => { if (typeof Donnees === 'object' && $('#onglets-compact')) majOnglets(); };
 if (ecranCompact.addEventListener) ecranCompact.addEventListener('change', surEcranCompact); else ecranCompact.addListener(surEcranCompact);

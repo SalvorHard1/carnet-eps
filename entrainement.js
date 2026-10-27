@@ -677,9 +677,9 @@ function ouvrirDocument(doc) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
-// Après suppression de séances : retire les documents que plus aucune séance n'utilise.
+// Après suppression de séances (ou d'un PAI / BEP) : retire les documents que plus aucune séance ni aucun élève n'utilise.
 function supprimerDocumentsInutilises(ids) {
-  const utilises = new Set(Donnees.liste('seances').flatMap(x => x.documents || []));
+  const utilises = new Set([...Donnees.liste('seances').flatMap(x => x.documents || []), ...Donnees.liste('eleves').flatMap(idsDocsBesoins)]);
   for (const id of ids) if (!utilises.has(id)) Donnees.supprimer('documents', id);
 }
 

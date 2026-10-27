@@ -159,10 +159,11 @@ const DISCIPLINES = {
             t: ['Investissement sérieux.', 'Travail sérieux en classe.'] },
         },
         moteur: {
-          4: { p: ['{S} maîtrise très bien les connaissances{apsa}.', '{S} obtient de très bons résultats{apsa}.'], t: ['Connaissances très bien maîtrisées{apsa}.', 'Très bons résultats{apsa}.'] },
+          4: { p: ['{S} maîtrise très bien les connaissances{apsa}.', '{S} obtient de très bons résultats{apsa}.', '{S} obtient des résultats remarquables{apsa}.', 'Les connaissances sont solidement maîtrisées{apsa}.'],
+            t: ['Connaissances très bien maîtrisées{apsa}.', 'Très bons résultats{apsa}.', 'Résultats remarquables{apsa}.'] },
           3: { p: ['{S} obtient de bons résultats{apsa}.', '{S} maîtrise bien les connaissances{apsa}.'], t: ['Bons résultats{apsa}.', 'Connaissances bien maîtrisées{apsa}.'] },
           2: { p: { b: ['{S} obtient des résultats encore justes{apsa}, qui peuvent progresser.'], n: ['{S} obtient des résultats moyens{apsa}.'],
-            x: ['Les résultats{apsa} sont insuffisants au regard des possibilités de {P}.'] },
+            x: ['Les résultats{apsa} sont insuffisants au regard des possibilités de {P}.', '{S} doit viser des résultats plus solides{apsa}.'] },
           t: { b: ['Connaissances à consolider{apsa}.'], n: ['Résultats moyens{apsa}.'], x: ['Résultats insuffisants{apsa}.'] } },
           1: { p: { b: ['{S} rencontre des difficultés{apsa}, mais peut progresser avec un travail régulier.'], n: ['{S} rencontre des difficultés{apsa}.'],
             x: ['Les résultats{apsa} sont très insuffisants.'] },

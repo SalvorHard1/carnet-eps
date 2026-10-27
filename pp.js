@@ -297,7 +297,19 @@ const ADRESSES_PP = { il: '3e personne (« Léa travaille… Elle… »)', vous:
 // Période précédente (pour la progression) : P2 → P1.
 const periodePrecPP = periode => { const l = periodesAnnee(), i = l.findIndex(p => p.id === periode); return i > 0 ? l[i - 1].id : null; };
 
-// → { niveaux, sources, details: { forts, faibles, neg: {rubrique: [matières]}, abs, signaux: [[{k,s,mot}]] } }
+// Moyennes de la classe sur la période (une par bulletin lu, celle de l'élève comprise), pour son rang.
+// (Moyenne générale du bulletin, sinon moyenne de ses matières, comme pour l'élève.)
+function moyennesClassePP(el, periode, moy) {
+  return elevesDe(el.classeId).map(x => {
+    if (x.id === el.id) return moy;
+    const b = bulletinPP(x.id, periode);
+    if (!b) return null;
+    const l = (b.matieres || []).map(m => m.moy).filter(v => v !== null && v !== undefined);
+    return b.moyGen ?? (l.length ? l.reduce((s, v) => s + v, 0) / l.length : null);
+  });
+}
+
+// → { niveaux, sources, details: { forts, faibles, neg: {rubrique: [matières]}, abs, signaux: [[{k,s,mot}]], position } }
 function analyserPP(el, periode, r = reglagePP()) {
   const b = bulletinPP(el.id, periode);
   const niveaux = {}, sources = {}, details = { forts: [], faibles: [], neg: {}, pos: {}, signaux: [] };
@@ -329,9 +341,14 @@ function analyserPP(el, periode, r = reglagePP()) {
   details.moy = moy;
   if (moy !== null) {
     const [s2, s3, s4] = r.seuils;
-    niveaux.resultats = moy >= s4 ? 4 : moy >= s3 ? 3 : moy >= s2 ? 2 : 1;
-    sources.resultats = `Moyenne ${b.moyGen !== null && b.moyGen !== undefined ? 'générale' : 'des matières'} : ${fmtD(moy)}${b.moyGenClasse ? ` (classe : ${fmtD(b.moyGenClasse)})` : ''}`
-      + `\nSeuils : 2 dès ${fmt(s2)}, 3 dès ${fmt(s3)}, 4 dès ${fmt(s4)}`;
+    const brut = moy >= s4 ? 4 : moy >= s3 ? 3 : moy >= s2 ? 2 : 1;
+    // Position dans la classe (appreciations.js) : moyenne de la classe du bulletin, rang parmi les bulletins lus.
+    const pos = positionClasse(moy, moyennesClassePP(el, periode, moy), b.moyGen !== null && b.moyGen !== undefined ? b.moyGenClasse || null : null);
+    details.position = pos;
+    niveaux.resultats = niveauSelonClasse(brut, pos);
+    sources.resultats = `Moyenne ${b.moyGen !== null && b.moyGen !== undefined ? 'générale' : 'des matières'} : ${fmtD(moy)}`
+      + `\nSeuils : 2 dès ${fmt(s2)}, 3 dès ${fmt(s3)}, 4 dès ${fmt(s4)}`
+      + (pos ? `\n${textePositionClasse(pos)}${niveaux.resultats !== brut ? ` (niveau ${brut} d’après les seuils, ${niveaux.resultats} retenu)` : ''}` : '');
   }
   // Progression : la moyenne de la période précédente si son bulletin a été lu, sinon les mots des collègues.
   const prec = periodePrecPP(periode), bp = prec && bulletinPP(el.id, prec);
@@ -423,7 +440,7 @@ const PHRASES_PP = {
     3: { p: ['{S} {participe|participez} volontiers en classe.', 'La participation est bonne.', '{S} {s’implique|vous impliquez} en classe.'], t: ['Bonne participation.', 'Bonne implication en classe.'] },
     2: { p: { b: ['La participation orale est à développer{mat}.', '{S} {doit|devez} oser prendre la parole{mat}.'], n: ['La participation reste discrète{mat}.', 'La participation est irrégulière{mat}.'], x: ['{S} {doit|devez} participer bien plus{mat}.', 'L’implication en classe ne suffit pas{mat}.'] },
       t: { b: ['Participation à développer{mat}.', 'Oral à développer{mat}.'], n: ['Participation discrète{mat}.', 'Participation irrégulière{mat}.'], x: ['Participation insuffisante{mat}.', 'Implication trop faible{mat}.'] } },
-    1: { p: { b: ['{S} {doit s’impliquer|devez vous impliquer} bien davantage en classe{mat}.', 'L’implication en classe reste à trouver{mat}.'], n: ['L’attitude en classe est passive{mat}.', 'L’implication en classe est très faible{mat}.'], x: ['L’attitude passive en classe est préjudiciable{mat}.', 'Le manque d’implication en classe est préoccupant{mat}.'] },
+    1: { p: { b: ['{S} {doit s’impliquer|devez vous impliquer} bien davantage en classe{mat}.', 'L’implication en classe reste à trouver{mat}.', 'L’implication reste à trouver{mat}.'], n: ['L’attitude en classe est passive{mat}.', 'L’implication en classe est très faible{mat}.', 'L’attitude reste passive{mat}.'], x: ['L’attitude passive en classe est préjudiciable{mat}.', 'Le manque d’implication en classe est préoccupant{mat}.', 'Le manque d’implication est préoccupant{mat}.'] },
       t: { b: ['Implication à trouver{mat}.'], n: ['Attitude passive{mat}.', 'Implication très faible{mat}.'], x: ['Passivité préoccupante{mat}.'] } },
   },
   comportement: {
@@ -431,7 +448,7 @@ const PHRASES_PP = {
     3: { p: ['Le comportement est correct.', 'L’attitude en classe est positive.', '{S} {a|avez} un comportement adapté.'], t: ['Comportement correct.', 'Attitude positive.'] },
     2: { p: { b: ['La concentration en classe doit progresser{mat}.', 'Attention aux bavardages et à la dispersion{mat}.'], n: ['Le comportement est parfois à reprendre{mat}.', 'L’attitude en classe manque de concentration{mat}.'], x: ['La dispersion en classe nuit au travail{mat}.', 'Le comportement doit changer{mat}.'] },
       t: { b: ['Concentration à améliorer{mat}.', 'Attention aux bavardages{mat}.'], n: ['Comportement parfois à reprendre{mat}.', 'Concentration fragile{mat}.'], x: ['Dispersion qui nuit au travail{mat}.', 'Comportement à corriger{mat}.'] } },
-    1: { p: { b: ['Le comportement doit nettement s’améliorer{mat}.', 'L’attitude en classe doit changer{mat}.'], n: ['Le comportement pose problème{mat}.', 'Le comportement en classe n’est pas acceptable{mat}.'], x: ['Le comportement est inacceptable et nuit à la classe{mat}.', 'Le comportement en classe est inadmissible{mat}.'] },
+    1: { p: { b: ['Le comportement doit nettement s’améliorer{mat}.', 'L’attitude en classe doit changer{mat}.'], n: ['Le comportement pose problème{mat}.', 'Le comportement en classe n’est pas acceptable{mat}.'], x: ['Le comportement est inacceptable et nuit à la classe{mat}.', 'Le comportement en classe est inadmissible{mat}.', 'Le comportement est inadmissible{mat}.'] },
       t: { b: ['Comportement à améliorer nettement{mat}.'], n: ['Comportement problématique{mat}.'], x: ['Comportement inacceptable{mat}.'] } },
   },
   progression: {
@@ -457,6 +474,16 @@ const BILANS_PP = {
   2: { b: ['{Per} encourageant, mais encore inégal.', '{Per} en demi-teinte, avec des points encourageants.', '{Per} contrasté.'], n: ['{Per} inégal.', '{Per} moyen.', '{Per} mitigé.'], x: ['{Per} trop juste.', '{Per} en dessous de {ses|vos} possibilités.'] },
   1: { b: ['{Per} difficile.', '{Per} compliqué.'], n: ['{Per} difficile.', '{Per} décevant.'], x: ['{Per} très décevant.', '{Per} très insuffisant.', '{Per} nettement insuffisant.', '{Per} alarmant.'] },
 };
+// Bilan correct d'un élève en retrait par rapport à sa classe, ou parmi les meilleurs (voir positionClasse).
+const BILANS_CLASSE_PP = {
+  retrait: ['{Per} correct, mais un peu en retrait par rapport à la classe.', '{Per} correct, un peu en dessous du niveau de la classe.', '{Per} correct, un peu en retrait par rapport à {ses|vos} camarades.'],
+  tete: ['Bon {per}, parmi les meilleurs de la classe.', '{S} {réalise|réalisez} un {per} réussi et {se place|vous placez} parmi les meilleurs de la classe.', 'Bon {per}, parmi les meilleurs élèves.'],
+};
+// Résultats corrects, mais en retrait par rapport à la classe ; quand le bilan l'a déjà dit : « honorables », sans redire
+// la classe (pas de « bons résultats » juste après « en retrait »).
+const RETRAIT_PP = { p: ['Les résultats sont corrects, mais un peu en retrait par rapport à la classe.', 'Les résultats sont corrects, un peu en dessous du niveau de la classe.', 'Les résultats sont corrects, un peu en retrait par rapport à {ses|vos} camarades.'],
+  t: ['Résultats corrects, un peu en retrait par rapport à la classe.'] };
+const RETRAIT_DIT_PP = { p: ['Les résultats sont honorables.', '{S} {obtient|obtenez} des résultats convenables.'], t: ['Résultats honorables.'] };
 const MATIERES_PHRASES_PP = {
   deux: { p: ['De belles réussites {f} ; des difficultés {d}.', 'Des points forts {f}, mais des difficultés {d}.'], t: ['Points forts : {F} ; à renforcer : {D}.', 'Réussites : {F} ; difficultés : {D}.'] },
   forts: { p: ['De belles réussites {f}.', 'Des réussites particulières {f}.'], t: ['Points forts : {F}.', 'Réussites : {F}.'] },
@@ -516,7 +543,7 @@ function redigerPP(el, periode, a, perso, r, graine = 0) {
 
   const construire = (court, exclues = []) => {
     dejaNomme = false; matDite = false;
-    let ecrit = '', dernierPronom = false;
+    let ecrit = '', dernierPronom = false, retraitDit = false; // (« en retrait par rapport à la classe » : une seule fois)
     const moinsDeRepetitions = (tout, voir = brut) => {
       const n = tout.map(x => conflitsAppr(ecrit, voir(x), ignores)), min = Math.min(...n);
       return tout.filter((x, i) => n[i] === min);
@@ -539,14 +566,21 @@ function redigerPP(el, periode, a, perso, r, graine = 0) {
         // (Jamais plus haut que les résultats : pas d'« Excellent trimestre » avec des résultats seulement satisfaisants.)
         let k = Math.max(1, Math.min(4, Math.round(moyenneListe(base))));
         if (niv.resultats) k = Math.min(k, niv.resultats >= 3 ? niv.resultats : niv.resultats + 1);
-        const t = remplir(choisir(selonTon(BILANS_PP[k], ton), g('bilan')), k);
-        ajouter({ cle: 'bilan', pol: k >= 3 ? 1 : -1, texte: t[0].toUpperCase() + t.slice(1) });
+        // (Position dans la classe : un bilan correct sous la moyenne de la classe est nuancé ; sauf résultats
+        // choisis à la main qui le contredisent.)
+        // (« Parmi les meilleurs » : pour un bilan bon, pas excellent — un excellent bilan le reste.)
+        const c = d.position?.cle, classe = (c === 'retrait' && k >= 3 && (niv.resultats || 0) <= 3) || (c === 'tete' && k === 3 && (niv.resultats || 0) >= 3) ? c : null;
+        // (Juste sous la moyenne de la classe, avec des résultats justes : pas de « satisfaisant » non plus.)
+        if (!classe && k >= 3 && d.position?.ecart < 0 && niv.resultats && niv.resultats <= 2) k = 2;
+        if (classe === 'retrait') retraitDit = true;
+        const t = remplir(choisir(classe ? BILANS_CLASSE_PP[classe] : selonTon(BILANS_PP[k], ton), g('bilan')), k);
+        ajouter({ cle: 'bilan', pol: classe === 'retrait' ? -1 : k >= 3 ? 1 : -1, texte: t[0].toUpperCase() + t.slice(1) });
       }
     }
     for (const k of actives) {
       if (k === 'objectif' || exclues.includes(k) || !niv[k]) continue;
       const n = niv[k];
-      let banque, pol;
+      let banque, pol, retrait = false;
       if (k === 'matieres') {
         const cas = d.forts.length && d.faibles.length ? 'deux' : d.forts.length ? 'forts' : d.faibles.length ? 'faibles' : null;
         if (!cas) continue;
@@ -554,16 +588,20 @@ function redigerPP(el, periode, a, perso, r, graine = 0) {
       } else {
         banque = PHRASES_PP[k][n];
         if (k === 'progression' && n === 2 && (niv.resultats || 0) >= 3) banque = STABLE_BON_PP;
-        pol = k === 'progression' && n === 2 ? (banque === STABLE_BON_PP ? 1 : 0) : n >= 3 ? 1 : -1;
+        // (Résultats corrects mais sous la moyenne de la classe : nuancés, si le bilan ne l'a pas dit.)
+        retrait = k === 'resultats' && n === 3 && d.position?.cle === 'retrait';
+        if (retrait) { banque = retraitDit ? RETRAIT_DIT_PP : RETRAIT_PP; retraitDit = true; }
+        pol = k === 'progression' && n === 2 ? (banque === STABLE_BON_PP ? 1 : 0) : n >= 3 && !retrait ? 1 : -1;
       }
       // Importance (pour le manque de place) : point de vigilance > extrêmes > fragile > satisfaisant > « stable ».
-      const importance = vigil.has(k) ? 5 : k === 'matieres' ? 2.5 : k === 'progression' && n === 2 ? 1 : n === 3 ? 2 : n === 2 ? 3 : 4;
+      const importance = vigil.has(k) ? 5 : k === 'matieres' ? 2.5 : k === 'progression' && n === 2 ? 1 : n === 3 && !retrait ? 2 : n === 2 || n === 3 ? 3 : 4;
       const t = remplir(choisir(selonTon(tele ? banque.t : banque.p, ton), g(k)), k);
       ajouter({ cle: k, importance, pol, texte: t[0].toUpperCase() + t.slice(1) });
     }
     if (actives.includes('objectif') && niv.objectif !== null) {
       const notes = actives.filter(k => niv[k] && !['objectif', 'matieres'].includes(k));
-      const poids = k => (k === 'progression' && niv[k] === 2 ? 3 : niv[k]);
+      // (Résultats corrects mais en retrait par rapport à la classe : pas de « Bravo, continuer ainsi ».)
+      const poids = k => (k === 'progression' && niv[k] === 2 ? 3 : k === 'resultats' && niv[k] === 3 && d.position?.cle === 'retrait' ? 2.5 : niv[k]);
       const pire = notes.length ? Math.min(...notes.map(poids)) : 3;
       // (À faiblesse égale : d'abord ce qui dépend de l'élève — travail, participation, comportement — puis les résultats.)
       const prio = ['travail', 'participation', 'comportement', 'assiduite', 'progression', 'resultats'];
@@ -761,6 +799,9 @@ function htmlPP() {
 }
 
 const fmtMoyPP = n => (n === null || n === undefined ? '–' : fmtD(n));
+// Rang dans la classe, avec la position retenue par l'appréciation (▼ en retrait, ▲ parmi les meilleurs).
+const htmlRangPP = pos => (!pos ? '' : `<span${pos.cle ? ` class="${pos.cle === 'retrait' ? 'pp-baisse' : 'pp-hausse'}"` : ''} title="${esc(textePositionClasse(pos))}">${
+  pos.cle === 'retrait' ? '▼ ' : pos.cle === 'tete' ? '▲ ' : ''}${pos.rang ? `${pos.rang}<small>/${pos.n}</small>` : pos.ecart >= 0 ? '+' + fmtD(pos.ecart) : '−' + fmtD(-pos.ecart)}</span>`);
 const classeMoyPP = n => (n === null || n === undefined ? '' : n < 8 ? 'pp-n1' : n < 10 ? 'pp-n2' : n < 14 ? '' : n < 16 ? 'pp-n3' : 'pp-n4');
 
 function htmlBulletinsPP(c, periode, eleves) {
@@ -849,18 +890,19 @@ function htmlTableauPP(c, periode, eleves) {
       ${fragiles.length ? `<br><span class="aide">Matières les plus fragiles : ${fragiles.map(x => `${esc(x.n)} (${fmtD(x.m)})`).join(', ')}</span>` : ''}
     </div>
     <div class="carte grille-scroll"><table class="pp-table pp-tableau">
-      <thead><tr><th>Élève</th><th>Moy. gén.</th><th>Évol.</th><th>Abs.</th><th>Mention</th>${matieres.map(n => `<th><span class="pp-vertical">${esc(n)}</span></th>`).join('')}</tr></thead>
+      <thead><tr><th>Élève</th><th>Moy. gén.</th><th title="Rang dans la classe (bulletins lus) ; ▼ en retrait, ▲ parmi les meilleurs : l’appréciation en tient compte">Rang</th><th>Évol.</th><th>Abs.</th><th>Mention</th>${matieres.map(n => `<th><span class="pp-vertical">${esc(n)}</span></th>`).join('')}</tr></thead>
       <tbody>${lignes.map(({ el, b, bp }) => {
     const d = bp && b.moyGen !== null && bp.moyGen !== null && bp.moyGen !== undefined ? b.moyGen - bp.moyGen : null;
     const x = appreciationPP(el, periode, r), m = x.mention;
     return `<tr><td><button type="button" class="lien" data-pp="voir-eleve" data-arg="${el.id}">${esc(el.nom)} ${esc(el.prenom)}</button></td>
           <td class="${classeMoyPP(b.moyGen)}"><b>${fmtMoyPP(b.moyGen)}</b></td>
+          <td>${htmlRangPP(x.analyse.details.position)}</td>
           <td>${d === null ? '' : d >= 0.5 ? `<span class="pp-hausse">▲ ${fmtD(d)}</span>` : d <= -0.5 ? `<span class="pp-baisse">▼ ${fmtD(-d)}</span>` : '='}</td>
           <td>${b.absences ?? ''}${b.nonJustifiees ? ` <small>(${b.nonJustifiees} NJ)</small>` : ''}</td>
           <td>${m !== 'aucune' ? esc(MENTIONS_PP[m]) : ''}${x.enreg?.mention ? ' <span class="aide" title="Choisie par toi (proposée : ' + esc(MENTIONS_PP[x.mentionCalculee]) + ')">✎</span>' : ''}</td>
           ${matieres.map(n => { const v = moyDe(b, n); return `<td class="${classeMoyPP(v)}">${fmtMoyPP(v)}</td>`; }).join('')}</tr>`;
   }).join('')}</tbody>
-      <tfoot><tr><th>Moyenne</th><th>${gen.length ? fmtD(gen.reduce((a, v) => a + v, 0) / gen.length) : '–'}</th><th></th><th></th><th></th>${matieres.map(n => `<th>${fmtMoyPP(moyClasse(n))}</th>`).join('')}</tr></tfoot>
+      <tfoot><tr><th>Moyenne</th><th>${gen.length ? fmtD(gen.reduce((a, v) => a + v, 0) / gen.length) : '–'}</th><th></th><th></th><th></th><th></th>${matieres.map(n => `<th>${fmtMoyPP(moyClasse(n))}</th>`).join('')}</tr></tfoot>
     </table></div>
     <p class="aide">Couleurs : rouge sous 8, orange sous 10, vert dès 14 (foncé dès 16). Touche un élève pour le préparer en conseil.</p>`;
 }
@@ -980,7 +1022,7 @@ function htmlFicheConseilPP(el, periode, r, c) {
       <div class="fc-decision"><small>Mention${x.enreg?.mention ? ' décidée' : ''}</small>${mentionFichePP(x.mention)}</div>
     </header>
     <div class="fc-kpis">
-      <div class="fc-kpi"><small>Moyenne générale</small><b class="fc-note ${nivFichePP(b.moyGen)}">${fmtMoyPP(b.moyGen)}</b><span>${b.moyGenClasse ? `classe ${fmtD(b.moyGenClasse)}` : '&nbsp;'}</span></div>
+      <div class="fc-kpi"><small>Moyenne générale</small><b class="fc-note ${nivFichePP(b.moyGen)}">${fmtMoyPP(b.moyGen)}</b><span>${d.position ? `classe ${fmtD(d.position.moyClasse)}${d.position.rang ? ` · rang ${d.position.rang}/${d.position.n}` : ''}` : b.moyGenClasse ? `classe ${fmtD(b.moyGenClasse)}` : '&nbsp;'}</span></div>
       <div class="fc-kpi"><small>Évolution</small><b>${evolFichePP(ecart)}</b><span>${prec && ecart !== null ? `depuis ${esc(nomPeriodePP(prec))}` : '&nbsp;'}</span></div>
       <div class="fc-kpi"><small>Absences</small><b>${abs ? b.absences : '–'}<i>${abs ? ' ½ j.' : ''}</i></b><span class="${b.nonJustifiees ? 'fc-alerte' : ''}">${b.nonJustifiees ? `dont ${b.nonJustifiees} non justifiée${b.nonJustifiees > 1 ? 's' : ''}` : abs && b.absences ? 'toutes justifiées' : '&nbsp;'}</span></div>
       <div class="fc-kpi"><small>Retards</small><b>${b.retards ?? '–'}</b><span>&nbsp;</span></div>
@@ -1063,6 +1105,8 @@ function alertesPP(el, periode, r) {
   const qui = k => (k in perso ? ' (choisi par toi)' : a.details.neg[k]?.length ? ` (${a.details.neg[k].join(', ')})` : '');
   if (x.mention === 'avTravail' || x.mention === 'avComportement') res.push(`${MENTIONS_PP[x.mention]} ${x.enreg?.mention ? 'décidé' : 'proposé'}`);
   if (b.moyGen !== null && b.moyGen !== undefined && b.moyGen < 10) res.push(`Moyenne générale ${fmtD(b.moyGen)}`);
+  const pos = a.details.position;
+  if (pos?.nettement && (niv.resultats || 0) <= 2) res.push(`Nettement en retrait par rapport à la classe : ${fmtD(a.details.moy)} pour ${fmtD(pos.moyClasse)}${pos.rang ? ` (rang ${pos.rang}/${pos.n})` : ''}`);
   if (a.details.ecart !== undefined && a.details.ecart <= -1.5) res.push(`Baisse de ${fmtD(-a.details.ecart)} point${-a.details.ecart >= 2 ? 's' : ''}`);
   const sous10 = b.matieres.filter(m => m.moy !== null && m.moy < 10).length;
   if (sous10 >= 3) res.push(`${sous10} matières sous 10`);
@@ -1080,7 +1124,7 @@ function htmlSuiviPP(c, periode, eleves) {
   return `
     <div class="carte pp-alertes"><h3>⚠ Élèves à suivre — ${esc(nomPeriodePP(periode))}</h3>
       ${alertes.length ? `<ul>${alertes.map(({ el, l }) => `<li><button type="button" class="lien" data-pp="ouvrir-suivi" data-arg="${el.id}"><b>${esc(el.nom)} ${esc(el.prenom)}</b></button> : ${l.map(esc).join(' · ')}</li>`).join('')}</ul>`
-    : '<p class="aide">Aucune alerte (moyenne sous 10, baisse d’au moins 1,5 point, 3 matières sous 10, travail ou comportement signalés, absences, rappels).</p>'}</div>
+    : '<p class="aide">Aucune alerte (moyenne sous 10, nettement sous celle de la classe, baisse d’au moins 1,5 point, 3 matières sous 10, travail ou comportement signalés, absences, rappels).</p>'}</div>
     <div class="pp-suivi">${eleves.map(el => {
     const j = journalPP(el.id), ouvert = etatPP.suiviOuverts?.has(el.id);
     return `<details class="carte pp-suivi-eleve" data-pp-suivi="${el.id}"${ouvert ? ' open' : ''}>

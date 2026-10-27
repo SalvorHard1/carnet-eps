@@ -197,7 +197,10 @@ function pointsEtAxes(el, s) {
     if (der >= 3) forts.push({ cat: 'attendus', poids: der + 0.2, texte: `${at.code} ${at.texte}`, phrase: `maîtrise ${der === 4 ? 'très bien' : 'bien'} « ${court(at.texte)} »` });
   }
   if (s.valeurs.competences >= 2.75) forts.push({ cat: 'competences', poids: s.valeurs.competences, texte: `Compétences : degré moyen ${fmt1(s.valeurs.competences)}`, phrase: 'maîtrise les compétences travaillées' });
-  if (s.moy !== null && s.moy !== undefined && s.moy >= seuils[1]) forts.push({ cat: 'notes', poids: 3 + (s.moy - seuils[1]) / 5, texte: `Moyenne ${fmt1(s.moy)}/20`, phrase: `obtient de bons résultats (${fmt1(s.moy)}/20)${d.apsaForte && enMin(d.apsaForte) ? ', notamment' + enMin(d.apsaForte) : ''}` });
+  // (Position dans la classe, comme l'appréciation : pas de « bons résultats » sous la moyenne de la classe.)
+  const pos = d.position;
+  if (pos?.cle === 'tete') forts.push({ cat: 'notes', poids: 3.6, texte: `Moyenne ${fmt1(s.moy)}/20 (classe ${fmt1(pos.moyClasse)})`, phrase: 'se place parmi les meilleurs de la classe' });
+  else if (s.moy !== null && s.moy !== undefined && s.moy >= seuils[1] && pos?.cle !== 'retrait') forts.push({ cat: 'notes', poids: 3 + (s.moy - seuils[1]) / 5, texte: `Moyenne ${fmt1(s.moy)}/20`, phrase: `obtient de bons résultats (${fmt1(s.moy)}/20)${d.apsaForte && enMin(d.apsaForte) ? ', notamment' + enMin(d.apsaForte) : ''}` });
   if (n.moteur >= 3) forts.push({ cat: 'niveau', poids: n.moteur, texte: tx('niveauFort')[0], phrase: `${tx('niveauFort')[1]}${d.apsaForte && enMin(d.apsaForte) ? ', en particulier' + enMin(d.apsaForte) : d.apsaSeule ? enMin(d.apsaSeule) : ''}` });
   if (!a.defaut.attitude && n.attitude >= 3) forts.push({ cat: 'attitude', poids: n.attitude, texte: 'Engagement', phrase: n.attitude === 4 ? 's’investit pleinement' : 's’investit avec sérieux' });
   if (!a.defaut.comportement && n.comportement >= 3) forts.push({ cat: 'comportement', poids: n.comportement - 0.1, texte: 'Comportement', phrase: 'a un comportement respectueux' });
@@ -221,6 +224,7 @@ function pointsEtAxes(el, s) {
   if (s.vs.abs >= 2) axes.push({ cat: 'vie', poids: 2 + s.vs.abs * 0.6, texte: `${s.vs.abs} absences`, phrase: `être plus assidu${e}` });
   if (s.vs.retards >= 2) axes.push({ cat: 'vie', poids: 1.5 + s.vs.retards * 0.4, texte: `${s.vs.retards} retards`, phrase: 'arriver à l’heure en cours' });
   if (s.moy !== null && s.moy !== undefined && s.moy < seuils[0]) axes.push({ cat: 'notes', poids: 3 + (seuils[0] - s.moy) / 4, texte: `Moyenne ${fmt1(s.moy)}/20`, phrase: `remonter son niveau${d.apsaFaible ? enMin(d.apsaFaible) : ''}` });
+  else if (pos?.cle === 'retrait') axes.push({ cat: 'notes', poids: 2.6 - pos.ecart / 4, texte: `Moyenne ${fmt1(s.moy)}/20, sous celle de la classe (${fmt1(pos.moyClasse)})`, phrase: 'se rapprocher du niveau de la classe' });
   else if (n.progression === 1) axes.push({ cat: 'notes', poids: 2.5, texte: 'Résultats en baisse', phrase: 'retrouver de la régularité dans ses résultats' });
   if (n.moteur && n.moteur <= 2) axes.push({ cat: 'niveau', poids: 3.5 - n.moteur, texte: tx('niveauFaible')[0], phrase: tx('niveauFaible')[1] });
   if (n.methodo && n.methodo <= 2) axes.push({ cat: 'competences', poids: 3 - n.methodo, texte: tx('methodo')[0], phrase: tx('methodo')[1] });

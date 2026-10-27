@@ -65,6 +65,8 @@
 * { box-sizing: border-box; touch-action: manipulation; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
+/* La page elle-même ne défile jamais de côté : les tableaux larges défilent dans leur bloc. */
+html, body { overflow-x: clip; }
 body {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;
@@ -100,7 +102,7 @@ button, .bouton {
 /* La barre ne doit jamais être plus large que l'écran (sinon la page entière défile de côté) :
    le titre et le texte du bouton de la clé rétrécissent au besoin, le reste garde sa taille. */
 .barre > * { flex-shrink: 0; }
-.barre h1 { font-size: 18px; margin: 0; white-space: nowrap; flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.barre h1 { font-size: 18px; margin: 0; white-space: nowrap; flex-shrink: 100; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .titre-etab { font-weight: 500; opacity: .85; }
 /* Bouton de version : neutre = à jour ; orange = mise à jour disponible (clic pour l'installer) */
 .barre .version-appli {
@@ -124,7 +126,7 @@ button, .bouton {
 .onglets button { opacity: .8; }
 .onglets button.actif { background: rgba(255, 255, 255, .22); opacity: 1; font-weight: 600; }
 /* Bouton de sauvegarde unique : la couleur donne l'état */
-.barre .groupe-sauvegarde { margin-left: auto; display: flex; align-items: center; gap: 4px; flex-shrink: 1; min-width: 0; }
+.barre .groupe-sauvegarde { margin-left: auto; display: flex; align-items: center; gap: 4px; flex-shrink: 100; min-width: 0; }
 #etat-cle { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .barre .sauver {
   max-width: 100%; min-width: 0;
@@ -192,7 +194,7 @@ main { flex: 1; min-width: 0; overflow: auto; padding: 16px; padding-bottom: cal
   .classes.ouvert { transform: none; visibility: visible; transition: transform .2s; box-shadow: 0 0 24px rgba(0, 0, 0, .25); }
 }
 /* Tablette en portrait : sans le titre, les onglets et le bouton de la clé tiennent sur la barre. */
-@media (max-width: 760px) { .barre h1 { display: none; } }
+@media (max-width: 860px) { .barre h1 { display: none; } }
 @media (min-width: 900px) {
   #btn-menu, .voile { display: none; }
 }
@@ -200,13 +202,14 @@ main { flex: 1; min-width: 0; overflow: auto; padding: 16px; padding-bottom: cal
   .barre h1 { display: none; }
   .barre .sauver { padding: 8px 12px; }
   #etat-cle { display: none; } /* sur téléphone, la couleur du bouton suffit */
+  .barre .groupe-sauvegarde { flex-shrink: 0; } /* (icône seule : ce sont les onglets qui défilent) */
   main { padding: 10px; }
 }
 /* Petit téléphone : barre resserrée pour que tout tienne sur la largeur. */
 @media (max-width: 420px) {
-  .barre { gap: 4px; padding-left: 6px; padding-right: 6px; }
+  .barre { gap: 3px; padding-left: 6px; padding-right: 6px; }
   .icone { padding: 4px 6px; }
-  .barre .version-appli { padding: 3px 6px; font-size: 11px; }
+  .barre .version-appli { padding: 3px 5px; font-size: 11px; }
   .onglets { margin-left: 0; gap: 2px; }
   .onglets button { padding: 8px 7px; font-size: 14px; }
   .barre .sauver { padding: 8px 10px; }
@@ -217,6 +220,18 @@ main { flex: 1; min-width: 0; overflow: auto; padding: 16px; padding-bottom: cal
 .onglets-compact button { opacity: .85; white-space: nowrap; }
 .onglets-compact button.actif { background: rgba(255, 255, 255, .22); opacity: 1; font-weight: 600; }
 .onglets-compact .chevron { font-size: 12px; opacity: .9; }
+/* Téléphone : si les onglets ne tiennent pas, ils défilent de côté dans la barre (sans ascenseur visible),
+   au lieu d'élargir la page (qui défilait alors de côté, avec une bande vide à droite). */
+/* (Le titre puis le texte du bouton de la clé rétrécissent d'abord ; les onglets seulement en dernier.) */
+.barre > .onglets, .barre > .onglets-compact { flex-shrink: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.barre > .onglets::-webkit-scrollbar, .barre > .onglets-compact::-webkit-scrollbar { display: none; }
+.onglets > *, .onglets-compact > * { flex-shrink: 0; }
+.onglets-compact.suite-droite { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); }
+.onglets-compact.suite-gauche { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 22px), transparent); }
+.onglets-compact.suite-gauche.suite-droite {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 22px, #000 calc(100% - 22px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 22px, #000 calc(100% - 22px), transparent);
+}
 .groupe-onglets { display: inline-flex; align-items: stretch; }
 .groupe-onglets:not(.actif) > button[data-vue] { padding-right: 4px; border-radius: 10px 0 0 10px; }
 .groupe-onglets:not(.actif) > button[data-rideau] { padding: 8px 10px 8px 6px; border-radius: 0 10px 10px 0; }
@@ -248,8 +263,9 @@ body[data-disposition="bas"] .notif-auto { bottom: calc(16px + var(--bas) + env(
 .modale .favoris-onglets label.case { flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; }
 @media (max-width: 420px) {
   .onglets-compact { margin-left: 0; gap: 2px; }
-  .onglets-compact button { padding: 8px 6px; font-size: 14px; }
-  .groupe-onglets:not(.actif) > button[data-rideau] { padding: 8px 6px 8px 2px; }
+  .onglets-compact button { padding: 8px 4px; font-size: 14px; }
+  .groupe-onglets:not(.actif) > button[data-vue] { padding-right: 2px; }
+  .groupe-onglets:not(.actif) > button[data-rideau] { padding: 8px 4px 8px 1px; }
 }
 @media (prefers-reduced-motion: reduce) { .rideau-onglets { animation: none; } }
 
@@ -592,6 +608,12 @@ button.badge-disp:hover { filter: brightness(1.1); }
 .modale::backdrop { background: rgba(0, 0, 0, .4); }
 .modale form { padding: 20px; }
 .modale h2 { margin: 0 0 14px; font-size: 19px; }
+/* Fenêtre déplaçable par son titre (ordinateur, grande tablette : voir rendreDeplacable dans app.js) */
+@media (min-width: 768px) and (min-height: 500px) {
+  .modale h2.poignee-modale { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .modale.deplacement h2.poignee-modale { cursor: grabbing; }
+  .modale.deplacement { user-select: none; -webkit-user-select: none; }
+}
 .modale-corps { display: flex; flex-direction: column; gap: 12px; }
 .modale-corps p { margin: 0; }
 .modale label:not(.bouton) { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--texte2); flex: 1; }
@@ -1759,6 +1781,7 @@ body.mode-eleve .btn-verrou { display: none; }
 .vignette-trombi figcaption { margin-top: 4px; font-size: .85rem; line-height: 1.2; overflow-wrap: anywhere; }
 .vignette-trombi select { width: 100%; margin-top: 4px; font-size: .8rem; }
 .vignette-trombi .lu-trombi { display: block; color: #778; font-size: .72rem; }
+.vignette-trombi img.nom-trombi { width: auto; max-width: 100%; max-height: 34px; aspect-ratio: auto; object-fit: contain; margin: 2px auto 0; border-radius: 3px; background: #fff; }
 .vignette-trombi.doute { border-color: #f0a020; }
 .vignette-trombi.inconnu { border-style: dashed; opacity: .6; }
 .vignette-trombi.surbrillance { outline: 3px solid #ffb627; }

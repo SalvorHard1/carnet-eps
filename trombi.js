@@ -4,6 +4,7 @@
 // est comparé aux noms / prénoms des élèves de la classe. L'enseignant vérifie et corrige avant d'enregistrer.
 // La photo est réduite (vignette JPEG d'environ 10 Ko) et rangée sur la fiche de l'élève (el.photo) ; le PDF
 // lui-même n'est ni gardé ni envoyé nulle part. Jamais affichée en mode élève.
+// Trombinoscope en image (PNG, JPEG, capture d'écran) ou PDF scanné : lu par trombiimage.js.
 // (Fichier chargé avant app.js : il n'utilise les outils d'app.js qu'au moment des appels.)
 
 const Trombi = (() => {
@@ -72,7 +73,13 @@ const Trombi = (() => {
         photos.push({ image: im, texte: lignes.map(t => t.t.trim()).join(' ').replace(/\s+/g, ' ').trim(), repetee: vues.get(im.flux) > 2 });
       }
     }
-    if (!photos.length) throw new Error('Aucune photo trouvée dans ce PDF (page scannée en une seule image ?).');
+    if (!photos.length) {
+      // PDF scanné (chaque page = une seule grande image) : il est lu comme une image (trombiimage.js).
+      const scans = pages.flatMap(p => p.images.filter(im => im.w >= p.largeur * 0.6 || im.h >= p.hauteur * 0.6));
+      const pagesImg = (await Promise.all(scans.map(im => im.dessiner(2400).catch(() => null)))).filter(Boolean);
+      if (pagesImg.length) return { scans: pagesImg };
+      throw new Error('Aucune photo trouvée dans ce PDF.');
+    }
     for (const ph of photos) {
       const cv = ph.repetee ? null : await ph.image.dessiner(TAILLE).catch(() => null);
       ph.url = cv ? cv.toDataURL('image/jpeg', QUALITE) : '';
@@ -96,29 +103,48 @@ const Trombi = (() => {
 
   /* ---------- Import : vérification par l'enseignant ---------- */
 
-  async function importer(c, fichier) {
+  const estImage = f => /^image\//.test(f.type) || /\.(png|jpe?g|webp|bmp|gif)$/i.test(f.name);
+
+  // fichiers : un PDF, ou une ou plusieurs images (PNG, JPEG : capture d'écran, page enregistrée…).
+  async function importer(c, fichiers) {
     const eleves = elevesDe(c.id);
     if (!eleves.length) throw new Error('Ajoute d’abord les élèves de la classe : les photos sont rattachées à leurs noms.');
     toast('Lecture du trombinoscope…');
-    const photos = await lirePdf(fichier);
+    const photos = [], images = [];
+    for (const f of [].concat(fichiers)) {
+      if (estImage(f)) { images.push(f); continue; }
+      const lu = await lirePdf(f);
+      if (lu.scans) images.push(...lu.scans); else photos.push(...lu);
+    }
     apparier(photos, eleves);
+    let style = null;
+    if (images.length) {
+      toast('Lecture de l’image : l’appli s’entraîne sur les noms de la classe…');
+      const deja = new Set(photos.map(p => p.eleve).filter(Boolean));
+      const lu = await TrombiImage.lire(images, eleves.filter(el => !deja.has(el.id)));
+      photos.push(...lu.photos);
+      style = lu.style;
+    }
+    if (!photos.length) throw new Error('Aucune photo trouvée.');
     const trouves = photos.filter(p => p.eleve).length, doutes = photos.filter(p => p.eleve && !p.sur).length;
     const sansPhoto = eleves.filter(el => !photos.some(p => p.eleve === el.id));
     const options = id => `<option value="">— ne pas garder —</option>${eleves.map(el =>
       `<option value="${el.id}" ${el.id === id ? 'selected' : ''}>${esc(`${el.nom} ${el.prenom}`)}</option>`).join('')}`;
     const { d, resultat } = ouvrirModale(`Trombinoscope — ${c.nom}`, `
-      <p><b>${photos.length} photo${photos.length > 1 ? 's' : ''}</b> dans le PDF · <b>${trouves}</b> rattachée${trouves > 1 ? 's' : ''} à un élève
+      <p><b>${photos.length} photo${photos.length > 1 ? 's' : ''}</b> trouvée${photos.length > 1 ? 's' : ''} · <b>${trouves}</b> rattachée${trouves > 1 ? 's' : ''} à un élève
         ${doutes ? ` · <span class="doute-trombi">${doutes} à vérifier</span>` : ''}</p>
+      ${style ? `<p class="aide">🧠 L’appli s’est entraînée sur ton image : noms écrits « ${esc(TrombiImage.presentationLue(style.cle))} ».</p>` : ''}
       ${sansPhoto.length ? `<p class="aide">Sans photo : ${sansPhoto.slice(0, 12).map(el => esc(`${el.nom} ${el.prenom}`)).join(', ')}${sansPhoto.length > 12 ? '…' : ''}</p>` : ''}
-      <p class="aide">Vérifie chaque vignette : le nom lu sous la photo est rappelé en petit. Change l’élève dans la liste si besoin.</p>
+      <p class="aide">Vérifie chaque vignette : le nom ${images.length ? 'découpé' : 'lu'} sous la photo est rappelé en petit. Change l’élève dans la liste si besoin.</p>
       <div class="grille-trombi import-trombi">${photos.map((p, i) => `
         <figure class="vignette-trombi${p.eleve ? (p.sur ? '' : ' doute') : ' inconnu'}">
           <img src="${p.url}" alt="">
-          <figcaption><small class="lu-trombi" title="Texte lu sous la photo">${esc(p.texte || '(aucun nom lu)')}</small>
+          <figcaption>${p.nomImage ? `<img class="nom-trombi" src="${p.nomImage}" alt="Nom découpé sous la photo" title="Nom découpé sous la photo">`
+            : `<small class="lu-trombi" title="Texte lu sous la photo">${esc(p.texte || '(aucun nom lu)')}</small>`}
             <select name="ph${i}" data-trombi-choix aria-label="Élève de la photo ${i + 1}">${options(p.eleve)}</select></figcaption>
         </figure>`).join('')}</div>
       <label class="case"><input type="checkbox" name="remplacer" checked><span>Remplacer les photos déjà enregistrées</span></label>
-      <p class="aide">Le PDF est lu sur cet appareil et n’est envoyé nulle part ; seules les vignettes choisies sont gardées dans le carnet.</p>`,
+      <p class="aide">Le fichier est lu sur cet appareil et n’est envoyé nulle part ; seules les vignettes choisies sont gardées dans le carnet.</p>`,
     boutonsModale('Enregistrer les photos'), 'modale-large');
     // Un élève ne peut recevoir qu'une photo : le choisir ailleurs libère l'autre vignette.
     d.addEventListener('change', e => {
@@ -171,7 +197,7 @@ const Trombi = (() => {
     const eleves = elevesDe(c.id), avec = eleves.filter(el => el.photo).length;
     const { d, resultat } = ouvrirModale(`Trombinoscope — ${c.nom}`, `
       <p class="aide">${avec} photo${avec > 1 ? 's' : ''} sur ${eleves.length} élève${eleves.length > 1 ? 's' : ''}.
-        Importe le PDF du trombinoscope de la classe : l’appli lit le nom sous chaque photo et la range sur la bonne fiche.</p>
+        Importe le trombinoscope de la classe (PDF, ou image PNG / JPEG) : l’appli lit le nom sous chaque photo et la range sur la bonne fiche.</p>
       <div class="grille-trombi">${eleves.map(el => `
         <figure class="vignette-trombi${el.id === ouvrirEleve ? ' surbrillance' : ''}" data-trombi-eleve="${el.id}">
           ${el.photo ? `<img src="${el.photo}" alt="">` : `<span class="sans-photo" aria-hidden="true">${esc(initiales(el))}</span>`}
@@ -181,7 +207,7 @@ const Trombi = (() => {
             ${el.photo ? `<button type="button" class="icone-petit" data-trombi-retirer="${el.id}" title="Retirer la photo" aria-label="Retirer la photo de ${esc(el.nom)}">✕</button>` : ''}
           </span>
         </figure>`).join('')}</div>`,
-    `<button value="pdf" class="primaire">📄 Importer le trombinoscope (PDF)</button>
+    `<button value="pdf" class="primaire">📄 Importer le trombinoscope (PDF ou image)</button>
      ${avec ? '<button value="retirer" class="danger">Retirer toutes les photos</button>' : ''}
      <span class="espace"></span><button type="button" data-fermer>Fermer</button>`, 'modale-large');
     if (ouvrirEleve) d.querySelector('.surbrillance')?.scrollIntoView({ block: 'center' });

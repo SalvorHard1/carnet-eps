@@ -150,7 +150,8 @@ function lireEvalsExcel(feuilles) {
 /* ---------- Relevé de notes exporté d'École Directe (ou d'un autre logiciel) ----------
    Une seule feuille : en haut une ligne de titres (« Classe… », Moyennes, Rang, puis une colonne par évaluation :
    « Titre JJ/MM/AAAA (EPS) »), une ligne « Coefficients », une ligne « Noté sur », puis un élève par ligne
-   (« NOM Prénom », moyenne, rang, notes). Les colonnes Moyenne(s) et Rang ne sont pas reprises. */
+   (« NOM Prénom », moyenne, rang, notes). La colonne Moyenne(s) sert seulement à vérifier l'import (comme pour Pronote) ;
+   le rang n'est pas repris. */
 
 // Fichier → feuilles : .xlsx, ou « .xls » qui est en fait une page web (export fréquent des logiciels de vie scolaire).
 async function lireClasseurNotes(fichier) {
@@ -203,6 +204,9 @@ function lireNotesEcoleDirecte(feuilles) {
       cols.push(k);
     }
     if (!cols.length) continue;
+    // Moyenne de l'élève dans le relevé (colonne « Moyenne(s) », sans coefficient) : la référence pour vérifier l'import.
+    let kMoy = -1;
+    for (let k = 0; k < largeur && kMoy < 0; k++) if (!cols.includes(k) && /^moy/.test(sa(titreDe(k)))) kMoy = k;
     // Élèves : sous les lignes d'en-tête, un nom dans les colonnes avant les évaluations, et au moins une case remplie.
     const debut = Math.max(iCoef, iSur) + 1;
     const eleves = [];
@@ -213,20 +217,46 @@ function lireNotesEcoleDirecte(feuilles) {
       eleves.push({ ...ListeClasse.separerNom(nom), l });
     }
     if (!eleves.length) continue;
+    const lues = [];
     for (const k of cols) {
       const t = titreDe(k).replace(/\s+/g, ' ').trim() || `Évaluation ${cols.indexOf(k) + 1}`;
       const date = t.match(/(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
       // Titre : le texte avant la date (sans la matière entre parenthèses à la fin).
       const titre = (date ? t.slice(0, date.index) : t).replace(/\(\s*[^)]*\)\s*$/, '').replace(/[\s—–-]+$/, '').trim() || t;
       const coef = lu(iCoef, k), sur = lu(iSur, k);
-      res.push({
+      lues.push({
         onglet: f.nom, fichierId: '', refId: '', titre, date: (date && lireDateExcel(date[0])) || aujourdhui(), apsa: '', ca: '',
         max: sur > 0 ? sur : 20, coef: coef !== null && coef >= 0 ? coef : 1, colonnes: [],
-        lignes: eleves.map(({ nom, prenom, l }) => ({ id: '', nom: majuscules(nom), prenom, note: String(l[k] || '').replace(/\s*\/\s*\d+([.,]\d+)?$/, ''), degres: [] })),
+        lignes: eleves.map(({ nom, prenom, l }) => ({ id: '', nom: majuscules(nom), prenom, note: String(l[k] || '').replace(/\s*\/\s*\d+([.,]\d+)?$/, ''), degres: [],
+          moyenneFichier: kMoy >= 0 ? nombre(String(l[kMoy] || '').replace(',', '.')) : null })),
       });
     }
+    if (kMoy >= 0) verifierMoyennesFichier(lues, 'sur20');
+    res.push(...lues);
   }
   return res;
+}
+
+// Moyennes du relevé (Pronote, École Directe) : l'appli refait les deux calculs pour savoir lequel le logiciel a suivi
+// (« sur 20 » : chaque note ramenée sur 20, comme dans le carnet ; « points » : total des points / total des barèmes).
+// (prefere : le calcul habituel du logiciel, retenu à égalité — « points » pour Pronote, « sur20 » pour École Directe.)
+function verifierMoyennesFichier(lues, prefere) {
+  const verif = { sur20: 0, points: 0, total: 0, prefere };
+  lues[0]?.lignes.forEach((l0, i) => {
+    const attendue = l0.moyenneFichier;
+    if (attendue === null || attendue === undefined) return;
+    let s20 = 0, p20 = 0, pts = 0, bar = 0;
+    for (const x of lues) {
+      const n = nombre(valeurImport(x.lignes[i].note, x.max));
+      if (n === null || !x.coef) continue;
+      s20 += (n / x.max) * 20 * x.coef; p20 += x.coef; pts += n * x.coef; bar += x.max * x.coef;
+    }
+    if (!p20) return;
+    verif.total++;
+    if (Math.abs(s20 / p20 - attendue) < 0.006) verif.sur20++;
+    if (Math.abs((pts / bar) * 20 - attendue) < 0.006) verif.points++;
+  });
+  lues.forEach(x => { x.verifPronote = verif; });
 }
 
 /* ---------- Relevé de notes exporté de Pronote (.xlsx, ou .csv / texte copié) ----------
@@ -234,6 +264,9 @@ function lireNotesEcoleDirecte(feuilles) {
    juste dessous : « coefficient - /barème » (ex. « 1 - /10 ») ; puis un élève par ligne (« NOM Prénom », classe, moyenne, notes).
    La dernière ligne, sans nom, donne les moyennes du groupe : ignorée. Groupe de plusieurs classes : la colonne Classes est ignorée. */
 const COEF_SUR_PRONOTE = /^(?:coef\.?\s*)?(\d+(?:[.,]\d+)?)\s*-\s*\/\s*(\d+(?:[.,]\d+)?)$/i;
+// « N.Rdu* » (non rendu marqué d'une étoile) compte 0 dans les moyennes de Pronote : il devient la note 0.
+// (« N.Rdu » sans étoile reste « non rendu », qui ne compte pas.)
+const notePronote = t => (/^(n\.?\s*rdu|nr|non\s+rendu)\.?\s*\*$/i.test(String(t).trim()) ? '0' : t);
 
 // Date d'en-tête : date Excel, JJ/MM/AAAA, ou JJ/MM (année scolaire en cours : de septembre à août).
 function dateDevoirPronote(t) {
@@ -272,46 +305,37 @@ function lireNotesPronote(feuilles) {
       return {
         onglet: f.nom, fichierId: '', refId: '', titre, date, apsa: '', ca: '', colonnes: [], k,
         max: +sur.replace(',', '.') || 20, coef: +coef.replace(',', '.'),
-        lignes: eleves.map(({ nom, prenom, l }) => ({ id: '', nom: majuscules(nom), prenom, note: l[k] || '', degres: [],
+        lignes: eleves.map(({ nom, prenom, l }) => ({ id: '', nom: majuscules(nom), prenom, note: notePronote(l[k] || ''), degres: [],
           moyenneFichier: kMoy >= 0 ? nombre(String(l[kMoy] || '').replace(',', '.')) : null })),
       };
     });
-    // Moyennes de Pronote : l'appli refait les deux calculs pour savoir lequel Pronote a suivi
-    // (« sur 20 » : chaque note ramenée sur 20, comme dans le carnet ; « points » : total des points / total des barèmes).
-    if (kMoy >= 0) {
-      const verif = { sur20: 0, points: 0, total: 0 };
-      eleves.forEach(({ l }, i) => {
-        const attendue = nombre(String(l[kMoy] || '').replace(',', '.'));
-        if (attendue === null) return;
-        let s20 = 0, p20 = 0, pts = 0, bar = 0;
-        for (const x of lues) {
-          const n = nombre(String(x.lignes[i].note).replace(',', '.'));
-          if (n === null || !x.coef) continue;
-          s20 += (n / x.max) * 20 * x.coef; p20 += x.coef; pts += n * x.coef; bar += x.max * x.coef;
-        }
-        if (!p20) return;
-        verif.total++;
-        if (Math.abs(s20 / p20 - attendue) < 0.006) verif.sur20++;
-        if (Math.abs((pts / bar) * 20 - attendue) < 0.006) verif.points++;
-      });
-      lues.forEach(x => { x.verifPronote = verif; });
-    }
+    if (kMoy >= 0) verifierMoyennesFichier(lues, 'points'); // (moyennes de Pronote : voir plus haut)
     res.push(...lues);
   }
   return res;
 }
 
-// Vérification avant import : pour chaque élève, la moyenne du fichier (référence) et celle que le carnet calculera
-// avec ces devoirs (notes ramenées sur 20, pondérées par les coefficients choisis).
-function moyennesAComparer(evals, coefDe) {
+// Vérification avant import : pour chaque élève, la moyenne du fichier (référence) et celle qu'aura le carnet APRÈS l'import
+// sur les devoirs du fichier (notes ramenées sur 20, pondérées) : une évaluation laissée de côté mais déjà dans le carnet
+// compte avec les notes du carnet ; une évaluation importée, avec celles du fichier (case vide : la note du carnet reste).
+// Ainsi, un réimport « anciennes + nouvelles évaluations » est juste si les deux moyennes sont égales.
+function moyennesAComparer(evals, choixDe = () => 'importer') {
   const lignes = [];
   evals[0]?.lignes.forEach((l0, i) => {
     if (l0.moyenneFichier === null || l0.moyenneFichier === undefined) return;
     let somme = 0, poids = 0;
     for (const x of evals) {
-      const n = nombre(valeurImport(x.lignes[i].note, x.max)), coef = coefDe(x);
-      if (n === null || !coef) continue;
-      somme += (n / x.max) * 20 * coef; poids += coef;
+      const l = x.lignes[i], choix = choixDe(x);
+      const duCarnet = x.cible && l.eleve ? Donnees.note(x.cible.id, l.eleve.id) : '';
+      let n, max = x.max, coef = x.coef;
+      if (choix === 'importer' || choix === 'a-part') {
+        const v = valeurImport(l.note, x.max);
+        n = nombre(v || (choix === 'importer' ? duCarnet : ''));
+      } else if (x.cible) {
+        n = nombre(duCarnet); max = x.cible.max; coef = x.cible.coef ?? 1; // (gardée telle qu'elle est dans le carnet)
+      } else continue; // (ni importée, ni dans le carnet)
+      if (n === null || n === undefined || !coef || !max) continue;
+      somme += (n / max) * 20 * coef; poids += coef;
     }
     const carnet = poids ? Math.round((somme / poids) * 100) / 100 : null;
     lignes.push({ qui: `${l0.nom} ${l0.prenom}`.trim(), fichier: l0.moyenneFichier, carnet, ok: carnet !== null && Math.abs(carnet - l0.moyenneFichier) < 0.006 });
@@ -324,7 +348,7 @@ function htmlVerifMoyennes(lignes) {
   return `<p class="${ecarts ? 'alerte-import' : 'aide'}">${ecarts ? `⚠ <b>${ecarts} moyenne${ecarts > 1 ? 's' : ''} différente${ecarts > 1 ? 's' : ''}</b> de celles du fichier`
       : `✔ <b>Les ${ok} moyennes sont identiques</b> à celles du fichier`}${ecarts && ok ? ` (${ok} identique${ok > 1 ? 's' : ''})` : ''}.</p>
     <details class="verif-moyennes"${ecarts ? ' open' : ''}><summary>Voir élève par élève</summary>
-      <div class="table-defile"><table class="table-labo"><thead><tr><th>Élève</th><th>Fichier</th><th>Carnet</th><th>Écart</th></tr></thead>
+      <div class="table-defile"><table class="table-labo"><thead><tr><th>Élève</th><th>Fichier</th><th>Carnet après l’import</th><th>Écart</th></tr></thead>
       <tbody>${lignes.map(l => `<tr class="${l.ok ? '' : 'ecart-moyenne'}"><th>${esc(l.qui)}</th><td>${fmt(l.fichier)}</td><td>${l.carnet === null ? '–' : fmt(l.carnet)}</td>
         <td>${l.ok ? '✔' : l.carnet === null ? '⚠' : '⚠ ' + (l.carnet > l.fichier ? '+' : '') + fmt(Math.round((l.carnet - l.fichier) * 100) / 100)}</td></tr>`).join('')}</tbody></table></div>
     </details>`;
@@ -458,37 +482,56 @@ function differencesCarnet(x) {
 
 // x.cas : 'nouvelle' | 'doublon' (copie exacte d'une autre colonne du fichier) | 'identique' (déjà dans le carnet)
 //         | 'conflit-carnet' (dans le carnet, avec des notes différentes) | 'conflit-fichier' (même titre et date qu'une autre colonne, notes différentes).
-function analyserDoublonsImport(plan) {
-  const vus = new Map();
+// Mêmes notes que l'évaluation e du carnet (barème identique, au moins 2 notes comparées, aucune différence) :
+// c'est elle, même si le prof l'a renommée dans le carnet ou en a changé le coefficient.
+function memesNotes(x, e) {
+  if (e.max !== x.max) return false;
+  let comparees = 0;
+  for (const l of x.lignes) {
+    if (!l.eleve) continue;
+    const v = valeurImport(l.note, x.max), dans = Donnees.note(e.id, l.eleve.id);
+    if (!v && !dans) continue;
+    if (v !== dans) return false;
+    comparees++;
+  }
+  return comparees >= 2;
+}
+
+function analyserDoublonsImport(plan, c) {
+  const vus = new Map(), dejaPrises = new Set();
+  const duCarnet = evalsDe(c.id);
   // (Une évaluation déjà importée « à part » s'appelle « Titre (2) », « Titre (3) »… : elle compte aussi.)
-  const variantes = x => evalsDe(plan.evals[0]?.cible?.classeId || classeActive().id)
-    .filter(e => e.date === x.date && sansAccent(e.titre).replace(/\s*\(\d+\)$/, '') === sansAccent(x.titre));
-  const dejaIdentique = x => variantes(x).find(e => differencesCarnet({ ...x, cible: e }) === 0);
+  const variantes = x => duCarnet.filter(e => e.date === x.date && sansAccent(e.titre).replace(/\s*\(\d+\)$/, '') === sansAccent(x.titre));
+  const dejaIdentique = x => variantes(x).find(e => !dejaPrises.has(e.id) && differencesCarnet({ ...x, cible: e }) === 0)
+    // Renommée dans le carnet (ou coefficient changé) : même date, mêmes notes.
+    || duCarnet.find(e => !dejaPrises.has(e.id) && e.date === x.date && memesNotes(x, e));
   for (const x of plan.evals) {
     const cle = sansAccent(x.titre) + '|' + x.date, avant = vus.get(cle) || [];
     const jumelle = !x.cible || differencesCarnet(x) ? dejaIdentique(x) : null;
     if (avant.some(y => empreinteImport(y) === empreinteImport(x))) x.cas = 'doublon';
-    else if (jumelle) { x.cible = jumelle; x.id = jumelle.id; x.cas = 'identique'; }
+    else if (jumelle) { x.cible = jumelle; x.id = jumelle.id; x.cas = 'identique'; x.renommee = sansAccent(jumelle.titre) !== sansAccent(x.titre) ? jumelle.titre : ''; }
     else if (avant.length) x.cas = 'conflit-fichier';
     else if (x.cible) { x.diff = differencesCarnet(x); x.cas = x.diff ? 'conflit-carnet' : 'identique'; }
     else x.cas = 'nouvelle';
+    if (x.cible) dejaPrises.add(x.cible.id);
     avant.push(x);
     vus.set(cle, avant);
   }
 }
 
 const LIBELLES_CAS_IMPORT = {
-  nouvelle: () => '🆕 Nouvelle',
+  nouvelle: () => '🆕 Nouvelle : sera ajoutée',
   doublon: () => '♊ En double dans le fichier (même titre, même date, mêmes notes) : pas recopiée',
-  identique: () => '✔ Déjà dans le carnet, identique : rien à faire',
-  'conflit-carnet': x => `⚠ À vérifier : déjà dans le carnet, avec ${x.diff} différence${x.diff > 1 ? 's' : ''}`,
+  identique: x => `✔ Déjà dans le carnet${x.renommee ? ` (sous le nom « ${x.renommee} »)` : ''}, mêmes notes : pas réimportée`,
+  'conflit-carnet': x => `⚠ Déjà dans le carnet, avec ${x.diff} différence${x.diff > 1 ? 's' : ''} : gardée telle qu’elle est dans le carnet (sauf si tu choisis de la mettre à jour)`,
   'conflit-fichier': () => '⚠ À vérifier : même titre et même date qu’une autre colonne du fichier, mais notes différentes',
 };
+// (Le premier choix est celui proposé par défaut : une évaluation déjà dans le carnet n'est jamais réimportée sans qu'on le demande.)
 const CHOIX_CAS_IMPORT = {
   nouvelle: [['importer', 'Importer'], ['ignorer', 'Ne pas importer']],
   doublon: [['ignorer', 'Ne pas importer'], ['a-part', 'Importer quand même, à part']],
   identique: [['ignorer', 'Ne pas importer'], ['importer', 'Réimporter quand même']],
-  'conflit-carnet': [['', '— Choisir —'], ['importer', 'Mettre à jour l’évaluation du carnet'], ['a-part', 'Importer à part (nouvelle évaluation)'], ['ignorer', 'Ne pas importer']],
+  'conflit-carnet': [['ignorer', 'Ne pas importer (garder le carnet)'], ['importer', 'Mettre à jour l’évaluation du carnet'], ['a-part', 'Importer à part (nouvelle évaluation)']],
   'conflit-fichier': [['', '— Choisir —'], ['a-part', 'Importer aussi, à part'], ['ignorer', 'Ne pas importer']],
 };
 
@@ -503,34 +546,41 @@ async function importerNotesExcel(c, fichier) {
   if (!lues.length) lues = lireNotesPronote(feuilles);
   if (!lues.length) lues = lireNotesEcoleDirecte(feuilles);
   if (!lues.length) throw new Error(`Aucune évaluation trouvée dans « ${fichier.name} » : il faut le classeur exporté par l’appli, le relevé de notes de Pronote (dates des devoirs, puis « 1 - /10 » dessous) ou celui d’École Directe (lignes « Coefficients » et « Noté sur » sous les titres des évaluations).`);
-  // Relevé avec une colonne Moyenne (Pronote) : la moyenne du fichier sert de référence.
+  // Relevé avec une colonne Moyenne (Pronote, École Directe) : la moyenne du fichier sert de référence.
   // Deux calculs possibles : « points » (total des points / total des barèmes, comme Pronote : un devoir sur 5 compte
   // moitié moins qu'un sur 10 → coefficients adaptés au barème) ou « sur 20 » (coefficients du fichier, calcul habituel du carnet).
   const verif = lues[0].verifPronote;
   const baremesDifferents = new Set(lues.map(x => x.max)).size > 1;
   lues.forEach(x => { x.coefFichier = x.coef; });
   if (baremesDifferents) { coefsCommePronote(lues); lues.forEach(x => { x.coefPoints = x.coef; x.coef = x.coefFichier; }); }
-  const enPoints = !!verif?.total && baremesDifferents && verif.points >= verif.sur20;
+  const enPoints = !!verif?.total && baremesDifferents
+    && (verif.points > verif.sur20 || (verif.points === verif.sur20 && verif.prefere === 'points'));
   if (enPoints) lues.forEach(x => { x.coef = x.coefPoints; });
   const plan = preparerImportNotes(lues, c);
-  analyserDoublonsImport(plan);
+  analyserDoublonsImport(plan, c);
   const totalEleves = plan.reconnus.size + plan.inconnus.size;
   const inconnus = [...plan.inconnus.values()];
   const nbCas = cas => plan.evals.filter(x => x.cas === cas).length;
-  const aVerifier = nbCas('conflit-carnet') + nbCas('conflit-fichier');
+  const aVerifier = nbCas('conflit-fichier');
+  // Réimport en cours d'année : colonnes du fichier = évaluations déjà dans le carnet + nouvelles (+ doublons du fichier).
+  const dejaLa = nbCas('identique') + nbCas('conflit-carnet');
+  const absentes = evalsDe(c.id).filter(e => !plan.evals.some(x => x.cible?.id === e.id)).length;
+  const s = n => (n > 1 ? 's' : '');
   const { d, resultat } = ouvrirModale(`Importer dans ${c.nom}`, `
     <p><b>${esc(fichier.name)}</b></p>
     <ul class="bilan-import">
-      <li>${plan.evals.length} évaluation${plan.evals.length > 1 ? 's' : ''} dans le fichier : ${[
-        nbCas('nouvelle') && `${nbCas('nouvelle')} nouvelle${nbCas('nouvelle') > 1 ? 's' : ''}`,
-        nbCas('identique') && `${nbCas('identique')} déjà dans le carnet (identique${nbCas('identique') > 1 ? 's' : ''})`,
+      <li><b>${plan.evals.length} colonne${s(plan.evals.length)} d’évaluation</b> dans le fichier = ${[
+        `${dejaLa} déjà dans le carnet`,
+        `<b>${nbCas('nouvelle')} nouvelle${s(nbCas('nouvelle'))}</b>`,
         nbCas('doublon') && `${nbCas('doublon')} en double dans le fichier`,
-        aVerifier && `<b>${aVerifier} à vérifier</b>`].filter(Boolean).join(', ')}</li>
-      <li>${plan.reconnus.size} élève${plan.reconnus.size > 1 ? 's' : ''} reconnu${plan.reconnus.size > 1 ? 's' : ''} sur ${totalEleves}</li>
+        aVerifier && `<b>${aVerifier} à vérifier</b>`].filter(Boolean).join(' + ')}</li>
+      ${dejaLa ? `<li>Les évaluations déjà dans le carnet ne sont <b>pas réimportées</b>${nbCas('conflit-carnet') ? ` (${nbCas('conflit-carnet')} ${nbCas('conflit-carnet') > 1 ? 'ont' : 'a'} des notes différentes dans le carnet : à toi de voir si tu veux les mettre à jour)` : ''} ; seules les nouvelles sont ajoutées.</li>` : ''}
+      ${absentes && dejaLa ? `<li class="aide">${absentes} évaluation${s(absentes)} du carnet ${absentes > 1 ? 'ne sont' : 'n’est'} pas dans ce fichier : ${absentes > 1 ? 'elles restent' : 'elle reste'} dans le carnet.</li>` : ''}
+      <li>${plan.reconnus.size} élève${s(plan.reconnus.size)} reconnu${s(plan.reconnus.size)} sur ${totalEleves}</li>
     </ul>
     <fieldset class="choix-import"><legend>Évaluations du fichier</legend>
-      <p class="aide">Seules les évaluations <b>uniques</b> sont importées : une évaluation identique (même titre, même date, mêmes notes)
-        n’est pas recopiée. ${aVerifier ? '<b>⚠ Choisis quoi faire pour celles marquées « à vérifier ».</b>' : ''}</p>
+      <p class="aide">Seules les évaluations <b>nouvelles</b> sont importées : une évaluation déjà dans le carnet (même date, mêmes notes,
+        même si tu l’as renommée) n’est pas recopiée. ${aVerifier ? '<b>⚠ Choisis quoi faire pour celles marquées « à vérifier ».</b>' : ''}</p>
       <ul class="liste-evals-import">${plan.evals.map((x, i) => `<li class="cas-${x.cas}">
         <span><b>${esc(x.titre)}</b> <span class="aide">${esc(dateCourte(x.date))} · /${fmt(x.max)} · coef <span data-coef-import="${i}">${fmt(x.coef)}</span></span><br>
           <small>${esc(LIBELLES_CAS_IMPORT[x.cas](x))}</small></span>
@@ -542,12 +592,13 @@ async function importerNotesExcel(c, fichier) {
       <label class="case"><input type="radio" name="quoi" value="structure"><span>Seulement <b>les évaluations</b> (titres, dates, barèmes, compétences) — pour reprendre les évaluations d’un collègue avec tes élèves</span></label>
     </fieldset>
     ${verif?.total ? `<fieldset class="choix-import"><legend>Vérification des moyennes</legend>
-      <p class="aide">La moyenne de chaque élève <b>dans le fichier</b> sert de référence : le carnet doit retrouver la même avec ces devoirs.</p>
+      <p class="aide">La moyenne de chaque élève <b>dans le fichier</b> sert de référence. Le carnet doit retrouver la même <b>après l’import</b>,
+        sur ces devoirs : évaluations déjà dans le carnet (avec leurs notes du carnet) + nouvelles. Elle se recalcule si tu changes un choix ci-dessus.</p>
       ${baremesDifferents ? `<label class="case"><input type="radio" name="calcul" value="points" ${enPoints ? 'checked' : ''}><span><b>Les points s’additionnent</b> (calcul de Pronote) :
           un devoir sur 5 compte moitié moins qu’un devoir sur 10 — coefficients adaptés
           (${[...new Map(plan.evals.map(x => [x.max, x])).values()].map(x => `/${fmt(x.max)} → coef ${fmt(x.coefPoints)}`).join(', ')})</span></label>
         <label class="case"><input type="radio" name="calcul" value="sur20" ${enPoints ? '' : 'checked'}><span><b>Chaque note ramenée sur 20</b>, avec les coefficients du fichier</span></label>` : ''}
-      <div data-verif-moyennes>${htmlVerifMoyennes(moyennesAComparer(plan.evals, x => x.coef))}</div>
+      <div data-verif-moyennes>${htmlVerifMoyennes(moyennesAComparer(plan.evals, x => CHOIX_CAS_IMPORT[x.cas][0][0]))}</div>
     </fieldset>` : ''}
     ${inconnus.length ? `<div class="inconnus-import">
       <p>${inconnus.length} élève${inconnus.length > 1 ? 's' : ''} du fichier ${inconnus.length > 1 ? 'ne sont' : 'n’est'} pas dans ${esc(c.nom)} :
@@ -556,17 +607,23 @@ async function importerNotesExcel(c, fichier) {
     </div>` : ''}
     <p class="aide">Rien n’est effacé : une case vide dans le fichier laisse la valeur du carnet telle quelle.</p>`,
   boutonsModale('Importer'));
-  // Changement de calcul : coefficients et comparaison des moyennes mis à jour aussitôt.
+  // Changement de calcul ou d'un choix : coefficients et comparaison des moyennes mis à jour aussitôt.
+  const majVerif = () => {
+    const zone = d.querySelector('[data-verif-moyennes]');
+    if (!zone) return;
+    const ouvert = d.querySelector('.verif-moyennes')?.open;
+    zone.innerHTML = htmlVerifMoyennes(moyennesAComparer(plan.evals, x => d.querySelector(`[name="act-${plan.evals.indexOf(x)}"]`)?.value || ''));
+    if (ouvert) d.querySelector('.verif-moyennes').open = true;
+  };
   d.querySelectorAll('[name="calcul"]').forEach(btn => btn.addEventListener('change', () => {
     plan.evals.forEach((x, i) => {
       x.coef = btn.value === 'points' ? x.coefPoints : x.coefFichier;
       const span = d.querySelector(`[data-coef-import="${i}"]`);
       if (span) span.textContent = fmt(x.coef);
     });
-    const ouvert = d.querySelector('.verif-moyennes')?.open;
-    d.querySelector('[data-verif-moyennes]').innerHTML = htmlVerifMoyennes(moyennesAComparer(plan.evals, x => x.coef));
-    if (ouvert) d.querySelector('.verif-moyennes').open = true;
+    majVerif();
   }));
+  d.querySelectorAll('[name^="act-"]').forEach(sel => sel.addEventListener('change', majVerif));
   const r = await resultat;
   if (r.action !== 'ok') return;
   // Les choix de l'enseignant : ignorer, mettre à jour l'évaluation du carnet, ou importer à part (titre « … (2) »).

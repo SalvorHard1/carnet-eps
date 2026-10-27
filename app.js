@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.120.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.130.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -80,9 +80,41 @@ function ouvrirModale(titre, corps, actions, classe = '') {
     if (i >= 0 && i < champs.length - 1) { e.preventDefault(); champs[i + 1].focus(); }
   });
   d.showModal();
+  rendreDeplacable(d);
   planifierAscenseur();
   if (typeof remonterVerrou === 'function') remonterVerrou(); // (carnet verrouillé : l'écran reste au-dessus)
   return { d, resultat };
+}
+
+// Sur ordinateur et grande tablette, une fenêtre se déplace en l'attrapant par son titre (souris ou doigt),
+// pour voir ce qu'elle cache. Le titre reste toujours à l'écran. Double-clic sur le titre : elle revient au centre.
+const ECRAN_DEPLACABLE = matchMedia('(min-width: 768px) and (min-height: 500px)');
+function rendreDeplacable(d) {
+  const titre = $('h2', d);
+  if (!titre) return;
+  titre.classList.add('poignee-modale');
+  let depart = null, x = 0, y = 0;
+  const placer = () => { d.style.translate = x || y ? `${x}px ${y}px` : ''; };
+  titre.addEventListener('pointerdown', e => {
+    if (!ECRAN_DEPLACABLE.matches || e.button !== 0) return;
+    const r = d.getBoundingClientRect(), t = titre.getBoundingClientRect();
+    depart = { px: e.clientX, py: e.clientY, x, y, r, t };
+    titre.setPointerCapture(e.pointerId);
+    d.classList.add('deplacement');
+    e.preventDefault();
+  });
+  titre.addEventListener('pointermove', e => {
+    if (!depart) return;
+    const { r, t } = depart, garde = 80; // (au moins 80 px de la fenêtre restent visibles sur les côtés)
+    const dx = Math.min(Math.max(e.clientX - depart.px, garde - r.right), innerWidth - garde - r.left);
+    const dy = Math.min(Math.max(e.clientY - depart.py, 8 - t.top), innerHeight - 8 - t.bottom);
+    x = depart.x + dx; y = depart.y + dy;
+    placer();
+  });
+  const lacher = () => { depart = null; d.classList.remove('deplacement'); };
+  titre.addEventListener('pointerup', lacher);
+  titre.addEventListener('pointercancel', lacher);
+  titre.addEventListener('dblclick', () => { x = 0; y = 0; placer(); });
 }
 
 const boutonsModale = (ok = 'Enregistrer', gauche = '') =>
@@ -129,24 +161,27 @@ const GUIDES_IMPORT = {
     apres: 'L’appli te montre ce qu’elle a trouvé et tu choisis ce que tu reprends (date de naissance, dispositifs, régime, responsables) avant d’enregistrer.',
   },
   trombi: {
-    titre: '📷 Trombinoscope (École Directe / Pronote)', bouton: 'Choisir le PDF…', accept: '.pdf,application/pdf',
+    titre: '📷 Trombinoscope (École Directe / Pronote)', bouton: 'Choisir le fichier…', multiple: true,
+    accept: '.pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg',
     ed: {
       etapes: [
         'Connecte-toi à <b>École Directe</b> (espace professeur).',
         'Ouvre la <b>classe</b>, puis son <b>trombinoscope</b>.',
-        `Télécharge-le ou imprime-le ${EN_PDF} : ${TELECHARGEMENTS}.`,
-        'Reviens ici, touche <b>« Choisir le PDF »</b> et sélectionne ce fichier.',
+        `Télécharge-le ou imprime-le ${EN_PDF} : ${TELECHARGEMENTS}. Sinon, fais une <b>capture d’écran</b> du trombinoscope.`,
+        'Reviens ici, touche <b>« Choisir le fichier »</b> et sélectionne ce fichier.',
       ],
     },
     pronote: {
       etapes: [
         'Connecte-toi à <b>Pronote</b> (espace professeur).',
         'Affiche le <b>trombinoscope</b> de la classe (onglet <b>Ressources › Élèves › Trombinoscope</b>).',
-        `Imprime-le ${EN_PDF} : ${TELECHARGEMENTS}.`,
-        'Reviens ici, touche <b>« Choisir le PDF »</b> et sélectionne ce fichier.',
+        `Imprime-le ${EN_PDF} : ${TELECHARGEMENTS}. Sinon, fais une <b>capture d’écran</b> du trombinoscope.`,
+        'Reviens ici, touche <b>« Choisir le fichier »</b> et sélectionne ce fichier.',
       ],
     },
-    attendu: 'Le <b>PDF</b> du trombinoscope, avec le nom de chaque élève écrit sous sa photo (pas une photo ni un scan de la feuille imprimée).',
+    attendu: 'Le <b>PDF</b> du trombinoscope, ou une <b>image PNG / JPEG</b> (capture d’écran, image enregistrée, scan bien droit), '
+      + 'avec le nom de chaque élève écrit sous sa photo. Plusieurs captures d’écran ? Sélectionne-les ensemble. '
+      + 'Une photo de la feuille prise de travers marche mal.',
     apres: 'L’appli rattache chaque photo au nom écrit dessous ; tu vérifies (et corriges si besoin) avant d’enregistrer.',
   },
   edt: {
@@ -213,7 +248,8 @@ function guideImport(type, suite) {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = g.accept;
-    input.addEventListener('change', () => { const f = input.files[0]; if (f) { d.fermer(); lancer(() => suite(f)); } });
+    input.multiple = !!g.multiple; // (suite reçoit alors la liste des fichiers)
+    input.addEventListener('change', () => { const f = input.files[0]; if (f) { d.fermer(); lancer(() => suite(g.multiple ? [...input.files] : f)); } });
     input.click();
   });
 }
@@ -324,45 +360,90 @@ function migrerGroupes() {
 
 const BESOINS = {
   pai: {
-    sigle: 'PAI', nom: 'Projet d’accueil individualisé', actif: aPai, champInfo: 'paiInfo',
+    sigle: 'PAI', nom: 'Projet d’accueil individualisé', actif: aPai, champInfo: 'paiInfo', champDocs: 'paiDocs',
     aide: 'Pathologie, traitement, où se trouve le traitement (sac, infirmerie…), signes d’alerte, conduite à tenir, personnes à prévenir…',
   },
   bep: {
-    sigle: 'BEP', nom: 'Besoin éducatif particulier', actif: el => !!el.bep, champInfo: 'bepInfo',
+    sigle: 'BEP', nom: 'Besoin éducatif particulier', actif: el => !!el.bep, champInfo: 'bepInfo', champDocs: 'bepDocs',
     aide: 'Type de besoin (dys, TDAH, PAP, PPS…), aménagements utiles en cours, consignes, placement, tutorat…',
   },
 };
 
+// Documents officiels (PAI, PAP, BEP… en PDF ou Word) importés sur la fiche : rangés dans la collection « documents »
+// du carnet (comme ceux des séances), l'élève en garde la liste dans `paiDocs` / `bepDocs`.
+const TYPES_DOCS_BESOIN = '.pdf,.doc,.docx,.odt';
+const docsBesoin = (el, type) => (el[BESOINS[type].champDocs] || []).map(id => Donnees.get('documents', id)).filter(Boolean);
+const idsDocsBesoins = el => Object.values(BESOINS).flatMap(b => el[b.champDocs] || []);
+
 function boutonBesoin(el, type) {
-  const b = BESOINS[type], actif = b.actif(el), info = el[b.champInfo] || '';
+  const b = BESOINS[type], actif = b.actif(el), info = el[b.champInfo] || '', nbDocs = (el[b.champDocs] || []).length;
+  const resume = [info, nbDocs ? `${nbDocs} document${nbDocs > 1 ? 's' : ''} importé${nbDocs > 1 ? 's' : ''}` : ''].filter(Boolean).join(' — ');
   return `<button class="chip-besoin ${type}${actif ? ' actif' : ''}" data-editer-besoin="${type}" data-id="${el.id}"
-    title="${esc(actif ? (info || 'Aucune information saisie') + ' — cliquer pour voir ou modifier' : 'Cliquer pour indiquer un ' + b.sigle)}"
-    aria-pressed="${actif}">${b.sigle}${actif && info ? ' ✎' : ''}</button>`;
+    title="${esc(actif ? (resume || 'Aucune information saisie') + ' — cliquer pour voir ou modifier' : 'Cliquer pour indiquer un ' + b.sigle)}"
+    aria-pressed="${actif}">${b.sigle}${actif && info ? ' ✎' : ''}${actif && nbDocs ? ' 📎' : ''}</button>`;
 }
 
-// Fiche à remplir : activer / désactiver, et noter les informations utiles.
+// Fiche à remplir : activer / désactiver, noter les informations utiles et importer le document officiel.
 async function editerBesoin(id, type) {
   const el = Donnees.get('eleves', id), b = BESOINS[type];
   const actif = b.actif(el);
-  const { resultat } = ouvrirModale(`${b.sigle} — ${el.nom} ${el.prenom}`, `
-    <label class="case interrupteur"><input type="checkbox" name="actif" ${actif || !el[b.champInfo] ? 'checked' : ''}>
+  let docs = docsBesoin(el, type);
+  const { d, resultat } = ouvrirModale(`${b.sigle} — ${el.nom} ${el.prenom}`, `
+    <label class="case interrupteur"><input type="checkbox" name="actif" ${actif || (!el[b.champInfo] && !docs.length) ? 'checked' : ''}>
       <span class="badge-${type}">${b.sigle}</span> ${b.nom}</label>
-    <label>Informations<textarea name="info" rows="7" autofocus placeholder="${esc(b.aide)}">${esc(el[b.champInfo] || '')}</textarea></label>`,
+    <label>Informations<textarea name="info" rows="7" autofocus placeholder="${esc(b.aide)}">${esc(el[b.champInfo] || '')}</textarea></label>
+    <fieldset class="competences">
+      <legend>Document ${b.sigle} de l’élève</legend>
+      <ul class="liste-docs" data-liste-docs></ul>
+      <label class="bouton">📥 Importer le ${b.sigle}<input type="file" accept="${TYPES_DOCS_BESOIN}" multiple data-importer-besoin hidden></label>
+      <p class="aide">PDF ou Word — 5 Mo maximum par fichier. Il est rangé dans le carnet : il suit sur la clé et la tablette.</p>
+    </fieldset>`,
   boutonsModale('Enregistrer'));
+
+  // Liste de travail, enregistrée seulement si on valide la fiche.
+  const listeDocs = $('[data-liste-docs]', d);
+  const majDocs = () => { listeDocs.innerHTML = docs.map(ligneDoc).join('') || '<li class="aide">Aucun document importé.</li>'; };
+  majDocs();
+  d.addEventListener('click', e => {
+    const ouvrir = e.target.closest('[data-ouvrir-doc]'), retirer = e.target.closest('[data-retirer-doc]');
+    if (ouvrir) ouvrirDocument(docs.find(x => x.id === ouvrir.dataset.ouvrirDoc));
+    if (retirer) { docs = docs.filter(x => x.id !== retirer.dataset.retirerDoc); majDocs(); }
+  });
+  $('[data-importer-besoin]', d).addEventListener('change', e => lancer(async () => {
+    for (const f of [...e.target.files]) {
+      if (!/\.(pdf|docx?|odt)$/i.test(f.name)) { toast(`« ${f.name} » n’est pas un PDF ni un document Word.`, 'erreur'); continue; }
+      if (f.size > TAILLE_MAX_DOC) { toast(`« ${f.name} » est trop lourd (${tailleLisible(f.size)}) : 5 Mo maximum.`, 'erreur'); continue; }
+      docs.push({ id: Donnees.nouvelId(), nom: f.name, type: f.type, taille: f.size, contenu: await lireEnBase64(f), nouveau: true });
+    }
+    e.target.value = '';
+    majDocs();
+  }));
+
   const r = await resultat;
   if (r.action !== 'ok') return;
-  Donnees.ecrire('eleves', { ...Donnees.get('eleves', id), [type]: r.data.actif === 'on', [b.champInfo]: r.data.info.trim() });
+  for (const doc of docs.filter(x => x.nouveau)) {
+    const { nouveau, ...fiche } = doc;
+    Donnees.ecrire('documents', { ...fiche, ajouteLe: Date.now() });
+  }
+  const avant = el[b.champDocs] || [];
+  Donnees.ecrire('eleves', { ...Donnees.get('eleves', id), [type]: r.data.actif === 'on', [b.champInfo]: r.data.info.trim(), [b.champDocs]: docs.map(x => x.id) });
+  supprimerDocumentsInutilises(avant.filter(x => !docs.some(y => y.id === x))); // retirés de la fiche
   rendre();
 }
 
-// Lecture rapide depuis la grille (ex. en cours, en cas de besoin) : texte en grand, bouton pour modifier.
+// Lecture rapide depuis la grille (ex. en cours, en cas de besoin) : texte en grand, documents, bouton pour modifier.
 async function voirBesoin(id, type) {
   const el = Donnees.get('eleves', id), b = BESOINS[type];
-  const info = el[b.champInfo];
-  const { resultat } = ouvrirModale(`${b.sigle} — ${el.nom} ${el.prenom}`, `
+  const info = el[b.champInfo], docs = docsBesoin(el, type);
+  const { d, resultat } = ouvrirModale(`${b.sigle} — ${el.nom} ${el.prenom}`, `
     <p class="aide">${b.nom}</p>
-    <div class="lecture-besoin ${type}">${info ? esc(info) : '<span class="aide">Aucune information saisie.</span>'}</div>`,
+    <div class="lecture-besoin ${type}">${info ? esc(info) : '<span class="aide">Aucune information saisie.</span>'}</div>
+    ${docs.length ? `<ul class="liste-docs">${docs.map(doc => ligneDoc({ ...doc, retirable: false })).join('')}</ul>` : ''}`,
   `<button value="modifier">Modifier</button><span class="espace"></span><button type="button" data-fermer class="primaire">Fermer</button>`);
+  d.addEventListener('click', e => {
+    const o = e.target.closest('[data-ouvrir-doc]');
+    if (o) ouvrirDocument(docs.find(x => x.id === o.dataset.ouvrirDoc));
+  });
   if ((await resultat).action === 'modifier') await editerBesoin(id, type);
 }
 
@@ -1093,7 +1174,7 @@ function htmlEleves(c) {
       <button class="primaire" data-action="ajout-eleve">+ Élève</button>
       <button data-action="coller-liste" title="Coller une liste copiée depuis Pronote ou un tableur">📋 Coller une liste</button>
       <button data-action="import-ed" title="Créer ou compléter les fiches à partir de la liste de classe exportée d’École Directe ou de Pronote (.xlsx, .csv)">📥 École Directe / Pronote</button>
-      <button data-action="trombi" title="Photos des élèves : importer le trombinoscope de la classe (PDF)">📷 Trombinoscope</button>
+      <button data-action="trombi" title="Photos des élèves : importer le trombinoscope de la classe (PDF ou image)">📷 Trombinoscope</button>
       <label class="choix-tri">Ordre
         <select data-tri-classe="${c.id}">
           <option value="alpha" ${c.tri !== 'perso' ? 'selected' : ''}>Alphabétique</option>
@@ -1593,9 +1674,9 @@ function supprimerClasse(id) {
   const eleves = new Set(elevesDe(id).map(el => el.id));
   supprimerNotes(n => eleves.has(n.eleveId));
   for (const s of Donnees.liste('suivis', x => eleves.has(x.eleveId))) Donnees.supprimer('suivis', s.id);
+  const docs = [...elevesDe(id).flatMap(idsDocsBesoins), ...seancesDe(id).flatMap(s => s.documents || [])];
   for (const el of eleves) Donnees.supprimer('eleves', el);
   for (const e of evalsDe(id)) Donnees.supprimer('evals', e.id);
-  const docs = seancesDe(id).flatMap(s => s.documents || []);
   for (const s of seancesDe(id)) Donnees.supprimer('seances', s.id);
   supprimerDocumentsInutilises(docs);
   for (const a of Donnees.liste('agenda', x => x.classeId === id)) Donnees.supprimer('agenda', a.id);
@@ -1917,6 +1998,7 @@ async function supprimerEleve(id) {
   supprimerNotes(n => n.eleveId === id);
   for (const s of Donnees.liste('suivis', x => x.eleveId === id)) Donnees.supprimer('suivis', s.id);
   Donnees.supprimer('eleves', id);
+  supprimerDocumentsInutilises(idsDocsBesoins(el));
   rendre();
 }
 

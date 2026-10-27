@@ -153,6 +153,31 @@ const moyenneListe = l => (l.length ? l.reduce((a, b) => a + b, 0) / l.length : 
 const niveauDegre = x => (x === null ? null : x >= 3.5 ? 4 : x >= 2.75 ? 3 : x >= 2 ? 2 : 1);
 const fmtD = x => fmt(Math.round(x * 10) / 10);
 
+// Position de l'élève dans sa classe, sur la même période (ici et dans l'espace PP, pp.js) : un 10,9 dans une classe
+// à 12,5 de moyenne n'a pas un trimestre « satisfaisant ». moyennes : celles de toute la classe (l'élève compris) ;
+// moyClasse : celle du bulletin, si elle est connue. Il faut au moins 5 moyennes pour un rang.
+// cle : 'retrait' dès 0,5 point sous la moyenne de la classe ; 'tete' dès 2 points au-dessus, dans le premier tiers.
+const POSITION_CLASSE = { retrait: -0.5, plafond2: -1.5, nettement: -2, tete: 2 };
+function positionClasse(moy, moyennes, moyClasse = null) {
+  const l = moyennes.filter(v => v !== null && v !== undefined);
+  if (moy === null || moy === undefined || (l.length < 5 && (moyClasse === null || moyClasse === undefined))) return null;
+  const m = moyClasse ?? moyenneListe(l), ecart = moy - m;
+  const n = l.length >= 5 ? l.length : null, rang = n ? 1 + l.filter(v => v > moy + 1e-9).length : null;
+  const cle = ecart <= POSITION_CLASSE.retrait ? 'retrait' : ecart >= POSITION_CLASSE.tete && (!n || rang <= Math.ceil(n / 3)) ? 'tete' : '';
+  // (Nettement en retrait : 2 points sous la moyenne de la classe, et dans le dernier quart.)
+  const nettement = ecart <= POSITION_CLASSE.nettement && (!n || rang > n - Math.ceil(n / 4));
+  return { moyClasse: m, ecart, rang, n, cle, nettement };
+}
+// Niveau tiré de la moyenne, corrigé par la position dans la classe : en retrait, jamais 4 (et pas plus de 2 dès
+// 1,5 point sous la moyenne de la classe) ; nettement au-dessus de la classe, un cran de plus.
+function niveauSelonClasse(n, pos) {
+  if (!n || !pos?.cle) return n;
+  if (pos.cle === 'tete') return Math.min(4, n + 1);
+  return Math.min(n, pos.ecart <= POSITION_CLASSE.plafond2 ? 2 : 3);
+}
+const textePositionClasse = pos => (pos ? `Classe : moyenne ${fmtD(pos.moyClasse)}${pos.rang ? `, rang ${pos.rang}/${pos.n}` : ''}, écart ${pos.ecart >= 0 ? '+' : '−'}${fmtD(Math.abs(pos.ecart))}`
+  + (pos.cle === 'retrait' ? ' → en retrait par rapport à la classe' : pos.cle === 'tete' ? ' → parmi les meilleurs de la classe' : '') : '');
+
 function evalsPeriode(classeId, periode) {
   const toutes = evalsDe(classeId);
   return periode === 'annee' ? toutes : toutes.filter(e => periodeDe(e.date) === periode);
@@ -258,8 +283,13 @@ function analyserAppr(el, periode, eleves) {
   // Motricité : moyenne de la période (seuils note → degré de la classe), sinon degrés « moteurs ».
   const seuils = seuilsClasse(c);
   if (moy !== null) {
-    niveaux.moteur = moy >= seuils[2] ? 4 : moy >= seuils[1] ? 3 : moy >= seuils[0] ? 2 : 1;
-    sources.moteur = `Moyenne ${fmtD(moy)}/20 (seuils de la classe : ${seuils.map(fmt).join(' / ')})`;
+    const brut = moy >= seuils[2] ? 4 : moy >= seuils[1] ? 3 : moy >= seuils[0] ? 2 : 1;
+    // (Comparée à toute la classe sur les mêmes évaluations.)
+    const pos = positionClasse(moy, elevesDe(el.classeId).map(x => (x.id === el.id ? moy : moyenneEleve(x.id, evals))));
+    details.position = pos;
+    niveaux.moteur = niveauSelonClasse(brut, pos);
+    sources.moteur = `Moyenne ${fmtD(moy)}/20 (seuils de la classe : ${seuils.map(fmt).join(' / ')})`
+      + (pos ? `\n${textePositionClasse(pos)}${niveaux.moteur !== brut ? ` (niveau ${brut} d’après les seuils, ${niveaux.moteur} retenu)` : ''}` : '');
   } else if (degres.moteur.length) {
     const m = moyenneListe(degres.moteur);
     niveaux.moteur = niveauDegre(m);
@@ -393,10 +423,11 @@ const PHRASES_APPR = {
     t: { b: ['Compétences pas encore acquises.'], n: ['Compétences non acquises.'], x: ['Compétences non maîtrisées.', 'Compétences à acquérir.'] } },
   },
   moteur: {
-    4: { p: ['{S} réalise de très bonnes performances{apsa}.', '{S} dispose de très bonnes qualités motrices{apsa}.', 'Les performances sont d’un très bon niveau{apsa}.'], t: ['Très bonnes qualités motrices{apsa}.', 'Très bons résultats{apsa}.'] },
+    4: { p: ['{S} réalise de très bonnes performances{apsa}.', '{S} dispose de très bonnes qualités motrices{apsa}.', 'Les performances sont d’un très bon niveau{apsa}.', '{S} obtient des performances remarquables{apsa}.', 'Les résultats sont d’un niveau élevé{apsa}.'],
+      t: ['Très bonnes qualités motrices{apsa}.', 'Très bons résultats{apsa}.', 'Performances remarquables{apsa}.'] },
     3: { p: ['{S} obtient de bons résultats{apsa}.', '{S} montre de bonnes capacités motrices{apsa}.', 'Les résultats sont d’un bon niveau{apsa}.'], t: ['Bons résultats{apsa}.', 'Bonnes capacités motrices{apsa}.'] },
     2: { p: { b: ['{S} obtient des résultats encore justes{apsa}, qui peuvent progresser.', 'Les résultats restent encore justes{apsa}, mais peuvent progresser.', '{S} obtient des résultats corrects{apsa}, qui peuvent s’améliorer.', 'Les résultats{apsa} sont corrects et peuvent s’améliorer.'], n: ['{S} obtient des résultats moyens{apsa}.', 'Les résultats sont moyens{apsa}.'],
-      x: ['Les résultats{apsa} sont insuffisants au regard des possibilités de {P}.'] },
+      x: ['Les résultats{apsa} sont insuffisants au regard des possibilités de {P}.', '{S} doit viser des résultats plus solides{apsa}.'] },
     t: { b: ['Résultats à consolider{apsa}.', 'Résultats perfectibles{apsa}.'], n: ['Résultats moyens{apsa}.', 'Performances moyennes{apsa}.'], x: ['Résultats insuffisants{apsa}.', 'Résultats en deçà des attentes{apsa}.'] } },
     1: { p: { b: ['{S} rencontre des difficultés{apsa}, mais peut progresser avec de la persévérance.', 'Les difficultés sont réelles{apsa}, mais la persévérance permettra de progresser.', '{S} rencontre des difficultés{apsa} ; un travail régulier l’aidera à les surmonter.', 'Les résultats{apsa} restent difficiles : il faut garder confiance.'], n: ['{S} rencontre des difficultés{apsa}.', 'Les résultats restent difficiles{apsa}.'],
       x: ['Les résultats{apsa} sont très insuffisants.', '{S} est en grande difficulté{apsa}.', 'Les résultats{apsa} sont nettement en deçà des attentes.'] },
@@ -418,8 +449,8 @@ const PHRASES_APPR = {
     3: { p: ['{S} a un comportement correct et respectueux.', '{S} respecte les règles et ses camarades.', 'Le comportement est correct et respectueux.'], t: ['Comportement correct.', 'Attitude respectueuse.'] },
     2: { p: { b: ['{S} doit veiller à mieux respecter les consignes.'], n: ['Le comportement est parfois à reprendre.'], x: ['{S} doit impérativement mieux respecter les consignes.'] },
       t: { b: ['Respect des consignes à améliorer.'], n: ['Comportement parfois à reprendre.'], x: ['Comportement à corriger.'] } },
-    1: { p: { b: ['Le comportement doit s’améliorer pour progresser sereinement.'], n: ['Le comportement pose problème en cours.'],
-      x: ['Le comportement est inacceptable et nuit au travail de la classe.'] },
+    1: { p: { b: ['Le comportement doit s’améliorer pour progresser sereinement.', 'Le respect des règles et des camarades doit devenir une priorité.'], n: ['Le comportement pose problème en cours.'],
+      x: ['Le comportement est inacceptable et nuit au travail de la classe.', 'Le comportement est inacceptable et nuit au travail de tous.'] },
     t: { b: ['Comportement à améliorer nettement.'], n: ['Comportement problématique.'], x: ['Comportement inacceptable.'] } },
   },
   progression: {
@@ -443,6 +474,19 @@ const BILANS_APPR = {
     2: { b: ['{S} réalise une année encourageante, mais inégale.', '{S} réalise une année encourageante, qui reste à confirmer.', '{S} réalise une année en demi-teinte, avec des points encourageants.'], n: ['{S} réalise une année mitigée.'], x: ['{S} réalise une année trop juste.', '{S} réalise une année en dessous de ses possibilités.'] },
     1: { b: ['{S} traverse une année difficile.'], n: ['{S} traverse une année difficile.'], x: ['{S} réalise une année très insuffisante.', '{S} réalise une année nettement insuffisante.'] } },
 };
+// Bilan d'ensemble correct d'un élève en retrait par rapport à sa classe (jamais « satisfaisant » sans nuance),
+// ou bon bilan d'un élève parmi les meilleurs de la classe (voir positionClasse).
+const BILANS_CLASSE_APPR = {
+  retrait: { periode: ['{S} réalise un {per} correct, mais un peu en retrait par rapport à la classe.', '{S} réalise un {per} correct, un peu en dessous du niveau de la classe.', '{S} réalise un {per} correct, un peu en retrait par rapport à ses camarades.'],
+    annee: ['{S} réalise une année correcte, mais un peu en retrait par rapport à la classe.', '{S} réalise une année correcte, un peu en dessous du niveau de la classe.', '{S} réalise une année correcte, un peu en retrait par rapport à ses camarades.'] },
+  tete: { periode: ['{S} réalise un bon {per} et se place parmi les meilleurs de la classe.', '{S} réalise un {per} réussi, parmi les meilleurs de la classe.', '{S} réalise un {per} réussi, parmi les meilleurs élèves.'],
+    annee: ['{S} réalise une bonne année et se place parmi les meilleurs de la classe.', '{S} réalise une année réussie, parmi les meilleurs de la classe.', '{S} réalise une année réussie, parmi les meilleurs élèves.'] },
+};
+// Résultats corrects, mais en retrait par rapport à la classe (niveau 3 plafonné) ; quand le bilan l'a déjà dit :
+// des résultats « honorables », sans redire la classe (pas de « bons résultats » juste après « en retrait »).
+const RETRAIT_APPR = { p: ['{S} obtient des résultats corrects{apsa}, mais un peu en retrait par rapport à la classe.', 'Les résultats{apsa} sont corrects, un peu en dessous du niveau de la classe.', 'Les résultats{apsa} sont corrects, un peu en retrait par rapport à ses camarades.'],
+  t: ['Résultats corrects{apsa}, un peu en retrait par rapport à la classe.'] };
+const RETRAIT_DIT_APPR = { p: ['{S} obtient des résultats honorables{apsa}.', 'Les résultats{apsa} sont convenables.'], t: ['Résultats honorables{apsa}.'] };
 
 // Objectifs (verbe à l'infinitif) : un axe de progrès général, selon la rubrique la plus faible
 // (pas une compétence précise : « maintenir ses efforts », « fournir davantage de travail pour consolider ses acquis »…).
@@ -470,8 +514,8 @@ const selonTon = (x, ton) => (Array.isArray(x) ? x : x[ton[0] === 'b' ? 'b' : to
 
 function objectifAppr(niv, a, actives) {
   const notes = actives.filter(k => niv[k] && k !== 'objectif');
-  // (Une progression « stable » n'est pas une faiblesse.)
-  const poids = k => (k === 'progression' && niv[k] === 2 ? 3 : niv[k]);
+  // (Une progression « stable » n'est pas une faiblesse ; des résultats corrects mais en retrait par rapport à la classe, si.)
+  const poids = k => (k === 'progression' && niv[k] === 2 ? 3 : k === 'moteur' && niv[k] === 3 && a.details.position?.cle === 'retrait' ? 2.5 : niv[k]);
   const pire = notes.length ? Math.min(...notes.map(poids)) : 3;
   if (pire >= 3 && !(a.details.absences >= 3)) return { cle: 'haut' };
   if (a.details.absences >= 3 && (niv.attitude || 3) <= 2) return { cle: 'absences' };
@@ -704,10 +748,20 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   const brut = x => x.replace(/\{apsa\}/g, '').replace(/\{ce\}/g, ce).replace(/\{[A-Za-z]+\}/g, ' ');
   const actives = rubriquesAppr(r, a, niveauxPerso);
   const vigilance = vigilanceAppr(r, a, niveauxPerso); // (passent en priorité)
+  // Bilan nuancé par la position dans la classe (voir positionClasse) : en retrait, un bilan correct (3 ou 4) devient
+  // « un peu en retrait par rapport à la classe » ; parmi les meilleurs, il le dit. (Sauf niveau des résultats choisi
+  // à la main qui le contredit.)
+  const positionAppr = k => {
+    const c = a.details.position?.cle;
+    // (« Parmi les meilleurs » : pour un bilan bon, pas excellent — un excellent bilan le reste.)
+    if (!c || k < 3 || (c === 'retrait' && (niv.moteur || 0) > 3) || (c === 'tete' && (k > 3 || (niv.moteur || 0) < 3))) return null;
+    return c;
+  };
 
   // court = true : la phrase la plus courte de chaque liste (essayé avant de laisser des rubriques de côté).
   const construire = (court, exclues = []) => {
     dejaNomme = false; dernierPronom = false; rappelPrenom = false;
+    let retraitDit = false; // (« en retrait par rapport à la classe » : dit une seule fois)
     let ecrit = ''; // (texte déjà choisi : pour ne pas répéter un adverbe, une liaison ou un mot)
     // Les phrases qui répètent le moins ce qui est déjà écrit (aucune répétition si possible).
     const moinsDeRepetitions = (liste, voir = x => x) => {
@@ -734,8 +788,13 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
     if (r.bilan && !exclues.includes('bilan')) {
       const base = ['moteur', 'competences', 'attitude'].map(k => niv[k]).filter(Boolean);
       if (base.length) {
-        const k = Math.max(1, Math.min(4, Math.round(moyenneListe(base))));
-        ajouter({ cle: 'bilan', pol: k >= 3 ? 1 : -1, texte: remplir(choisir(selonTon(BILANS_APPR[periode === 'annee' ? 'annee' : 'periode'][k], ton), g('bilan')), k) });
+        let k = Math.max(1, Math.min(4, Math.round(moyenneListe(base))));
+        const cote = periode === 'annee' ? 'annee' : 'periode', classe = positionAppr(k);
+        // (Juste sous la moyenne de la classe, avec des résultats justes : pas de « satisfaisant » non plus.)
+        if (!classe && k >= 3 && a.details.position?.ecart < 0 && niv.moteur && niv.moteur <= 2) k = 2;
+        const banque = classe ? BILANS_CLASSE_APPR[classe][cote] : selonTon(BILANS_APPR[cote][k], ton);
+        if (classe === 'retrait') retraitDit = true;
+        ajouter({ cle: 'bilan', pol: classe === 'retrait' ? -1 : k >= 3 ? 1 : -1, texte: remplir(choisir(banque, g('bilan')), classe === 'retrait' ? 2 : k) });
       }
     }
     for (const k of actives) {
@@ -744,12 +803,15 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
       if (!n) continue;
       let banque = phrasesAppr()[k][n];
       if (k === 'progression' && n === 2 && (niv.moteur || 0) >= 3) banque = STABLE_BON_APPR;
+      // (Résultats corrects mais sous la moyenne de la classe : nuancés, une seule fois dans l'appréciation.)
+      const retrait = k === 'moteur' && n === 3 && a.details.position?.cle === 'retrait';
+      if (retrait) { banque = retraitDit ? RETRAIT_DIT_APPR : RETRAIT_APPR; retraitDit = true; }
       // Importance (pour le manque de place) : niveau par défaut < « stable » < satisfaisant < fragile < extrêmes (1 et 4).
       // Point de vigilance (difficulté signalée par ce que l'enseignant a rempli) : gardé en priorité.
-      const importance = vigilance.has(k) ? 5 : a.defaut[k] && !(k in (niveauxPerso || {})) ? 0 : k === 'progression' && n === 2 ? 1 : n === 3 ? 2 : n === 2 ? 3 : 4;
+      const importance = vigilance.has(k) ? 5 : a.defaut[k] && !(k in (niveauxPerso || {})) ? 0 : k === 'progression' && n === 2 ? 1 : n === 3 && !retrait ? 2 : n === 2 || n === 3 ? 3 : 4;
       // pol : sens de la phrase (+1 point fort, −1 difficulté, 0 neutre), pour les liaisons (voir lier).
-      const pol = k === 'progression' && n === 2 ? (banque === STABLE_BON_APPR ? 1 : 0) : n >= 3 ? 1 : -1;
-      ajouter({ cle: k, importance, pol, texte: remplir(choisir(selonTon(tele ? banque.t : banque.p, ton), g(k)), n) });
+      const pol = k === 'progression' && n === 2 ? (banque === STABLE_BON_APPR ? 1 : 0) : n >= 3 && !retrait ? 1 : -1;
+      ajouter({ cle: k, importance, pol, texte: remplir(choisir(selonTon(tele ? banque.t : banque.p, ton), g(k)), retrait ? 2 : n) });
     }
     if (actives.includes('objectif') && niv.objectif !== null) {
       // (À faiblesse égale, l'objectif vise d'abord un point de vigilance rempli par l'enseignant.)

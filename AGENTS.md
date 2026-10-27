@@ -61,6 +61,7 @@ une fonction de même nom dans deux fichiers écrase silencieusement l'autre. Ch
 | `bilansvt.js` | Onglet Notes, carnet de SVT seulement (`profil().bilans`) : 🎯 couverture des compétences, 🧭 socle (domaines d'après `ref.socle`, collège), 📄 travail rendu. |
 | `edtpdf.js` | Lecteur PDF maison (`PdfTexte`) + lecture d'emploi du temps. |
 | `trombi.js` | Trombinoscope PDF → photos rattachées aux élèves (par l'appli). |
+| `trombiimage.js` | Trombinoscope en image (PNG, JPEG, PDF scanné) : repère la grille de photos, découpe le nom dessous et le compare aux noms de la classe que l'appli écrit elle-même dans plusieurs polices (police et présentation NOM Prénom / Prénom NOM apprises sur l'image). |
 | `agenda.js` | Onglet « Agenda » : frise de l'année, mois, semaine, séquences. |
 | `fichenotes.js` | Fiche élève de l'onglet Notes. |
 | `appel.js` | Onglet « Appel » (écrit dans la leçon du jour, indicateur `presence`). |

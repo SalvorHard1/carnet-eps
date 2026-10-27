@@ -352,6 +352,12 @@ async function ouvrirReglages(rubrique = 'apparence') {
           Tout ce qui est sur la clé est d’abord repris, rien ne se perd ; tes autres appareils prennent le nouveau
           au prochain « Récupérer depuis la clé ».</p>
         <button value="mdp" formnovalidate>🔑 Changer le mot de passe…</button>
+      </div></details>
+    <details ${ouvert('application')}><summary>📲 L’application <small>installer sur cet appareil · v${VERSION_APP}</small></summary>
+      <div class="rubrique">
+        ${appliInstallee() ? '<p class="aide">✔ L’application est installée sur cet appareil : elle marche sans internet.</p>'
+          : `<button type="button" data-installer-appli>📲 Installer l’application</button>
+        <p class="aide">Elle s’ouvre alors comme une vraie appli (icône sur l’écran d’accueil ou le bureau) et marche sans internet.</p>`}
       </div></details>`,
   boutonsModale('Enregistrer'), 'modale-large reglages');
 
@@ -373,6 +379,7 @@ async function ouvrirReglages(rubrique = 'apparence') {
     if (f) { d.fermer(); lancer(() => importerReglages(f)); }
   });
   $('[data-exporter-reglages]', d).addEventListener('click', () => lancer(exporterReglages));
+  $('[data-installer-appli]', d)?.addEventListener('click', () => lancer(installerAppli));
   d.addEventListener('click', e => { const b = e.target.closest('[data-appr-monter], [data-appr-descendre]'); if (b) deplacerRubriqueAppr(b); }); // (seulement si appreciations.js est là)
 
   const r = await resultat;
@@ -578,6 +585,35 @@ async function gererCompetences(refChoisi) {
 }
 
 /* ---------- Partage : exporter / importer les réglages (sans aucune donnée d'élève) ---------- */
+
+/* ---------- L'application : l'installer sur l'appareil ----------
+   Chrome / Edge / Android proposent l'installation par l'événement « beforeinstallprompt », gardé pour le bouton ;
+   Safari (iPad, iPhone) ne le propose pas : on explique le geste à faire. */
+
+let invitationInstall = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); invitationInstall = e; });
+window.addEventListener('appinstalled', () => { invitationInstall = null; toast('Application installée ✔', 'ok'); });
+
+const appliInstallee = () => !!navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+
+async function installerAppli() {
+  if (invitationInstall) {
+    const inv = invitationInstall;
+    invitationInstall = null; // (une invitation ne sert qu'une fois)
+    await inv.prompt();
+    return;
+  }
+  const ua = navigator.userAgent;
+  const apple = /iPad|iPhone|Macintosh/.test(ua) && 'ontouchend' in document;
+  const geste = apple ? 'Dans Safari : bouton <b>Partager</b> (carré avec une flèche) › <b>« Sur l’écran d’accueil »</b>.'
+    : /Android/.test(ua) ? 'Menu <b>⋮</b> du navigateur › <b>« Installer l’application »</b> (ou « Ajouter à l’écran d’accueil »).'
+      : /Firefox/.test(ua) ? 'Firefox n’installe pas les applications web : ouvre l’appli dans <b>Edge</b> ou <b>Chrome</b>.'
+        : location.protocol === 'file:' ? 'Ouvre l’appli avec « Lancer Carnet EPS S-A.bat » (ou en ligne) pour pouvoir l’installer.'
+          : 'Dans la barre d’adresse, clique sur l’icône <b>« Installer »</b> (écran avec une flèche), ou menu <b>…</b> › Applications › <b>« Installer Carnet EPS S-A »</b>.';
+  await ouvrirModale('Installer l’application', `<p>${geste}</p>
+    <p class="aide">Si rien n’est proposé, l’appli est peut-être déjà installée sur cet appareil.</p>`,
+  '<span class="espace"></span><button type="button" data-fermer class="primaire">Fermer</button>').resultat;
+}
 
 function exporterReglages() {
   const contenu = { format: 'carnet-eps-reglages', version: 1, appli: VERSION_APP, date: aujourdhui(), reglages: {} };
