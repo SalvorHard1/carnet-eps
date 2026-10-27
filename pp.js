@@ -27,6 +27,9 @@ const BulletinPdf = (() => {
 
   const lettres = t => (t.match(/\p{L}/gu) || []).length;
   const decimal = t => { const n = +t.replace(',', '.'); return /^\d{1,2}[.,]\d{1,2}$/.test(t) && n <= 20 ? n : null; };
+  // Nom de professeur sur sa propre ligne (« DUPONT J. », « J. ») : il finit par une initiale.
+  const RE_NOM_PROF = /(^|\s)\p{Lu}\.\)?$/u;
+  const RE_RANG = /^(\d+)\s*\/\s*(\d+)$/;
 
   // Une page : position des colonnes (reprise de la page précédente si l'en-tête n'y est pas répété).
   function colonnes(items, prec) {
@@ -37,12 +40,15 @@ const BulletinPdf = (() => {
     const droite = bande.filter(i => i.x > tete.fin);
     if (!droite.length) return prec;
     const centre = re => { const i = droite.find(x => re.test(x.t.trim())); return i ? (i.x + i.fin) / 2 : null; };
+    // (École Directe « Conseil de classe » : Discipline | Coef. | Elève | Classe | Min | Max | Rang | Appréciation générale.)
+    const appr = droite.find(x => /^appr[ée]ciations?\b/i.test(x.t.trim()));
     return {
       yTete: Math.min(tete.y, ...bande.map(i => i.y)),
       xNum: Math.min(...droite.map(i => i.x)),
       xEleve: centre(/^(moy(\.|enne)?\s*)?(de\s+l['’])?[ée]l[èe]ve$/i),
       xClasse: centre(/^(moy(\.|enne)?\s*)?(de\s+(la\s+)?)?cl(asse|as\.?)$/i),
-      xAppr: prec?.xAppr ?? null,
+      xCoef: centre(/^coef(\.|ficient)?$/i), xMin: centre(/^min(\.|i|imum)?$/i), xMax: centre(/^max(\.|i|imum)?$/i), xRang: centre(/^rang$/i),
+      xAppr: appr ? appr.x : prec?.xAppr ?? null, apprEnTete: !!appr,
     };
   }
 
@@ -52,11 +58,20 @@ const BulletinPdf = (() => {
     let k = 0, pos = 0;
     const long = i.t.length || 1;
     for (; k < mots.length && RE_JETON.test(mots[k]); k++) {
-      const n = decimal(mots[k]);
-      if (n !== null) nombres.push({ n, x: i.x + ((i.fin || i.x) - i.x) * ((pos + mots[k].length / 2) / long) });
+      // (Un nombre entier — « 15 », « 1 » — n'est pris que dans une colonne repérée par son titre : ce peut être un coefficient.)
+      const n = decimal(mots[k]) ?? (/^\d{1,2}$/.test(mots[k]) && +mots[k] <= 20 ? +mots[k] : null);
+      if (n !== null) nombres.push({ n, entier: !/[.,]/.test(mots[k]), x: i.x + ((i.fin || i.x) - i.x) * ((pos + mots[k].length / 2) / long) });
       pos += mots[k].length + 1;
     }
     return { nombres, reste: mots.slice(k).join(' ') };
+  }
+
+  // Tri par ligne puis de gauche à droite (deux textes d'une même ligne peuvent différer d'une fraction de point).
+  function parLignes(items) {
+    const tries = items.slice().sort((a, b) => b.y - a.y), ligne = new Map();
+    let y0 = null;
+    for (const i of tries) { if (y0 === null || y0 - i.y > 2) y0 = i.y; ligne.set(i, y0); }
+    return tries.sort((a, b) => ligne.get(b) - ligne.get(a) || a.x - b.x);
   }
 
   function lignesPage(p, cfg) {
@@ -65,28 +80,41 @@ const BulletinPdf = (() => {
     if (!cfg) return { cfg, matieres: [] };
     const fin = items.filter(i => i.y < cfg.yTete && RE_FIN.test(i.t.trim())).reduce((m, i) => Math.max(m, i.y), -Infinity);
     const zone = items.filter(i => i.y < cfg.yTete - 3 && i.y > fin + 1);
-    const gauche = zone.filter(i => i.x < cfg.xNum - 2), droite = zone.filter(i => i.x >= cfg.xNum - 2);
+    const gauche = parLignes(zone.filter(i => i.x < cfg.xNum - 2)), droite = zone.filter(i => i.x >= cfg.xNum - 2);
     // Colonne des appréciations : le début des textes longs (pas ceux qui commencent par des chiffres).
     const longs = droite.filter(i => lettres(i.t) >= 15 && /^\p{L}/u.test(i.t.trim()));
-    if (longs.length) cfg.xAppr = Math.min(...longs.map(i => i.x));
+    if (longs.length && !cfg.apprEnTete) cfg.xAppr = Math.min(...longs.map(i => i.x));
     const xAppr = cfg.xAppr ?? Infinity;
 
     // Matières (le nom du prof, sur la ligne d'après, n'en est pas une ; un nom coupé sur deux lignes est recollé).
+    // Une ligne de groupe (« Tronc commun », « Spécialité ») garde ses chiffres (moyenne du groupe) mais n'est pas une matière.
     const matieres = [];
     for (const i of gauche) {
-      const t = i.t.trim();
-      if (RE_PROF.test(t)) { if (matieres.length) matieres.at(-1).prof = true; continue; }
-      if (lettres(t) < 2 || RE_GROUPE.test(t) || /^coef/i.test(t)) continue;
-      const prec = matieres.at(-1);
-      if (prec && !prec.prof && prec.y - i.y < i.taille * 1.5 && Math.abs(prec.x - i.x) < 4) { prec.brut += (prec.brut.endsWith('-') ? '' : ' ') + t; continue; }
-      matieres.push({ brut: t, y: i.y, x: i.x, morceaux: [], chiffres: [] });
+      // « MATHEMATIQUES M. DUPONT » d'un seul morceau : le nom du professeur est retiré.
+      const coupe = /^(.*?\p{L}.*?)\s+((?:m\.|mme|mlle|mr\.?|mmes|mm\.)\s.*)$/iu.exec(i.t.trim());
+      const t = coupe && lettres(coupe[1]) >= 3 ? coupe[1] : i.t.trim();
+      const prec = matieres.at(-1), memeLigne = prec && Math.abs(prec.yDer - i.y) < 3;
+      // Nom coupé (« HISTOIRE- », « SCIENCES VIE & ») : la ligne d'après commence par la suite, même collée au nom du professeur.
+      if (prec && !prec.prof && /[-&]$/.test(prec.brut) && prec.yDer - i.y < i.taille * 1.7 && Math.abs(prec.x - i.x) < 4) {
+        prec.brut += (prec.brut.endsWith('-') ? '' : ' ') + t.split(/\s+/)[0]; prec.yDer = i.y; continue;
+      }
+      // Nom du professeur : sur la ligne de la matière, il ne l'interrompt pas (« HISTOIRE- Mme » / « GEOGRAPHIE ») ;
+      // sur sa propre ligne, il la termine.
+      if (RE_PROF.test(t) || prec && RE_NOM_PROF.test(t)) { if (prec && !memeLigne) prec.prof = true; continue; }
+      if (RE_GROUPE.test(t)) { matieres.push({ brut: t, y: i.y, yDer: i.y, x: i.x, morceaux: [], chiffres: [], groupe: true, prof: true }); continue; }
+      if (lettres(t) < 2 || /^coef/i.test(t)) continue;
+      if (memeLigne && !prec.groupe && i.x > prec.x + 10) continue;
+      if (prec && !prec.prof && prec.yDer - i.y < i.taille * 1.7 && Math.abs(prec.x - i.x) < 4) { prec.brut += (prec.brut.endsWith('-') ? '' : ' ') + t; prec.yDer = i.y; continue; }
+      matieres.push({ brut: t, y: i.y, yDer: i.y, x: i.x, morceaux: [], chiffres: [] });
     }
     // Chaque morceau de droite va à la matière juste au-dessus (ou sur la même ligne).
     const matiereDe = y => matieres.filter(m => m.y >= y - 4).reduce((a, m) => (!a || m.y < a.y ? m : a), null);
     for (const i of droite) {
       const m = matiereDe(i.y);
       if (!m) continue;
-      if (i.x >= xAppr - 3) { m.morceaux.push(i); continue; }
+      if (i.x >= xAppr - 3) { if (!/^aucune appr[ée]ciation\.?$/i.test(i.t.trim())) m.morceaux.push(i); continue; }
+      const rang = RE_RANG.exec(i.t.trim());
+      if (rang && cfg.xRang && Math.abs((i.x + (i.fin ?? i.x)) / 2 - cfg.xRang) < 16) { m.rang ??= `${rang[1]}/${rang[2]}`; continue; }
       const { nombres, reste } = decouper(i);
       if (nombres.length) m.chiffres.push({ y: i.y, nombres });
       if (lettres(reste) >= 3) m.morceaux.push({ ...i, t: reste });
@@ -95,15 +123,129 @@ const BulletinPdf = (() => {
       cfg,
       matieres: matieres.map(m => {
         // Moyennes : la première ligne de chiffres de la matière ; colonne « élève » (sinon le 1er nombre), « classe » (sinon le 2e).
-        const ligne = m.chiffres.sort((a, b) => b.y - a.y)[0]?.nombres || [];
-        const proche = x => (x === null ? null : ligne.reduce((a, n) => (Math.abs(n.x - x) < 14 && (!a || Math.abs(n.x - x) < Math.abs(a.x - x)) ? n : a), null));
-        const moy = (proche(cfg.xEleve) || ligne[0])?.n ?? null;
-        const moyClasse = (cfg.xClasse !== null ? proche(cfg.xClasse) : ligne[1])?.n ?? null;
+        // (Les nombres d'une même ligne peuvent être des morceaux de texte séparés : on les réunit.)
+        const yHaut = Math.max(...m.chiffres.map(c => c.y));
+        const ligne = m.chiffres.filter(c => yHaut - c.y < 4).flatMap(c => c.nombres).sort((a, b) => a.x - b.x);
+        const proche = x => (x === null || x === undefined ? null : ligne.reduce((a, n) => (Math.abs(n.x - x) < 14 && (!a || Math.abs(n.x - x) < Math.abs(a.x - x)) ? n : a), null));
+        const decimaux = ligne.filter(n => !n.entier);
+        const moy = (proche(cfg.xEleve) || decimaux[0])?.n ?? null;
+        const moyClasse = (cfg.xClasse !== null ? proche(cfg.xClasse) : decimaux[1])?.n ?? null;
         const appr = m.morceaux.sort((a, b) => b.y - a.y || a.x - b.x).map(x => x.t.trim())
           .reduce((t, x) => (t.endsWith('-') && /^\p{Ll}/u.test(x) ? t.slice(0, -1) + x : t ? t + ' ' + x : x), '').replace(/\s+/g, ' ').trim();
-        return { brut: m.brut.replace(/\s+/g, ' ').trim(), moy, moyClasse, appr };
-      }).filter(m => m.moy !== null || m.appr),
+        const res = { brut: m.brut.replace(/\s+/g, ' ').trim(), moy, moyClasse, appr, groupe: m.groupe };
+        for (const [k, x] of [['coef', cfg.xCoef], ['min', cfg.xMin], ['max', cfg.xMax]]) { const n = proche(x); if (n) res[k] = n.n; }
+        if (m.rang) res.rang = m.rang;
+        return res;
+      }).filter(m => !m.groupe && (m.moy !== null || m.appr)).map(({ groupe, ...m }) => m),
     };
+  }
+
+  /* Bulletin École Directe « par blocs » (pas de tableau « Matières ») : chaque matière a sa propre ligne d'en-tête
+     « Eléments de programme | Coef | Elève | Clas. | Min. | Max. | Eval », puis la ligne des moyennes, le nom de la
+     matière (« PHILOSOPHIE (Mme X.) ») et « Appréciation(s) : … » sur toute la largeur, en une ou plusieurs lignes. */
+  const COLS_ED = { coef: /^coef\.?$/i, eleve: /^(moy(\.|enne)?\s*)?[ée]l[èe]ve$/i, classe: /^(moy(\.|enne)?\s*)?cl(asse|as\.?)$/i,
+    min: /^min(\.|imum)?$/i, max: /^max(\.|imum)?$/i };
+  const RE_APPR_ED = /^appr[ée]ciations?\s*(\(s\))?\s*:\s*/i;
+  const RE_FIN_ED = /^(vie scolaire|moyennes?\s+g[ée]n[ée]rales?|bilan de l|le professeur principal|appr[ée]ciation du chef|demi-?\s*journ)/i;
+  const nombreED = t => (/^\d{1,2}([.,]\d{1,2})?$/.test(t) && +t.replace(',', '.') <= 20 ? +t.replace(',', '.') : null);
+  const centreX = i => (i.x + (i.fin ?? i.x)) / 2;
+  const itemsPage = p => p.items.filter(i => !i.vertical && i.t.trim() && i.x < (p.largeur || Infinity)).sort((a, b) => b.y - a.y || a.x - b.x);
+
+  // Les lignes d'en-tête des blocs d'une page (celles qui ont « Coef » et « Elève »).
+  function tetesED(items) {
+    return items.filter(i => COLS_ED.coef.test(i.t.trim())).map(c => {
+      const bande = items.filter(i => Math.abs(i.y - c.y) < 4);
+      const col = {};
+      for (const [k, re] of Object.entries(COLS_ED)) { const i = bande.find(x => re.test(x.t.trim())); if (i) col[k] = centreX(i); }
+      const prog = bande.find(i => /^[ée]l[ée]ments? de programme/i.test(i.t.trim()));
+      // (Une colonne « Discipline » / « Matières » dans l'en-tête : c'est un tableau classique, pas des blocs.)
+      const tableau = bande.some(i => RE_TETE.test(i.t.trim()));
+      return { y: Math.max(...bande.map(i => i.y)), yBas: Math.min(...bande.map(i => i.y)), col, xNum: c.x, xProg: prog ? prog.x : null, tableau };
+    }).filter(t => t.col.eleve !== undefined && !t.tableau);
+  }
+
+  // Lignes de texte qui se suivent sous la première (même marge à gauche, sans grand blanc).
+  function suiteLignes(premier, items, utilises) {
+    const lignes = [premier];
+    for (const i of items) {
+      const der = lignes.at(-1);
+      if (i.y >= der.y || utilises.has(i)) continue;
+      if (der.y - i.y > Math.max(der.taille, i.taille) * 2.2) break;
+      if (Math.abs(i.x - premier.x) < 4) { lignes.push(i); utilises.add(i); }
+    }
+    return lignes;
+  }
+  const recoller = l => l.map(x => x.t.trim()).reduce((t, x) => (t.endsWith('-') && /^\p{Ll}/u.test(x) ? t.slice(0, -1) + x : t ? t + ' ' + x : x), '')
+    .replace(/\s+/g, ' ').trim();
+
+  function blocsPage(p) {
+    const items = itemsPage(p), tetes = tetesED(items);
+    if (!tetes.length) return null;
+    const fin = items.filter(i => i.y < tetes.at(-1).yBas && RE_FIN_ED.test(i.t.trim())).reduce((m, i) => Math.max(m, i.y), -Infinity);
+    return tetes.map((t, k) => {
+      const bas = k + 1 < tetes.length ? tetes[k + 1].y + 1 : fin + 1;
+      const zone = items.filter(i => i.y < t.yBas - 1 && i.y > bas);
+      const utilises = new Set();
+      // Moyennes : la première ligne de chiffres sous l'en-tête, chaque nombre rangé dans la colonne la plus proche.
+      const chiffres = zone.filter(i => i.x >= t.xNum - 8 && /^[\d.,]+$|^(abs|disp|n\.?\s?n|n\.?\s?not|n\.?\s?e)\.?$/i.test(i.t.trim()));
+      const yChiffres = chiffres.length ? Math.max(...chiffres.map(i => i.y)) : null;
+      const ligne = chiffres.filter(i => yChiffres - i.y < 4);
+      ligne.forEach(i => utilises.add(i));
+      const val = {};
+      for (const [c, x] of Object.entries(t.col)) {
+        const i = ligne.reduce((a, i) => (Math.abs(centreX(i) - x) < 14 && (!a || Math.abs(centreX(i) - x) < Math.abs(centreX(a) - x)) ? i : a), null);
+        val[c] = i ? (c === 'coef' ? +i.t.trim().replace(',', '.') || null : nombreED(i.t.trim())) : null;
+      }
+      // Appréciations (une par sous-matière parfois) : « Appréciation(s) : … » et les lignes qui suivent.
+      const apprs = zone.filter(i => RE_APPR_ED.test(i.t.trim()));
+      apprs.forEach(i => utilises.add(i));
+      const appr = apprs.map(a => recoller(suiteLignes(a, zone, utilises)).replace(RE_APPR_ED, '')).join(' ')
+        .replace(/\[\s*appr[ée]ciation\s*\]/gi, '').replace(/\s+/g, ' ').trim();
+      // Matière : le texte à gauche (avant les « Éléments de programme ») ; le nom du professeur entre parenthèses n'est pas gardé.
+      const xMax = (t.xProg ?? t.xNum) - 5;
+      const noms = zone.filter(i => !utilises.has(i) && i.x < xMax && lettres(i.t) >= 2 && !RE_GROUPE.test(i.t.trim()));
+      const premier = noms[0];
+      const brut = premier ? recoller(suiteLignes(premier, noms, new Set())).replace(/\s*\([^)]*\)?\s*$/, '').trim() : '';
+      return { brut, moy: val.eleve, moyClasse: val.classe ?? null, min: val.min ?? null, max: val.max ?? null, coef: val.coef ?? null, appr };
+    }).filter(m => m.brut && (m.moy !== null || m.appr));
+  }
+
+  // « Libellé : 12 » : le nombre écrit dans le libellé ou juste à sa droite, sur la même ligne.
+  function valeurDe(items, re) {
+    const l = items.find(i => re.test(i.t.trim()));
+    if (!l) return null;
+    const dans = /:\s*(\d+([.,]\d+)?)\s*$/.exec(l.t);
+    if (dans) return +dans[1].replace(',', '.');
+    const v = items.filter(i => i !== l && Math.abs(i.y - l.y) < 3 && i.x > l.x && /^\d+([.,]\d+)?$/.test(i.t.trim())).sort((a, b) => a.x - b.x)[0];
+    return v ? +v.t.trim().replace(',', '.') : null;
+  }
+
+  // Bas du bulletin École Directe : vie scolaire, moyennes générales, appréciation du professeur principal déjà écrite.
+  function basED(pages) {
+    const res = {};
+    for (const p of pages) {
+      const items = itemsPage(p);
+      const lu = {
+        absences: valeurDe(items, /^demi-?\s*journ[ée]es?\s*(\(s\))?\s*d['’]\s*absences?/i),
+        nonJustifiees: valeurDe(items, /^absences?\s*(\(s\))?\s*non\s*justifi/i),
+        retards: valeurDe(items, /^(nombre de\s+)?retards?\s*(\(s\))?\s*:/i),
+        moyGen: valeurDe(items, /^moyenne\s+(de\s+l['’]\s*)?[ée]l[èe]ve\s*:/i),
+        moyGenClasse: valeurDe(items, /^moyenne\s+(de\s+la\s+)?classe\s*:/i),
+        moyGenMin: valeurDe(items, /^moyenne\s+mini(male|mum)?\s*:/i),
+        moyGenMax: valeurDe(items, /^moyenne\s+maxi(male|mum)?\s*:/i),
+      };
+      for (const [k, v] of Object.entries(lu)) if (v !== null && res[k] === undefined) res[k] = v;
+      const pp = items.find(i => /^le professeur principal\b/i.test(i.t.trim()));
+      if (pp && !res.apprBulletin) {
+        const sous = items.filter(i => i.y < pp.y - 2 && !RE_FIN_ED.test(i.t.trim()));
+        const premier = sous.find(i => Math.abs(i.x - pp.x) < 6);
+        if (premier && pp.y - premier.y < pp.taille * 3) {
+          const l = suiteLignes(premier, sous, new Set()).filter(i => !/chef d['’]\s*[ée]tablissement/i.test(i.t));
+          res.apprBulletin = recoller(l);
+        }
+      }
+    }
+    return res;
   }
 
   // Moyenne générale, absences, retards, période : dans le texte des pages.
@@ -136,16 +278,82 @@ const BulletinPdf = (() => {
     return { n, type: /sem/i.test(m[2]) ? 'S' : 'T' };
   }
 
+  /* « Conseil de classe » d'École Directe : grand titre, nom de l'élève, tableau Discipline | Coef. | Elève | Classe |
+     Min | Max | Rang | Appréciation générale, puis les cadres « Appréciation du professeur principal (…) »,
+     « Appréciation Vie Scolaire », « Appréciation du chef d'établissement » (« aucune appréciation » s'ils sont vides). */
+  const estTitreConseil = i => !i.vertical && i.taille >= 14 && /^conseil de classe$/i.test(i.t.trim());
+  const RE_CADRE = /^appr[ée]ciation\s+(du\s+professeur\s+principal|(de\s+la\s+)?vie\s+scolaire|du\s+chef)/i;
+
+  function apprBas(pages) {
+    const res = {};
+    for (const p of pages) {
+      const items = p.items.filter(i => !i.vertical && i.t.trim()).sort((a, b) => b.y - a.y || a.x - b.x);
+      const cadres = items.filter(i => RE_CADRE.test(i.t.trim()));
+      cadres.forEach((c, k) => {
+        const cle = /principal/i.test(c.t) ? 'apprBulletin' : /scolaire/i.test(c.t) ? 'apprVieScolaire' : null;
+        if (!cle || res[cle]) return;
+        // Le titre peut continuer sur la ligne d'après (noms des professeurs entre parenthèses).
+        let yTitre = c.y;
+        if (/\([^)]*$/.test(c.t)) { const f = items.find(i => i.y < c.y && /\)/.test(i.t) && Math.abs(i.x - c.x) < 6); if (f) yTitre = f.y; }
+        const bas = cadres[k + 1]?.y ?? -Infinity;
+        const lignes = items.filter(i => i.y < yTitre - 2 && i.y > bas + 2 && i.x >= c.x - 6);
+        const l = lignes.length ? suiteLignes(lignes[0], lignes, new Set()) : [];
+        const t = recoller(l);
+        if (t && !/^aucune appr[ée]ciation\.?$/i.test(t)) res[cle] = t;
+      });
+    }
+    return res;
+  }
+
+  // Pas de période écrite : celle de la date du conseil (« le vendredi 27 novembre 2026 »), trois semaines plus tôt
+  // (le conseil a lieu juste avant ou juste après la fin de la période).
+  function periodeConseil(texte) {
+    const MOIS = ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre'];
+    const m = /conseil de classe\b.*?\b(\d{1,2})(?:er)?\s+([a-zéèûô]+)\s+(\d{4})/i.exec(texte);
+    const mois = m ? MOIS.indexOf(sansAccent(m[2].toLowerCase())) : -1;
+    if (mois < 0 || typeof periodeDe !== 'function') return null;
+    const d = new Date(+m[3], mois, +m[1] - 21);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const per = periodesAnnee().find(x => x.id === periodeDe(iso));
+    return per ? { n: +per.code.slice(1), type: per.code[0] } : null;
+  }
+
+  // Un bulletin École Directe par blocs : l'en-tête (nom, classe, période) est au-dessus du premier bloc de la 1re page.
+  function lireED(pp, blocs) {
+    const items0 = itemsPage(pp[0]), t0 = tetesED(items0)[0];
+    const legende = items0.find(i => /^l[ée]gende\b/i.test(i.t.trim()));
+    const yHaut = Math.max(legende ? legende.y + 2 : -Infinity, t0 ? t0.y + 2 : -Infinity);
+    const entete = items0.filter(i => i.y > yHaut);
+    // Nom lu : le plus gros texte de l'en-tête (pas « [Eleve] », l'emplacement de la photo, ni la période).
+    const nomLu = entete.filter(i => lettres(i.t) >= 3 && !/^\[|trimestre|semestre|ann[ée]e/i.test(i.t.trim()))
+      .reduce((a, i) => (!a || i.taille > a.taille ? i : a), null)?.t.trim() || '';
+    const matieres = blocs.flatMap(b => b || []);
+    const ed = basED(pp), b = bas(pp);
+    return {
+      entete: entete.map(i => i.t).join(' | '), nomLu,
+      periode: periodeLue(entete.map(i => i.t).join(' ')) || periodeLue(items0.map(i => i.t).join(' ')),
+      matieres, moyGen: ed.moyGen ?? b.moyGen, moyGenClasse: ed.moyGenClasse ?? b.moyGenClasse,
+      moyGenMin: ed.moyGenMin ?? null, moyGenMax: ed.moyGenMax ?? null,
+      absences: ed.absences ?? b.absences, nonJustifiees: ed.nonJustifiees ?? b.nonJustifiees, retards: ed.retards ?? b.retards,
+      apprBulletin: ed.apprBulletin || '', lisible: matieres.length > 0,
+    };
+  }
+
   // Un PDF → un bulletin par élève (une page qui porte « Bulletin » en haut commence un nouvel élève).
   async function lire(fichier) {
     const pages = await PdfTexte.lire(await fichier.arrayBuffer(), { pages: 400 });
     const groupes = [];
     for (const p of pages) {
       const haut = p.items.filter(i => i.y > p.hauteur * 0.7 && !i.vertical).map(i => i.t).join(' ');
-      if (!groupes.length || /bulletin|relev[ée] de notes/i.test(haut)) groupes.push([]);
+      // (École Directe n'écrit pas « Bulletin » : le pied de page « 1/2 » marque le début d'un élève.)
+      const page1 = p.items.some(i => i.y < p.hauteur * 0.12 && /^1\s*\/\s*\d+$/.test(i.t.trim()));
+      const conseil = p.items.some(i => i.y > p.hauteur * 0.7 && estTitreConseil(i));
+      if (!groupes.length || /bulletin|relev[ée] de notes/i.test(haut) || page1 || conseil) groupes.push([]);
       groupes.at(-1).push(p);
     }
     return groupes.map(pp => {
+      const blocs = pp.map(blocsPage);
+      if (blocs.some(Boolean)) return lireED(pp, blocs);
       let cfg = null;
       const matieres = [];
       for (const p of pp) { const r = lignesPage(p, cfg); cfg = r.cfg; matieres.push(...r.matieres); }
@@ -153,10 +361,14 @@ const BulletinPdf = (() => {
       const c0 = colonnes(items0.slice().sort((a, b) => b.y - a.y), null);
       const entete = items0.filter(i => !c0 || i.y > c0.yTete + 1).sort((a, b) => b.y - a.y || a.x - b.x);
       const titre = entete.find(i => /bulletin/i.test(i.t));
-      const nomLu = titre ? entete.filter(i => i.y < titre.y - 2 && Math.abs(i.x - titre.x) < 6)[0]?.t.trim() || '' : '';
+      const conseil = entete.find(estTitreConseil);
+      // (« Conseil de classe » d'École Directe : le nom de l'élève est le plus gros texte sous le titre.)
+      const nomLu = titre ? entete.filter(i => i.y < titre.y - 2 && Math.abs(i.x - titre.x) < 6)[0]?.t.trim() || ''
+        : conseil ? entete.filter(i => i.y < conseil.y - 2 && lettres(i.t) >= 3 && !estTitreConseil(i)).reduce((a, i) => (!a || i.taille > a.taille ? i : a), null)?.t.trim() || '' : '';
+      const texte0 = items0.map(i => i.t).join(' ');
       return {
-        entete: entete.map(i => i.t).join(' | '), nomLu, periode: periodeLue(items0.map(i => i.t).join(' ')),
-        matieres, ...bas(pp), lisible: matieres.length > 0,
+        entete: entete.map(i => i.t).join(' | '), nomLu, periode: periodeLue(texte0) || periodeConseil(texte0),
+        matieres, ...bas(pp), ...apprBas(pp), lisible: matieres.length > 0,
       };
     });
   }
@@ -178,20 +390,23 @@ const BulletinPdf = (() => {
 })();
 
 // Nom de matière lisible dans une phrase (« en histoire-géographie », « en SVT ») ; sinon le nom lu, en minuscules.
+// (Abréviations d'École Directe : « HIST.GEO.GEOPOL.S.P. », « HUMAN.LITTER.PHILO. », « ENSEIGN.SCIENTIFIQUE », « ED.PHYSIQUE & SPORT. ».)
 const MATIERES_PP = [
+  [/^hggsp|^hist.*g[ée]opol/, 'HGGSP'],
   [/^(histoire[- ]?g[ée]o|hist\.?[- ]?g[ée]o|h\.?[- ]?g\.?$)/, 'histoire-géographie'], [/^(emc|enseignement moral|ens\.? moral)/, 'EMC'],
-  [/^hggsp|^hist.*g[ée]opolitique/, 'HGGSP'], [/^hlp|^humanit/, 'HLP'], [/^(ses|s\.e\.s\.?)$|sciences [ée]conomiques/, 'SES'],
-  [/^(svt|s\.v\.t\.?)$|sciences de la vie/, 'SVT'], [/^(eps|e\.p\.s\.?)$|[ée]ducation physique/, 'EPS'], [/^math/, 'mathématiques'],
-  [/^physique[- ]?chimie|^phys(ique)?[- ]?chim|^(p\.?c\.?|spc)$|sciences physiques/, 'physique-chimie'], [/^fran[cç]ais/, 'français'],
+  [/^hlp|^humanit|^human\.?\s*litt/, 'HLP'], [/^(ses|s\.e\.s\.?)$|sciences [ée]conomiques/, 'SES'],
+  [/^(svt|s\.v\.t\.?)$|sciences de la vie|^sc(iences?|\.)?\s*(de la\s+)?vie/, 'SVT'], [/^(eps|e\.p\.s\.?)$|[ée]ducation physique|^ed\.?\s*physique/, 'EPS'], [/^math/, 'mathématiques'],
+  [/^physique[- ]?chimie|^phys(ique)?[- ]?chim|^(p\.?c\.?|spc)$|^ph\.?[- ]?ch(im)?\.?$|sciences physiques/, 'physique-chimie'], [/^fran[cç]ais/, 'français'],
   [/^philo/, 'philosophie'], [/^anglais/, 'anglais'], [/^espagnol/, 'espagnol'], [/^allemand/, 'allemand'], [/^italien/, 'italien'],
   [/^portugais/, 'portugais'], [/^chinois/, 'chinois'], [/^arabe/, 'arabe'], [/^russe/, 'russe'], [/^latin/, 'latin'], [/^grec/, 'grec ancien'],
   [/^(snt|s\.n\.t\.?)$|sciences num[ée]riques/, 'SNT'], [/^(nsi|n\.s\.i\.?)$|num[ée]rique et sciences/, 'NSI'],
-  [/^ens(eignement|\.)?\s*scient/, 'enseignement scientifique'], [/^techno/, 'technologie'], [/^arts? plastiques/, 'arts plastiques'],
+  [/^ens(eignement|eign|\.)?\.?\s*scient/, 'enseignement scientifique'], [/^techno/, 'technologie'], [/^arts? plastiques/, 'arts plastiques'],
   [/^[ée]ducation musicale|^musique/, 'éducation musicale'], [/^sciences de l.ing[ée]nieur|^si$/, 'sciences de l’ingénieur'],
   [/^llcer/, 'LLCER'], [/^accompagnement perso|^a\.?p\.?$/, 'accompagnement personnalisé'], [/^vie de classe|^hvc$/, 'vie de classe'],
 ];
 function nomMatierePP(brut) {
   const t = String(brut || '').replace(/\b(tronc commun|lv ?[abc12]|lv[abc]|langue vivante [abc12]|sp[ée]cialit[ée]|option(nel(le)?)?|ens\.? de sp[ée]\.?)\b/gi, '')
+    .replace(/^\s*sp[ée]\.?\s+/i, '') // « SPE PH-CH », « SPE SVT » (École Directe)
     .replace(/\s+/g, ' ').trim();
   const n = sansAccent(t).replace(/[’]/g, '\'');
   for (const [re, nom] of MATIERES_PP) if (re.test(n)) return nom;
@@ -890,6 +1105,8 @@ async function importerBulletinsPP(fichiers) {
       const periode = p?.id || defaut;
       const el = BulletinPdf.trouverEleve(b.entete, eleves) || BulletinPdf.trouverEleve(b.entete, autres);
       const donnees = { matieres: b.matieres, moyGen: b.moyGen, moyGenClasse: b.moyGenClasse, absences: b.absences, nonJustifiees: b.nonJustifiees, retards: b.retards };
+      // (École Directe : moyennes générales mini / maxi de la classe et appréciation générale déjà écrite sur le bulletin.)
+      for (const k of ['moyGenMin', 'moyGenMax', 'apprBulletin', 'apprVieScolaire']) if (b[k] !== undefined && b[k] !== null && b[k] !== '') donnees[k] = b[k];
       if (el && !vus.has(el.id + periode)) {
         vus.add(el.id + periode); enregistrerBulletinPP(el.id, periode, donnees); ok++; ui.ppPeriode = periode;
         if (el.classeId !== c.id) ailleurs.set(el.classeId, (ailleurs.get(el.classeId) || 0) + 1);
@@ -987,9 +1204,13 @@ function htmlMatieresPP(b, analyse) {
     const s = analyse.details.signaux[i] || [];
     const puces = [...new Map(s.map(x => [x.k + x.s, x])).values()].map(x =>
       `<span class="pp-signal ${x.s > 0 ? 'plus' : 'moins'}" title="« ${esc(x.mot)} »">${x.s > 0 ? '👍' : '👎'} ${esc(RUBRIQUES_PP[x.k].nom.toLowerCase())}</span>`).join(' ');
-    return `<tr><th>${esc(nomMatierePP(m.brut))}</th><td class="${classeMoyPP(m.moy)}">${fmtMoyPP(m.moy)}</td><td class="aide">${fmtMoyPP(m.moyClasse)}</td>
+    const detail = [m.moyClasse !== null && m.moyClasse !== undefined ? `classe ${fmtMoyPP(m.moyClasse)}` : '',
+      m.min !== null && m.min !== undefined ? `min ${fmtMoyPP(m.min)}` : '', m.max !== null && m.max !== undefined ? `max ${fmtMoyPP(m.max)}` : '',
+      m.coef ? `coef ${String(m.coef).replace('.', ',')}` : '', m.rang ? `rang ${m.rang}` : ''].filter(Boolean).join(' · ');
+    return `<tr><th>${esc(nomMatierePP(m.brut))}</th><td class="${classeMoyPP(m.moy)}">${fmtMoyPP(m.moy)}</td><td class="aide"${detail ? ` title="${esc(detail)}"` : ''}>${fmtMoyPP(m.moyClasse)}</td>
       <td>${esc(m.appr || '')}${puces ? `<div>${puces}</div>` : ''}</td></tr>`;
-  }).join('')}</tbody></table>`;
+  }).join('')}${b.apprBulletin ? `<tr><th>Appréciation générale du bulletin</th><td></td><td></td><td>${esc(b.apprBulletin)}</td></tr>` : ''}${
+    b.apprVieScolaire ? `<tr><th>Vie scolaire</th><td></td><td></td><td>${esc(b.apprVieScolaire)}</td></tr>` : ''}</tbody></table>`;
 }
 
 function htmlAppreciationsPP(c, periode, eleves) {

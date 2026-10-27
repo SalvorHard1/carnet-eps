@@ -2227,6 +2227,7 @@ body.mode-eleve .bandeau-recup { display: none; }
 .pp-entete .pp-periodes { margin: 0; }
 .pp-sections { margin-bottom: 12px; }
 .pp-depot { cursor: pointer; }
+.pp-coller { flex: 1 1 18em; min-width: min(18em, 100%); resize: none; font: inherit; font-size: 13px; }
 .pp-table { border-collapse: collapse; width: 100%; font-size: 14px; }
 .pp-table th, .pp-table td { padding: 5px 8px; border-bottom: 1px solid var(--bord); text-align: left; vertical-align: top; }
 .pp-table thead th { background: var(--surface2); position: sticky; top: 0; z-index: 1; }

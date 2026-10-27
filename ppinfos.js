@@ -51,17 +51,23 @@ async function lireWordInfosPP(f) {
 
 // PDF : morceaux de texte rangés en lignes (même hauteur) puis en colonnes (bandes verticales séparées par un blanc,
 // relevées sur les lignes qui portent des chiffres) ; un en-tête plus large que sa colonne va dans la première qu'il couvre.
+function lignesPdfInfosPP(p) {
+  const items = p.items.filter(i => !i.vertical && i.t.trim()).sort((a, b) => b.y - a.y || a.x - b.x);
+  const lignes = [];
+  for (const i of items) {
+    const l = lignes.at(-1);
+    if (l && Math.abs(l.y - i.y) < Math.max(2.5, (i.taille || 10) * 0.4)) l.items.push(i); else lignes.push({ y: i.y, items: [i] });
+  }
+  lignes.forEach(l => l.items.sort((a, b) => a.x - b.x));
+  return lignes;
+}
+
 async function lirePdfInfosPP(f) {
   const pages = await PdfTexte.lire(await f.arrayBuffer(), { pages: 200 });
-  const tableaux = [], textes = [];
+  const tableaux = [], textes = [], suite = { tableau: null };
   pages.forEach((p, np) => {
-    const items = p.items.filter(i => !i.vertical && i.t.trim()).sort((a, b) => b.y - a.y || a.x - b.x);
-    const lignes = [];
-    for (const i of items) {
-      const l = lignes.at(-1);
-      if (l && Math.abs(l.y - i.y) < Math.max(2.5, (i.taille || 10) * 0.4)) l.items.push(i); else lignes.push({ y: i.y, items: [i] });
-    }
-    lignes.forEach(l => l.items.sort((a, b) => a.x - b.x));
+    const lignes = lignesPdfInfosPP(p);
+    if (tableauEvPdfPP(lignes, np, tableaux, textes, suite)) return; // (liste d'événements École Directe)
     const chiffrees = lignes.filter(l => l.items.length >= 3 && l.items.some(i => estNombreInfosPP(i.t.trim())));
     if (chiffrees.length < 2) { textes.push(...lignes.map(l => l.items.map(i => i.t.trim()).join(' '))); return; }
     const taille = chiffrees.flatMap(l => l.items.map(i => i.taille || 10)).sort((a, b) => a - b)[0] || 10;
@@ -84,6 +90,233 @@ async function lirePdfInfosPP(f) {
   });
   return { tableaux, textes };
 }
+
+// Tableau copié sur une page web (École Directe, Pronote…) puis collé dans l'appli : tableaux du HTML du
+// presse-papiers (rien n'est chargé ni exécuté : document inerte), sinon texte à tabulations.
+function tableauxCollesInfosPP(html, texte) {
+  const tableaux = [], propre = t => String(t || '').replace(/\s+/g, ' ').trim();
+  if (html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    for (const tb of doc.querySelectorAll('table')) {
+      if (tb.querySelector('table')) continue; // (tableau de mise en page : on lit ceux qu'il contient)
+      tableaux.push({ nom: 'Tableau ' + (tableaux.length + 1), lignes: [...tb.rows].map(tr => [...tr.cells].flatMap(td => {
+        td.querySelectorAll('br').forEach(br => br.replaceWith(' '));
+        return [propre(td.textContent), ...Array(Math.max(0, (td.colSpan || 1) - 1)).fill('')];
+      })) });
+    }
+  }
+  if (!tableaux.length && texte && texte.includes('\t')) {
+    tableaux.push({ nom: 'Texte collé', lignes: texte.split(/\r?\n/).filter(l => l.trim()).map(l => l.split('\t').map(propre)) });
+  }
+  return { tableaux, textes: [] };
+}
+
+/* ---------- Listes d'événements de la vie scolaire (École Directe : absences / retards, sanctions, dispenses) ---------- */
+// Une ligne par événement, donc plusieurs lignes par élève : l'appli compte pour chaque élève les demi-journées,
+// cours manqués, retards, sanctions, dispenses… de la période affichée, et garde le détail (motifs, dates) en texte.
+
+// Rôle d'une colonne d'après son titre (flèches de tri, icônes et ponctuation retirées).
+function roleColonneEvPP(nom) {
+  const t = sansAccent(nom).replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t || t.length > 40) return null;
+  if (/^(eleves?|noms?( et)?( prenoms?)?|nom prenom)$/.test(t)) return 'eleve';
+  if (/deroulement/.test(t)) return 'deroulement';
+  if (/matiere/.test(t)) return 'matiere';
+  if (/^uniquement le/.test(t)) return 'jour';
+  if (/^presence/.test(t)) return 'presence';
+  if (/sanction|punition|incident/.test(t)) return 'sanction';
+  if (/^(absences?|retards?)( (absences?|retards?))?$/.test(t)) return 'type';
+  if (/^duree/.test(t)) return 'duree';
+  if (/^justifi/.test(t)) return 'justif';
+  if (/^motifs?$/.test(t)) return 'motif';
+  if (/^commentaires?$/.test(t)) return 'commentaire';
+  if (/^dates?( de (l'incident|la sanction|debut))?$/.test(t)) return 'date';
+  if (/^(par|demandeur|auteur)$/.test(t)) return 'par';
+  if (/^dispenses?$/.test(t)) return 'dispense';
+  return null;
+}
+// Sorte de liste d'après les rôles de ses colonnes (null : ce n'est pas une liste d'événements).
+function sorteEvPP(roles) {
+  const r = new Set(roles.filter(Boolean));
+  if (r.has('sanction') && (r.has('date') || r.has('motif') || r.has('eleve'))) return 'sanctions';
+  if (r.has('dispense') && (r.has('presence') || r.has('matiere') || r.has('jour'))) return 'dispenses';
+  if (r.has('duree') && (r.has('justif') || r.has('type'))) return 'absences';
+  return null;
+}
+const COLONNE_DATE_EV_PP = { absences: 'type', sanctions: 'date', dispenses: 'dispense' };
+// Début d'un événement : « Le vendredi 16 octobre… », « Du lundi 05… », « le jeudi 1 octobre… » (icône retirée devant).
+const sansIconeEvPP = t => String(t || '').replace(/^[^\p{L}\p{N}]+/u, '');
+const RE_DEBUT_EV_PP = /^(le|du)\s+(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|\d)/i;
+
+const MOIS_EV_PP = ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre'];
+// Dates écrites dans un texte (« 16 octobre 2026 », « 1er oct. 2026 », « 16/10/2026 ») → ['2026-10-16', …].
+function datesEvPP(texte) {
+  const res = [], deux = n => String(n).padStart(2, '0');
+  for (const m of sansAccent(texte).matchAll(/(\d{1,2})(?:er)?\s+([a-z]{3,9})\.?\s+(\d{4})|(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/g)) {
+    if (m[1]) {
+      const mois = MOIS_EV_PP.findIndex(x => x.startsWith(m[2].slice(0, 4)));
+      if (mois >= 0) res.push(`${m[3]}-${deux(mois + 1)}-${deux(m[1])}`);
+    } else res.push(`${m[6].length === 2 ? '20' + m[6] : m[6]}-${deux(m[5])}-${deux(m[4])}`);
+  }
+  return res;
+}
+const jjmmEvPP = iso => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
+
+// PDF (page imprimée d'École Directe) : chaque case peut tenir sur plusieurs lignes. Un événement commence à la ligne
+// où sa date commence (« Le vendredi… ») ; les lignes suivantes proches complètent ses cases. Les colonnes sont les
+// bandes verticales occupées par le texte du tableau (titres compris). Une page sans titres continue le tableau d'avant.
+function tableauEvPdfPP(lignes, np, tableaux, textes, suite, reste = false) {
+  const texteL = l => l.items.map(i => i.t.trim()).join(' ');
+  const debut = l => l.items.some(i => RE_DEBUT_EV_PP.test(sansIconeEvPP(i.t.trim())));
+  const taille = l => Math.min(...l.items.map(i => i.taille || 10));
+  const ecart = (a, b) => Math.abs(a.y - b.y) / Math.max(1, taille(a));
+  // Titres : ligne où au moins deux morceaux sont des titres de colonne connus, avec ses voisines serrées.
+  const iTete = lignes.findIndex(l => l.items.filter(i => roleColonneEvPP(i.t)).length >= 2 && !debut(l));
+  let tete = [];
+  if (iTete >= 0) {
+    let a = iTete, b = iTete;
+    while (a > 0 && iTete - a < 2 && ecart(lignes[a - 1], lignes[a]) < 1.6 && !debut(lignes[a - 1])) a--;
+    while (b + 1 < lignes.length && b - iTete < 3 && ecart(lignes[b], lignes[b + 1]) < 1.6 && !debut(lignes[b + 1])) b++;
+    tete = lignes.slice(a, b + 1);
+  }
+  // Lignes des événements : une ligne de début, puis les lignes serrées qui suivent.
+  const evs = [];
+  let fin = lignes.length;
+  for (let k = iTete >= 0 ? lignes.indexOf(tete.at(-1)) + 1 : 0; k < lignes.length; k++) {
+    const l = lignes[k];
+    if (debut(l)) evs.push([l]);
+    else if (evs.length && ecart(evs.at(-1).at(-1), l) < 2.2) evs.at(-1).push(l);
+    else if (evs.length) { fin = k; break; } // (bas de page, autre texte, autre liste)
+  }
+  if (!evs.length || reste && !tete.length) return false;
+  let t = suite.tableau;
+  if (tete.length) {
+    const corps = tete.concat(evs.flat()), tl = Math.min(...corps.map(taille));
+    const bandes = [];
+    for (const [g, d] of corps.flatMap(l => l.items.map(i => [i.x, Math.max(i.fin ?? i.x, i.x + 1)])).sort((x, y) => x[0] - y[0])) {
+      const b = bandes.at(-1);
+      if (b && g <= b[1] + tl * 0.5) b[1] = Math.max(b[1], d); else bandes.push([g, d]);
+    }
+    t = { nom: 'Page ' + (np + 1), bandes, lignes: [] };
+    const titres = Array(bandes.length).fill('');
+    for (const l of tete) for (const i of l.items) { const k = bandeEvPP(bandes, i); titres[k] = (titres[k] + ' ' + i.t.trim()).trim(); }
+    if (!sorteEvPP(titres.map(roleColonneEvPP))) return false;
+    t.lignes.push(titres);
+    const avant = lignes.slice(0, lignes.indexOf(tete[0])).map(texteL).filter(Boolean);
+    if (avant.length) { t.titre = avant.at(-1); textes.push(...avant); }
+    tableaux.push(t);
+  } else if (!t) return false;
+  for (const ev of evs) {
+    const cases = Array(t.bandes.length).fill('');
+    for (const l of ev) for (const i of l.items) { const k = bandeEvPP(t.bandes, i); cases[k] = (cases[k] + ' ' + i.t.trim()).trim(); }
+    t.lignes.push(cases);
+  }
+  suite.tableau = t;
+  if (fin < lignes.length) tableauEvPdfPP(lignes.slice(fin), np, tableaux, textes, suite, true); // (autre liste plus bas sur la page)
+  return true;
+}
+function bandeEvPP(bandes, i) {
+  const fin = Math.max(i.fin ?? i.x, i.x + 1), k = bandes.findIndex(([g, d]) => i.x < d && fin > g);
+  if (k >= 0) return k;
+  const c = (i.x + fin) / 2, milieu = b => (b[0] + b[1]) / 2;
+  return bandes.reduce((m, b, j) => (Math.abs(milieu(b) - c) < Math.abs(milieu(bandes[m]) - c) ? j : m), 0);
+}
+
+// Titres d'une liste d'événements dans les premières lignes d'un tableau → { i, roles, sorte } ou null.
+function enteteEvPP(lignes) {
+  for (let i = 0; i < Math.min(6, lignes.length); i++) {
+    const roles = lignes[i].map(roleColonneEvPP), sorte = sorteEvPP(roles);
+    if (sorte) return { i, roles, sorte };
+  }
+  return null;
+}
+
+const nouveauCumulEvPP = () => ({ dj: 0, djNJ: 0, cours: 0, coursNJ: 0, retards: 0, retardsNJ: 0, minutes: 0, motifsAbs: new Map(), motifsRet: new Map(),
+  commentaires: [], sanctions: new Map(), detailSanctions: [], dispenses: 0, detailDispenses: [] });
+const majusculeEvPP = t => (t ? t[0].toLocaleUpperCase('fr') + t.slice(1) : t);
+const compterEvPP = (m, cle) => { if (cle) m.set(cle, (m.get(cle) || 0) + 1); };
+
+// Ajoute les événements d'un tableau aux cumuls (clé : id de l'élève, ou « ? texte » pour un élève non reconnu).
+function cumulerEvPP(lignes, h, eleves, periode, ev) {
+  const ids = periodesAnnee().map(p => p.id), rang = per => ids.indexOf(per);
+  for (const l of lignes.slice(h.i + 1)) {
+    const c = {};
+    h.roles.forEach((r, k) => { if (r && l[k]) c[r] = c[r] ? c[r] + ' ' + l[k] : l[k]; });
+    if (!Object.keys(c).length || sorteEvPP(l.map(roleColonneEvPP))) continue; // (ligne vide, titres répétés)
+    const cDate = c[COLONNE_DATE_EV_PP[h.sorte]] || '';
+    if (!c.eleve && !cDate) continue;
+    // Période : date de l'événement (dispense : sa période recouvre la période affichée).
+    const dates = datesEvPP(cDate);
+    if (dates.length && periode) {
+      const dans = h.sorte === 'dispenses'
+        ? rang(periodeDe(dates[0])) <= rang(periode) && rang(periode) <= rang(periodeDe(dates.at(-1)))
+        : periodeDe(dates[0]) === periode;
+      if (!dans) { ev.hors.n++; ev.hors.periodes.add(nomPeriodePP(periodeDe(dates[0]))); continue; }
+    }
+    const el = c.eleve ? BulletinPdf.trouverEleve(c.eleve, eleves) : eleveDeLigneInfosPP(l, eleves);
+    const cle = el ? el.id : '? ' + sansIconeEvPP(c.eleve || l.find(x => /\p{L}{2}/u.test(x)) || '').slice(0, 60);
+    if (!ev.cumuls.has(cle)) ev.cumuls.set(cle, nouveauCumulEvPP());
+    const x = ev.cumuls.get(cle), nonJ = /^non\b/i.test(sansIconeEvPP(c.justif).trim());
+    const motif = majusculeEvPP((c.motif || '').trim()), comm = (c.commentaire || '').trim();
+    ev.sortes.add(h.sorte);
+    ev.n++;
+    if (h.sorte === 'absences') {
+      const duree = sansAccent(c.duree || ''), hm = duree.match(/^(\d{1,2})\s*[:h]\s*(\d{2})$/);
+      if (hm || /retard/.test(sansAccent(c.type)) && !/absence/.test(sansAccent(c.type))) {
+        x.retards++;
+        if (nonJ) x.retardsNJ++;
+        if (hm) x.minutes += +hm[1] * 60 + +hm[2];
+        compterEvPP(x.motifsRet, motif);
+      } else {
+        let dj = 0, cours = 0;
+        for (const m of duree.matchAll(/(\d+)\s*(demi\s*-?\s*journees?|journees?|cours|heures?)/g)) { // (« demi- journées » : coupé en fin de ligne)
+          if (m[2].startsWith('demi')) dj += +m[1]; else if (m[2].startsWith('journee')) dj += 2 * m[1]; else cours += +m[1];
+        }
+        x.dj += dj; x.cours += cours;
+        if (nonJ) { x.djNJ += dj; x.coursNJ += cours; }
+        compterEvPP(x.motifsAbs, motif);
+      }
+      if (comm) x.commentaires.push(`${jjmmEvPP(dates[0])} : ${comm}`.replace(/^ : /, ''));
+    } else if (h.sorte === 'sanctions') {
+      const sorte = majusculeEvPP(sansIconeEvPP(c.sanction).trim()) || 'Sanction', der = datesEvPP(c.deroulement || '')[0];
+      compterEvPP(x.sanctions, sorte);
+      x.detailSanctions.push(`${jjmmEvPP(dates[0])} ${sorte}${motif ? ' : ' + motif : ''}${der ? ` (le ${jjmmEvPP(der)})` : ''}${comm ? ' — ' + comm : ''}`.trim());
+    } else {
+      x.dispenses++;
+      const quand = dates.length > 1 ? `du ${jjmmEvPP(dates[0])} au ${jjmmEvPP(dates.at(-1))}` : dates.length ? `le ${jjmmEvPP(dates[0])}` : '';
+      const pres = c.presence ? (/^oui/i.test(c.presence.trim()) ? 'présence obligatoire' : 'présence non obligatoire') : '';
+      const jour = (c.jour || '').trim();
+      x.detailDispenses.push([`${(c.matiere || '').trim() || 'Toutes matières'} :`, quand, jour && `(le ${jour.toLocaleLowerCase('fr')})`, pres && '· ' + pres, comm && '— ' + comm].filter(Boolean).join(' '));
+    }
+  }
+}
+
+// Cumuls d'un élève → valeurs [nom de colonne, { v, n }, texte, seuil proposé (undefined : d'après le nom)].
+function valeursCumulEvPP(x) {
+  const res = [], nb = (nom, n, seuil) => { if (n) res.push([nom, { v: String(n), n }, false, seuil]); };
+  const txt = (nom, v, seuil) => { if (v) res.push([nom, { v: v.length > 600 ? v.slice(0, 597) + '…' : v, n: null }, true, seuil]); };
+  const motifs = m => [...m].sort((a, b) => b[1] - a[1]).map(([t, n]) => (n > 1 ? `${t} ×${n}` : t)).join(' ; ');
+  nb('Absences · Demi-journées', x.dj);
+  nb('Absences · Demi-journées non justifiées', x.djNJ);
+  nb('Absences · Cours manqués', x.cours);
+  nb('Absences · Cours non justifiés', x.coursNJ);
+  txt('Absences · Motifs', motifs(x.motifsAbs));
+  txt('Absences · Commentaires', x.commentaires.join(' ; '));
+  nb('Retards', x.retards);
+  nb('Retards · Non justifiés', x.retardsNJ);
+  nb('Retards · Minutes', x.minutes);
+  txt('Retards · Motifs', motifs(x.motifsRet));
+  for (const [s, n] of x.sanctions) nb('Sanctions · ' + s, n);
+  txt('Sanctions · Détail', x.detailSanctions.join(' ; '), null);
+  nb('Dispenses', x.dispenses);
+  txt('Dispenses · Détail', x.detailDispenses.join(' ; '));
+  return res;
+}
+
+const ORDRE_EV_PP = [/^Absences · Demi-journées$/, /^Absences · Demi-journées non/, /^Absences · Cours manqués/, /^Absences · Cours non/,
+  /^Absences · Motifs/, /^Absences · Commentaires/, /^Retards$/, /^Retards · Non/, /^Retards · Minutes/, /^Retards · Motifs/,
+  /^Sanctions · (?!Détail$)/, /^Sanctions · Détail$/, /^Dispenses$/, /^Dispenses · /];
+const NOMS_SORTES_EV_PP = { absences: 'absences et retards', sanctions: 'sanctions', dispenses: 'dispenses' };
 
 /* ---------- Analyse : élèves, colonnes, valeurs ---------- */
 
@@ -157,14 +390,14 @@ function nomSourceInfosPP(colonnes, fichier) {
   return fichier.replace(/\.[a-z0-9]+$/i, '');
 }
 
-function analyserInfosPP(lu, eleves, fichier) {
+function analyserInfosPP(lu, eleves, fichier, periode) {
   const colonnes = [], parNom = new Map(), valeurs = new Map(), inconnus = [], reconnus = new Set();
   const seuilsRetenus = Donnees.get('reglages', 'ppInfos')?.seuils || {}; // (seuils choisis lors d'un import précédent)
-  const colonne = (nom, texte) => {
+  const colonne = (nom, texte, defaut) => {
     let c = parNom.get(nom);
     if (!c) {
       const retenu = seuilsRetenus[sansAccent(nom)];
-      parNom.set(nom, c = { nom, texte, garder: true, seuil: retenu !== undefined ? retenu : seuilDefautInfosPP(nom, texte), exemples: [] });
+      parNom.set(nom, c = { nom, texte, garder: true, seuil: retenu !== undefined ? retenu : defaut !== undefined ? defaut : seuilDefautInfosPP(nom, texte), exemples: [] });
       colonnes.push(c);
     }
     return c;
@@ -176,8 +409,15 @@ function analyserInfosPP(lu, eleves, fichier) {
     if (c.exemples.length < 3) c.exemples.push(x.v);
   };
   let titre = '', tetesPrec = null;
+  const ev = { cumuls: new Map(), hors: { n: 0, periodes: new Set() }, sortes: new Set(), n: 0 };
   for (const t of lu.tableaux) {
     const lignes = t.lignes.map(l => Array.from(l || [], x => String(x ?? '').replace(/\s+/g, ' ').trim()));
+    const h = enteteEvPP(lignes);
+    if (h) { // Liste d'événements (une ligne par absence, sanction, dispense…) : comptée par élève plus bas.
+      titre ||= t.titre || '';
+      cumulerEvPP(lignes, h, eleves, periode, ev);
+      continue;
+    }
     const trouves = lignes.map(l => eleveDeLigneInfosPP(l, eleves));
     const premier = trouves.findIndex(Boolean);
     if (premier < 0) continue;
@@ -225,6 +465,18 @@ function analyserInfosPP(lu, eleves, fichier) {
       }
     });
   }
+  // Listes d'événements : les cumuls de chaque élève deviennent ses valeurs (colonnes dans un ordre fixe).
+  for (const [cle, x] of ev.cumuls) {
+    const vals = valeursCumulEvPP(x);
+    for (const [nom, , texte, defaut] of vals) colonne(nom, texte, defaut);
+    const el = eleves.find(e => e.id === cle);
+    if (el) {
+      reconnus.add(el.id);
+      for (const [nom, v] of vals) noter(el, parNom.get(nom), v);
+    } else if (vals.length) inconnus.push({ texte: cle.slice(2) || '?', vals: vals.map(([nom, v]) => [nom, v]) });
+  }
+  const ordre = c => { const k = ORDRE_EV_PP.findIndex(r => r.test(c.nom)); return k < 0 ? 99 : k; };
+  if (ev.n) colonnes.sort((a, b) => ordre(a) - ordre(b));
   // Paragraphes qui citent un élève (lettre, compte rendu) : gardés comme remarque.
   const remarque = { nom: 'Remarques', texte: true, garder: true, seuil: 1, exemples: [] };
   for (const p of lu.textes) {
@@ -233,7 +485,10 @@ function analyserInfosPP(lu, eleves, fichier) {
     if (!colonnes.includes(remarque)) { colonnes.push(remarque); parNom.set(remarque.nom, remarque); }
     noter(el, remarque, { v: p.slice(0, 400), n: null });
   }
-  return { colonnes, valeurs, inconnus, titre, reconnus: reconnus.size, nom: nomSourceInfosPP(colonnes, fichier) };
+  const sortes = [...ev.sortes].map(s => NOMS_SORTES_EV_PP[s]);
+  const nom = sortes.length ? majusculeEvPP(sortes.length > 1 ? sortes.slice(0, -1).join(', ') + ' et ' + sortes.at(-1) : sortes[0]) : nomSourceInfosPP(colonnes, fichier);
+  return { colonnes, valeurs, inconnus, titre, reconnus: reconnus.size, nom,
+    evenements: ev.n, hors: ev.hors.n ? { n: ev.hors.n, periodes: [...ev.hors.periodes].filter(Boolean) } : null };
 }
 
 /* ---------- Import ---------- */
@@ -244,12 +499,27 @@ async function importerInfosPP(f) {
   toast('Lecture du fichier…');
   let lu;
   try { lu = await lireDocumentInfosPP(f); } catch (e) { console.warn(f.name, e); return toast(`${f.name} : ${e.message}`, 'erreur'); }
-  const a = analyserInfosPP(lu, elevesDe(c.id), f.name);
-  if (!a.reconnus && !a.valeurs.size) {
-    return toast(`${f.name} : aucun élève de ${c.nom} reconnu (il faut le nom et le prénom de l’élève sur sa ligne).`, 'erreur');
+  apercuInfosPP(c, lu, f.name);
+}
+
+function apercuInfosPP(c, lu, fichier) {
+  const periode = periodePP(c), a = analyserInfosPP(lu, elevesDe(c.id), fichier, periode);
+  if (!a.reconnus && !a.valeurs.size && !a.inconnus.length) {
+    if (a.hors) return toast(`${fichier} : ${a.hors.n} événement${a.hors.n > 1 ? 's' : ''} lu${a.hors.n > 1 ? 's' : ''}, aucun pendant ${nomPeriodePP(periode)}${a.hors.periodes.length ? ` (${a.hors.periodes.join(', ')})` : ''}. Choisis la bonne période en haut de l’espace, puis importe à nouveau.`, 'erreur');
+    return toast(`${fichier} : aucun élève de ${c.nom} reconnu (il faut le nom et le prénom de l’élève sur sa ligne).`, 'erreur');
   }
-  etatPP.infosLu = { classeId: c.id, periode: periodePP(c), fichier: f.name, ...a, rattaches: {} };
+  etatPP.infosLu = { classeId: c.id, periode, fichier, ...a, rattaches: {} };
   rendreVue();
+}
+
+// Tableau collé (Ctrl+V) : copié sur la page Vie scolaire d'École Directe, dans Pronote, Excel, Word…
+function collerInfosPP(e) {
+  const c = classePP(), d = e.clipboardData;
+  if (!c || !d) return;
+  const lu = tableauxCollesInfosPP(d.getData('text/html'), d.getData('text/plain'));
+  e.preventDefault();
+  if (!lu.tableaux.length) return toast('Rien à lire dans ce qui a été collé : sélectionne tout le tableau sur la page (avec sa ligne de titres), copie-le, puis colle-le ici.', 'erreur');
+  apercuInfosPP(c, lu, 'Tableau collé');
 }
 
 // Lignes retenues d'un élève, avec les seuils choisis dans l'aperçu.
@@ -406,9 +676,14 @@ function htmlInfosPP(c, periode, eleves) {
       (Excel, PDF ou Word). L’appli le lit sur l’appareil (rien n’est envoyé), reconnaît chaque élève par son nom et son prénom,
       et range ses chiffres avec la période <b>${esc(nomPeriodePP(periode))}</b> : ils apparaissent dans les 📄 fiches bilan du conseil
       et le 🗂 Suivi ; ceux qui atteignent le seuil choisi font de l’élève un <b>élève à suivre</b>.</p>
+    <p class="aide">Les listes de la page <b>Vie scolaire</b> d’École Directe (absences / retards, sanctions / punitions / incidents,
+      dispenses), une ligne par événement, sont comptées élève par élève : demi-journées, cours manqués, non justifiés, retards,
+      sanctions par sorte, dispenses, avec les motifs et les dates — seulement ce qui tombe pendant ${esc(nomPeriodePP(periode))}.</p>
     <div class="outils">
       <label class="bouton primaire pp-depot">📎 Choisir un fichier (Excel, PDF, Word)<input type="file" data-pp-infos-fichier hidden
         accept=".xlsx,.xls,.csv,.txt,.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv"></label>
+      <textarea class="pp-coller" data-pp-infos-coller rows="2" aria-label="Coller un tableau"
+        placeholder="… ou colle ici (Ctrl+V) le tableau copié sur la page École Directe, avec sa ligne de titres"></textarea>
     </div>
     ${lu ? htmlApercuInfosPP(lu, eleves) : ''}
     ${sources.size ? [...sources].map(([nom, x]) => htmlSourceInfosPP(nom, x, periode)).join('')
@@ -420,6 +695,8 @@ function htmlApercuInfosPP(lu, eleves) {
   return `<div class="carte pp-infos-apercu" data-pp-infos-apercu>
     <h3>📎 ${esc(lu.fichier)} — ${lu.reconnus} élève${lu.reconnus > 1 ? 's' : ''} reconnu${lu.reconnus > 1 ? 's' : ''}</h3>
     ${lu.titre ? `<p class="aide">Titre lu : ${esc(lu.titre)}</p>` : ''}
+    ${lu.evenements ? `<p class="aide">Liste d’École Directe : <b>${lu.evenements}</b> événement${lu.evenements > 1 ? 's' : ''} de ${esc(nomPeriodePP(lu.periode))} comptés élève par élève.${lu.hors
+    ? ` ${lu.hors.n} autre${lu.hors.n > 1 ? 's' : ''} (${esc(lu.hors.periodes.join(', ') || 'autre période')}) ${lu.hors.n > 1 ? 'ne sont' : 'n’est'} pas repris : pour ${lu.hors.n > 1 ? 'les' : 'l’'}incorporer, choisis cette période en haut de l’espace et importe à nouveau.` : ''}</p>` : ''}
     <div class="ligne"><label>Nom de cette information<input type="text" data-pp-infos-nom maxlength="80" value="${esc(lu.nom)}"></label>
       <span class="aide">Période : <b>${esc(nomPeriodePP(lu.periode))}</b>. Un nouvel import sous le même nom remplace le précédent.</span></div>
     <table class="pp-table pp-infos-colonnes"><thead><tr><th>Garder</th><th>Colonne lue</th><th>Exemples</th><th>Élève à suivre dès…</th></tr></thead>
@@ -515,6 +792,15 @@ document.addEventListener('change', e => {
   if (ui.vue !== 'pp' || !t.closest?.('#vue')) return;
   if (t.matches('[data-pp-infos-fichier]')) { const f = t.files[0]; t.value = ''; return lancer(() => importerInfosPP(f)); }
   if (t.closest('[data-pp-infos-apercu]')) majApercuInfosPP(t);
+});
+
+// Coller un tableau : dans la zone prévue, ou n'importe où dans la section (hors champ de saisie).
+document.addEventListener('paste', e => {
+  if (ui.vue !== 'pp' || ui.ppSection !== 'infos' || e.target.closest?.('dialog')) return;
+  const t = e.target;
+  if (t.matches?.('[data-pp-infos-coller]') || !t.closest?.('input, textarea, select, [contenteditable]')) {
+    try { collerInfosPP(e); } catch (err) { console.warn(err); toast('Tableau collé illisible : ' + err.message, 'erreur'); }
+  }
 });
 
 // Glisser-déposer d'un fichier sur la section.
