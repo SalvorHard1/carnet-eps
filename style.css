@@ -2251,6 +2251,11 @@ body.mode-eleve .bandeau-recup { display: none; }
 .pp-signal.plus { background: color-mix(in srgb, var(--n4) 14%, transparent); }
 .pp-signal.moins { background: color-mix(in srgb, var(--n1) 14%, transparent); }
 .pp-conseil-resume { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+/* Photos du trombinoscope dans l'espace PP */
+.pp-nom-photo { display: inline-flex; align-items: center; gap: 8px; text-align: left; }
+.pp-tableau .pp-nom-photo .mini-photo { width: 28px; height: 28px; }
+.pp-conseil-resume:has(.photo-fiche) { align-items: center; }
+.pp-conseil-resume ~ .pp-carte .tete-appr .mini-photo { display: none; } /* (conseil : la grande photo est déjà au-dessus) */
 .pp-grand { font-size: 20px; }
 .pp-notes { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 12px; font-weight: 600; }
 .pp-notes textarea { width: 100%; font-weight: normal; }
@@ -2270,6 +2275,13 @@ body.mode-eleve .bandeau-recup { display: none; }
 .pp-infos-apercu input[data-pp-infos-nom] { min-width: min(24em, 80vw); }
 .pp-infos-colonnes td:first-child { width: 1%; text-align: center; }
 .pp-infos-defile { overflow-x: auto; }
+/* Degrés d'alerte des informations incorporées (ppinfos.js) : 1 vigilance (jaune), 2 alerte (orange), 3 alerte forte (rouge) */
+.pp-deg1 { color: #a67c00; font-weight: 600; } .pp-deg2 { color: #d0640a; font-weight: 600; } .pp-deg3 { color: var(--danger); font-weight: 700; }
+.pp-fond-deg1 { background: color-mix(in srgb, #f2c200 26%, transparent); }
+.pp-fond-deg2 { background: color-mix(in srgb, #f08a24 30%, transparent); }
+.pp-fond-deg3 { background: color-mix(in srgb, var(--danger) 32%, transparent); font-weight: 700; }
+.pp-degres input[type=number] { width: 6em; }
+.pp-degres th { white-space: nowrap; }
 .pp-infos-source > .outils h3 { margin: 0; }
 @media (max-width: 600px) {
   .pp-table { font-size: 13px; }
@@ -2289,6 +2301,8 @@ body.mode-eleve .bandeau-recup { display: none; }
 #zone-impression .fc small { font-size: 7pt; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #6b7a75; }
 #zone-impression .fc-tete { display: flex; justify-content: space-between; align-items: center; gap: 12pt; padding: 13pt 16pt; border-radius: 10pt;
   background: linear-gradient(120deg, #1f6f5c, #2d8f78); color: #fff; }
+#zone-impression .fc-identite { flex: 1; min-width: 0; }
+#zone-impression .fc-photo { width: 52pt; height: 64pt; flex: none; border-radius: 8pt; object-fit: cover; border: 2pt solid rgba(255, 255, 255, .6); }
 #zone-impression .fc-sur { font-size: 8pt; opacity: .85; margin-bottom: 3pt !important; }
 #zone-impression .fc-sigles { margin-top: 5pt !important; display: flex; gap: 4pt; }
 #zone-impression .fc-sigle { font-size: 7.5pt; font-weight: 700; padding: 1pt 6pt; border-radius: 10pt; background: rgba(255, 255, 255, .22); }
@@ -2350,7 +2364,9 @@ body.mode-eleve .bandeau-recup { display: none; }
 #zone-impression .fc-notes h2 { color: #3b4f8a; }
 #zone-impression .fc-infos { background: #f4f9f7; border-color: #d3e6de; }
 #zone-impression .fc-infos h2 { color: #2c6b55; }
-#zone-impression .fc-infos .fc-alerte { color: #b3261e; }
+#zone-impression .fc-infos .fc-deg1 { color: #8a6500; }
+#zone-impression .fc-infos .fc-deg2 { color: #c25700; }
+#zone-impression .fc-infos .fc-deg3 { color: #b3261e; font-weight: 700; }
 #zone-impression .fc-journal { list-style: none; padding: 0 !important; }
 #zone-impression .fc-journal li { padding-left: 8pt; border-left: 2pt solid #cfdcd7; }
 #zone-impression .fc-journal i { color: #5d6b66; }

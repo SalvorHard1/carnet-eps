@@ -9,7 +9,7 @@
 // Rangement : collection `suivis` (chiffrée sur la clé avec le reste), marqués `pp: true` :
 //   « pp bulletin P1 », « pp appréciation P1 » (texte, niveaux, mention, notes du conseil), « pp journal » (suivi).
 
-const SECTIONS_PP = { bulletins: '📥 Bulletins', tableau: '📊 Tableau', appreciations: '✍ Appréciations', conseil: '🗣 Conseil', suivi: '🗂 Suivi', infos: '📎 Incorporer des informations' };
+const SECTIONS_PP = { bulletins: '📥 Bulletins', tableau: '📊 Tableau synthèse', appreciations: '✍ Appréciations', conseil: '🗣 Conseil', suivi: '🗂 Suivi', infos: '📎 Incorporer des informations' };
 const classesPP = () => classesTriees().filter(c => c.pp);
 const idBulletinPP = (eleveId, periode) => idSuivi(eleveId, 'pp bulletin ' + periode);
 const idApprPP = (eleveId, periode) => idSuivi(eleveId, 'pp appréciation ' + periode);
@@ -822,6 +822,7 @@ function htmlPP() {
       <div class="fiche-onglets pp-periodes">${periodesAnnee().map(p => `<button type="button" class="${p.id === periode ? 'actif' : ''}" data-pp="periode" data-arg="${p.id}">${p.code}</button>`).join('')}</div>
       <span class="aide">${lus} / ${eleves.length} bulletins lus</span>
       <span class="espace"></span>
+      <button type="button" data-pp="trombi" title="Photos des élèves de la classe (importer le trombinoscope en PDF ou en image)">📷 Trombinoscope</button>
       <button type="button" class="primaire pp-export" data-pp="fiches-pdf" ${lus ? '' : 'disabled'}
         title="Un PDF pour la classe : récapitulatif, puis une fiche par élève (appréciation générale, mention, moyennes, absences, points d’attention, notes du conseil, suivi)">📄 Fiches bilan du conseil</button>
     </div>
@@ -926,7 +927,7 @@ function htmlTableauPP(c, periode, eleves) {
       <tbody>${lignes.map(({ el, b, bp }) => {
     const d = bp && b.moyGen !== null && bp.moyGen !== null && bp.moyGen !== undefined ? b.moyGen - bp.moyGen : null;
     const x = appreciationPP(el, periode, r), m = x.mention;
-    return `<tr><td><button type="button" class="lien" data-pp="voir-eleve" data-arg="${el.id}">${esc(el.nom)} ${esc(el.prenom)}</button></td>
+    return `<tr><td><button type="button" class="lien pp-nom-photo" data-pp="voir-eleve" data-arg="${el.id}">${Trombi.mini(el)}${esc(el.nom)} ${esc(el.prenom)}</button></td>
           <td class="${classeMoyPP(b.moyGen)}"><b>${fmtMoyPP(b.moyGen)}</b></td>
           <td>${htmlRangPP(x.analyse.details.position)}</td>
           <td>${d === null ? '' : d >= 0.5 ? `<span class="pp-hausse">▲ ${fmtD(d)}</span>` : d <= -0.5 ? `<span class="pp-baisse">▼ ${fmtD(-d)}</span>` : '='}</td>
@@ -943,7 +944,7 @@ function htmlTableauPP(c, periode, eleves) {
 function htmlCartePP(el, periode, r, eleves) {
   const { analyse, propose, texte, manuel, enreg, mention, mentionCalculee } = appreciationPP(el, periode, r);
   const b = bulletinPP(el.id, periode);
-  if (!b) return `<div class="carte-appr pp-carte" data-pp-eleve="${el.id}"><div class="tete-appr"><b>${esc(el.nom)} ${esc(el.prenom)}</b>
+  if (!b) return `<div class="carte-appr pp-carte" data-pp-eleve="${el.id}"><div class="tete-appr">${Trombi.mini(el)}<b>${esc(el.nom)} ${esc(el.prenom)}</b>
     <span class="aide">— pas de bulletin lu pour ${esc(nomPeriodePP(periode))}</span></div></div>`;
   const perso = enreg?.niveaux || {}, abordees = new Set(rubriquesPP(r, analyse, perso));
   const puces = r.ordre.filter(k => k !== 'objectif' && (r.actives.includes(k) || abordees.has(k))).map(k => {
@@ -956,7 +957,7 @@ function htmlCartePP(el, periode, r, eleves) {
   const retirees = propose.retirees.length && !manuel
     ? `<span class="aide">Faute de place, laissé de côté : ${propose.retirees.map(k => k === 'bilan' ? 'bilan' : RUBRIQUES_PP[k].nom.toLowerCase()).join(', ')}.</span>` : '';
   return `<div class="carte-appr pp-carte" data-pp-eleve="${el.id}">
-    <div class="tete-appr"><b>${esc(el.nom)} ${esc(el.prenom)}</b> <span class="aide">moy. ${fmtMoyPP(b.moyGen)}</span>
+    <div class="tete-appr">${Trombi.mini(el)}<b>${esc(el.nom)} ${esc(el.prenom)}</b> <span class="aide">moy. ${fmtMoyPP(b.moyGen)}</span>
       ${manuel ? '<span class="badge-appr">modifiée à la main</span>' : ''}
       <span class="espace"></span>
       <label class="pp-mention">Mention<select data-pp-mention aria-label="Mention de ${esc(el.prenom)}">${[...new Set([...mentionsPP(r), mention])].map(k =>
@@ -1013,7 +1014,7 @@ function htmlConseilPP(c, periode, eleves) {
       <span class="aide">${i + 1} / ${avec.length}</span><span class="espace"></span>
       <button type="button" data-pp="compte-rendu" title="Copie, pour chaque élève : moyenne, mention et notes du conseil">📋 Compte rendu du conseil</button>    </div>
     <div class="pp-conseil-resume carte">
-      <b class="pp-grand">${esc(el.nom)} ${esc(el.prenom)}</b> ${besoins}
+      ${Trombi.mini(el, 'photo-fiche')}<b class="pp-grand">${esc(el.nom)} ${esc(el.prenom)}</b> ${besoins}
       <span>Moyenne générale <b class="${classeMoyPP(b.moyGen)}">${fmtMoyPP(b.moyGen)}</b>${b.moyGenClasse ? ` <small>(classe ${fmtD(b.moyGenClasse)})</small>` : ''}
         ${d === null ? '' : d >= 0.5 ? `<span class="pp-hausse">▲ ${fmtD(d)}</span>` : d <= -0.5 ? `<span class="pp-baisse">▼ ${fmtD(-d)}</span>` : '<span class="aide">stable</span>'}</span>
       <span>${b.absences !== null && b.absences !== undefined ? `Absences : ${b.absences} ½ j.${b.nonJustifiees ? ` dont ${b.nonJustifiees} NJ` : ''}` : ''}${b.retards ? ` · ${b.retards} retards` : ''}</span>
@@ -1050,7 +1051,7 @@ function htmlFicheConseilPP(el, periode, r, c) {
   const bloc = (titre, corps, cl = '') => `<div class="fc-bloc ${cl}"><h2>${titre}</h2>${corps}</div>`;
   return `<section class="fiche-conseil fc">
     <header class="fc-tete">
-      <div><p class="fc-sur">${esc(c.nom)} · ${esc(nomPeriodePP(periode))} · Conseil de classe</p>
+      ${Trombi.mini(el, 'fc-photo')}<div class="fc-identite"><p class="fc-sur">${esc(c.nom)} · ${esc(nomPeriodePP(periode))} · Conseil de classe</p>
         <h1>${esc(el.nom)} <span>${esc(el.prenom)}</span></h1>${besoins ? `<p class="fc-sigles">${besoins}</p>` : ''}</div>
       <div class="fc-decision"><small>Mention${x.enreg?.mention ? ' décidée' : ''}</small>${mentionFichePP(x.mention)}</div>
     </header>
@@ -1158,12 +1159,12 @@ function htmlSuiviPP(c, periode, eleves) {
   const alertes = eleves.map(el => ({ el, l: alertesPP(el, periode, r) })).filter(x => x.l.length);
   return `
     <div class="carte pp-alertes"><h3>⚠ Élèves à suivre — ${esc(nomPeriodePP(periode))}</h3>
-      ${alertes.length ? `<ul>${alertes.map(({ el, l }) => `<li><button type="button" class="lien" data-pp="ouvrir-suivi" data-arg="${el.id}"><b>${esc(el.nom)} ${esc(el.prenom)}</b></button> : ${l.map(esc).join(' · ')}</li>`).join('')}</ul>`
+      ${alertes.length ? `<ul>${alertes.map(({ el, l }) => `<li><button type="button" class="lien pp-nom-photo" data-pp="ouvrir-suivi" data-arg="${el.id}">${Trombi.mini(el)}<b>${esc(el.nom)} ${esc(el.prenom)}</b></button> : ${l.map(esc).join(' · ')}</li>`).join('')}</ul>`
     : '<p class="aide">Aucune alerte (moyenne sous 10, nettement sous celle de la classe, baisse d’au moins 1,5 point, 3 matières sous 10, travail ou comportement signalés, absences, rappels, seuils des 📎 informations incorporées).</p>'}</div>
     <div class="pp-suivi">${eleves.map(el => {
     const j = journalPP(el.id), ouvert = etatPP.suiviOuverts?.has(el.id), infos = htmlSuiviInfosPP(el, periode);
     return `<details class="carte pp-suivi-eleve" data-pp-suivi="${el.id}"${ouvert ? ' open' : ''}>
-        <summary><b>${esc(el.nom)} ${esc(el.prenom)}</b> ${Object.entries(BESOINS).filter(([, x]) => x.actif(el)).map(([k, x]) => `<span class="badge-${k}">${x.sigle}</span>`).join(' ')}
+        <summary>${Trombi.mini(el)}<b>${esc(el.nom)} ${esc(el.prenom)}</b> ${Object.entries(BESOINS).filter(([, x]) => x.actif(el)).map(([k, x]) => `<span class="badge-${k}">${x.sigle}</span>`).join(' ')}
           <span class="aide">${j.length ? `${j.length} note${j.length > 1 ? 's' : ''} · dernière le ${dateCourtePP(j[0].date)}` : ''}${infos ? `${j.length ? ' · ' : ''}📎 informations incorporées` : ''}</span></summary>
         <div class="outils">
           <button type="button" class="primaire" data-pp="note-suivi" data-arg="${el.id}">+ Note de suivi</button>
@@ -1283,6 +1284,7 @@ async function actionPP(action, arg, b) {
       return rendreVue();
     }
     case 'fiches-pdf': return exporterFichesPP();
+    case 'trombi': return Trombi.voir(classePP());
     case 'reglages-base': {
       // (La liste des mentions de l'établissement est gardée.)
       const { mentionsMasquees, mentionsPerso } = reglagePP();

@@ -254,7 +254,21 @@ async function importerInfosPP(f) {
 
 // Lignes retenues d'un élève, avec les seuils choisis dans l'aperçu.
 const lignesInfosPP = (lu, m) => lu.colonnes.filter(c => c.garder && m.has(c.nom)).map(c => ({ l: c.nom, ...m.get(c.nom), seuil: c.seuil ?? null }));
-const alerteLigneInfosPP = x => x.seuil !== null && x.seuil !== undefined && (x.n !== null && x.n !== undefined ? x.n >= x.seuil : !!x.v);
+
+// ⚙ Degrés d'alerte par thématique (nom de colonne), communs à toutes les classes : réglage doc `ppInfos`
+// { seuils: { colonne: seuil du 1er degré }, degres: { colonne: { s2, s3 } (chiffres) | { niveau } (texte) } }.
+const DEGRES_INFOS_PP = [null, { nom: 'Vigilance', pastille: '🟡' }, { nom: 'Alerte', pastille: '🟠' }, { nom: 'Alerte forte', pastille: '🔴' }];
+const reglageInfosPP = () => Donnees.get('reglages', 'ppInfos') || { id: 'ppInfos' };
+const estFixePP = v => v !== null && v !== undefined && v !== '' && Number.isFinite(+v);
+// Degré d'une valeur (0 : rien à signaler). apercu : seuil de l'aperçu d'import, pas celui retenu.
+function niveauLigneInfosPP(x, apercu = false, reg = reglageInfosPP()) {
+  const cle = sansAccent(x.l), d = reg.degres?.[cle] || {};
+  const s1 = !apercu && reg.seuils && cle in reg.seuils ? reg.seuils[cle] : x.seuil;
+  if (x.n === null || x.n === undefined) return !x.v ? 0 : d.niveau !== undefined ? +d.niveau || 0 : estFixePP(s1) ? 1 : 0;
+  return [s1, d.s2, d.s3].reduce((niv, s, i) => (estFixePP(s) && x.n >= +s ? i + 1 : niv), 0);
+}
+const alerteLigneInfosPP = x => niveauLigneInfosPP(x) > 0;
+const pastilleInfosPP = n => (DEGRES_INFOS_PP[n] ? DEGRES_INFOS_PP[n].pastille + ' ' : '');
 
 function valeursAvecRattachesPP(lu) {
   const res = new Map(lu.valeurs);
@@ -310,24 +324,72 @@ function texteGroupesInfosPP(lignes) {
   return [...groupes].map(([g, l]) => `${g} : ${l.join(', ')}`);
 }
 
-// Pour alertesPP : une ligne par groupe dont une valeur atteint son seuil.
+// Pour alertesPP : une ligne par groupe dont une valeur atteint un degré, avec la pastille du degré le plus haut.
 function alertesInfosPP(el, periode) {
+  const reg = reglageInfosPP();
   // (Nom de la source devant, s'il ne dit pas déjà de quoi il s'agit : « Infirmerie · Passages : 5 ».)
-  return sourcesInfosPP(el.id, periode).flatMap(s => texteGroupesInfosPP(s.lignes.filter(alerteLigneInfosPP))
-    .map(t => `📎 ${sansAccent(s.nom).includes(sansAccent(t.split(' : ')[0])) ? '' : s.nom + ' · '}${t}`));
+  return sourcesInfosPP(el.id, periode).flatMap(s => {
+    const l = s.lignes.map(x => ({ ...x, niv: niveauLigneInfosPP(x, false, reg) })).filter(x => x.niv);
+    return texteGroupesInfosPP(l).map(t => {
+      const g = t.split(' : ')[0], niv = Math.max(...l.filter(x => x.l.split(' · ')[0] === g).map(x => x.niv));
+      return `${pastilleInfosPP(niv)}📎 ${sansAccent(s.nom).includes(sansAccent(g)) ? '' : s.nom + ' · '}${t}`;
+    });
+  });
 }
 
-// Fiche bilan du conseil : un bloc par source (valeurs au-delà du seuil en gras).
+// Fiche bilan du conseil : un bloc par source (valeurs à un degré d'alerte : couleur du degré).
 function blocsFicheInfosPP(el, periode) {
-  return sourcesInfosPP(el.id, periode).map(s => `<div class="fc-bloc fc-infos"><h2>${esc(s.nom)}</h2><ul>${s.lignes.map(x =>
-    `<li${alerteLigneInfosPP(x) ? ' class="fc-alerte"' : ''}>${esc(x.l)} : <b>${esc(x.v)}</b>${alerteLigneInfosPP(x) ? ' ⚠' : ''}</li>`).join('')}</ul></div>`).join('');
+  const reg = reglageInfosPP();
+  return sourcesInfosPP(el.id, periode).map(s => `<div class="fc-bloc fc-infos"><h2>${esc(s.nom)}</h2><ul>${s.lignes.map(x => {
+    const n = niveauLigneInfosPP(x, false, reg);
+    return `<li${n ? ` class="fc-deg${n}"` : ''}>${esc(x.l)} : <b>${esc(x.v)}</b>${n ? ` ${DEGRES_INFOS_PP[n].pastille}` : ''}</li>`;
+  }).join('')}</ul></div>`).join('');
 }
 
 // 🗂 Suivi : ce qui a été incorporé pour l'élève (période affichée).
 function htmlSuiviInfosPP(el, periode) {
-  const l = sourcesInfosPP(el.id, periode);
-  return l.length ? `<ul class="pp-infos-eleve">${l.map(s => `<li><b>📎 ${esc(s.nom)}</b> <span class="aide">(${esc(nomPeriodePP(periode))})</span> : ${s.lignes.map(x =>
-    `<span class="${alerteLigneInfosPP(x) ? 'pp-baisse' : ''}">${esc(x.l)} ${esc(x.v)}</span>`).join(' · ')}</li>`).join('')}</ul>` : '';
+  const l = sourcesInfosPP(el.id, periode), reg = reglageInfosPP();
+  return l.length ? `<ul class="pp-infos-eleve">${l.map(s => `<li><b>📎 ${esc(s.nom)}</b> <span class="aide">(${esc(nomPeriodePP(periode))})</span> : ${s.lignes.map(x => {
+    const n = niveauLigneInfosPP(x, false, reg);
+    return `<span class="${n ? 'pp-deg' + n : ''}"${n ? ` title="${DEGRES_INFOS_PP[n].nom}"` : ''}>${pastilleInfosPP(n)}${esc(x.l)} ${esc(x.v)}</span>`;
+  }).join(' · ')}</li>`).join('')}</ul>` : '';
+}
+
+/* ---------- ⚙ Degrés d'alerte d'une source ---------- */
+
+async function reglerDegresInfosPP(nom, colonnes) {
+  const reg = reglageInfosPP();
+  const val = (cle, k) => { const d = reg.degres?.[cle] || {}; const v = k === 's1' ? reg.seuils?.[cle] : d[k]; return estFixePP(v) ? v : ''; };
+  const { resultat } = ouvrirModale(`Degrés d’alerte — ${nom}`, `
+    <p class="aide">Pour chaque thématique, la valeur à partir de laquelle l’élève passe à un degré. Dès le premier degré, l’élève
+      est un <b>élève à suivre</b> ; la couleur du degré apparaît dans le tableau, le 🗂 Suivi et les 📄 fiches bilan du conseil.
+      Case vide : degré non utilisé. Les degrés valent pour toutes les classes et tous les imports qui ont cette colonne.</p>
+    <div class="pp-infos-defile"><table class="pp-table pp-degres"><thead><tr><th>Thématique</th>${DEGRES_INFOS_PP.slice(1).map((d, i) =>
+    `<th><span class="pp-deg${i + 1}">${d.pastille} ${d.nom}</span><br><small>dès…</small></th>`).join('')}</tr></thead>
+      <tbody>${colonnes.map((c, i) => {
+    const cle = sansAccent(c.l);
+    if (c.texte) {
+      const actuel = reg.degres?.[cle]?.niveau ?? (estFixePP(reg.seuils?.[cle] ?? c.seuil) ? 1 : 0);
+      return `<tr><td>${esc(c.l)} <small class="aide">(texte)</small></td><td colspan="3"><label>Si c’est rempli
+        <select name="niv-${i}">${['Rien à signaler', ...DEGRES_INFOS_PP.slice(1).map(d => `${d.pastille} ${d.nom}`)].map((t, n) =>
+        `<option value="${n}" ${+actuel === n ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label></td></tr>`;
+    }
+    return `<tr><td>${esc(c.l)}</td>${['s1', 's2', 's3'].map((k, j) => `<td><input type="number" min="0" step="any" inputmode="decimal" name="${k}-${i}"
+      value="${k === 's1' && val(cle, k) === '' && !(reg.seuils && cle in reg.seuils) ? (c.seuil ?? '') : val(cle, k)}" aria-label="${esc(`${c.l} : ${DEGRES_INFOS_PP[j + 1].nom}`)}"></td>`).join('')}</tr>`;
+  }).join('')}</tbody></table></div>`, boutonsModale('Enregistrer'), 'modale-large');
+  const r = await resultat;
+  if (r.action !== 'ok') return;
+  const seuils = { ...(reg.seuils || {}) }, degres = { ...(reg.degres || {}) };
+  const nombre = v => (estFixePP(String(v).replace(',', '.')) ? +String(v).replace(',', '.') : null);
+  colonnes.forEach((c, i) => {
+    const cle = sansAccent(c.l);
+    if (c.texte) { const n = +r.data[`niv-${i}`] || 0; degres[cle] = { niveau: n }; seuils[cle] = n ? 1 : null; return; }
+    seuils[cle] = nombre(r.data[`s1-${i}`]);
+    degres[cle] = { s2: nombre(r.data[`s2-${i}`]), s3: nombre(r.data[`s3-${i}`]) };
+  });
+  Donnees.ecrire('reglages', { ...reg, id: 'ppInfos', seuils, degres });
+  toast(`Degrés d’alerte de « ${nom} » enregistrés.`, 'ok');
+  rendreVue();
 }
 
 /* ---------- 📎 Section « Incorporer des informations » ---------- */
@@ -378,22 +440,27 @@ function htmlApercuInfosPP(lu, eleves) {
 }
 
 function bilanApercuInfosPP(lu, valeurs = valeursAvecRattachesPP(lu), eleves = elevesDe(lu.classeId)) {
-  const suivre = eleves.filter(el => valeurs.has(el.id) && lignesInfosPP(lu, valeurs.get(el.id)).some(alerteLigneInfosPP));
+  const suivre = eleves.filter(el => valeurs.has(el.id) && lignesInfosPP(lu, valeurs.get(el.id)).some(x => niveauLigneInfosPP(x, true) > 0));
   return `<b>${valeurs.size}</b> élève${valeurs.size > 1 ? 's' : ''} recevront ces informations ; avec ces seuils, <b>${suivre.length}</b> élève${suivre.length > 1 ? 's' : ''} à suivre${
     suivre.length ? ` : ${suivre.slice(0, 12).map(el => esc(`${el.prenom} ${el.nom}`)).join(', ')}${suivre.length > 12 ? '…' : ''}` : ''}.`;
 }
 
 function htmlSourceInfosPP(nom, x, periode) {
-  const cols = [...new Set(x.eleves.flatMap(e => e.s.lignes.map(l => l.l)))];
-  const suivre = x.eleves.filter(e => e.s.lignes.some(alerteLigneInfosPP)).length;
+  const cols = [...new Set(x.eleves.flatMap(e => e.s.lignes.map(l => l.l)))], reg = reglageInfosPP();
+  const niv = x.eleves.map(e => Math.max(0, ...e.s.lignes.map(l => niveauLigneInfosPP(l, false, reg))));
+  const suivre = niv.filter(Boolean).length;
+  const parDegre = [3, 2, 1].map(n => [n, niv.filter(v => v === n).length]).filter(([, k]) => k)
+    .map(([n, k]) => `<span class="pp-deg${n}">${DEGRES_INFOS_PP[n].pastille} ${k}</span>`).join(' ');
   return `<div class="carte pp-infos-source"><div class="outils"><h3>📎 ${esc(nom)}</h3>
-      <span class="aide">${esc(x.fichier || '')}${x.date ? ` · importé le ${dateCourtePP(x.date)}` : ''} · ${x.eleves.length} élève${x.eleves.length > 1 ? 's' : ''}${suivre ? ` · ⚠ ${suivre} à suivre` : ''}</span>
+      <span class="aide">${esc(x.fichier || '')}${x.date ? ` · importé le ${dateCourtePP(x.date)}` : ''} · ${x.eleves.length} élève${x.eleves.length > 1 ? 's' : ''}${suivre ? ` · ${suivre} à suivre ${parDegre}` : ''}</span>
       <span class="espace"></span>
+      <button type="button" class="icone-petit" data-pp-infos="degres" data-arg="${esc(nom)}" title="Degrés d’alerte et couleurs par thématique" aria-label="Degrés d’alerte de ${esc(nom)}">⚙</button>
       <button type="button" class="icone-petit" data-pp-infos="supprimer" data-arg="${esc(nom)}" title="Retirer ces informations pour ${esc(nomPeriodePP(periode))}" aria-label="Retirer ${esc(nom)}">🗑</button></div>
     <div class="pp-infos-defile"><table class="pp-table pp-tableau"><thead><tr><th>Élève</th>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
       <tbody>${x.eleves.map(({ el, s }) => `<tr><td>${esc(el.nom)} ${esc(el.prenom)}</td>${cols.map(c => {
     const l = s.lignes.find(y => y.l === c);
-    return `<td class="${l && alerteLigneInfosPP(l) ? 'pp-n1' : ''}">${l ? esc(l.v) + (alerteLigneInfosPP(l) ? ' ⚠' : '') : ''}</td>`;
+    const n = l ? niveauLigneInfosPP(l, false, reg) : 0;
+    return `<td class="${n ? 'pp-fond-deg' + n : ''}"${n ? ` title="${DEGRES_INFOS_PP[n].nom}"` : ''}>${l ? esc(l.v) + (n ? ' ' + DEGRES_INFOS_PP[n].pastille : '') : ''}</td>`;
   }).join('')}</tr>`).join('')}</tbody></table></div></div>`;
 }
 
@@ -408,6 +475,16 @@ document.addEventListener('click', e => {
   const a = b.dataset.ppInfos;
   if (a === 'annuler') { etatPP.infosLu = null; return rendreVue(); }
   if (a === 'valider') return validerInfosPP();
+  if (a === 'degres') {
+    // Thématiques de la source (colonnes), d'après les élèves de la classe pour la période affichée.
+    const periode = periodePP(c), cols = new Map();
+    for (const el of elevesDe(c.id)) for (const l of infosPP(el.id, periode)?.sources?.[b.dataset.arg]?.lignes || []) {
+      const x = cols.get(l.l) || { l: l.l, texte: true, seuil: l.seuil ?? null };
+      if (l.n !== null && l.n !== undefined) x.texte = false;
+      cols.set(l.l, x);
+    }
+    return lancer(() => reglerDegresInfosPP(b.dataset.arg, [...cols.values()]));
+  }
   if (a === 'supprimer') {
     const periode = periodePP(c);
     return lancer(async () => {

@@ -328,14 +328,21 @@ const Donnees = (() => {
       throw new Error('Format de carnet inconnu (fichier d’une version plus récente de l’appli ?).');
     }
     let n = 0;
-    oublier(); // (après une fusion, revenir en arrière écraserait ce qui vient d'arriver)
+    const arrives = new Set();
     for (const c of COLLECTIONS) {
       for (const [id, o] of Object.entries(autre[c] || {})) {
         const mien = db[c][id];
         const res = PAR_CHAMP.has(c) ? fusionnerFiche(mien, o) : !mien || (o.maj || 0) > (mien.maj || 0) ? o : mien;
-        if (res !== mien) { db[c][id] = res; n++; }
+        if (res !== mien) { db[c][id] = res; n++; arrives.add(c + '|' + id); }
         db.meta.horloge = Math.max(db.meta.horloge, o.maj || 0, ...Object.values(o.majChamps || {}));
       }
+    }
+    // ↶ / ↷ restent possibles après « Enregistrer » : on n'oublie que les pas qui touchent un élément arrivé de la clé
+    // (revenir en arrière dessus écraserait ce qui vient d'arriver).
+    if (arrives.size) {
+      const touche = pas => [...pas.avant.keys()].some(cle => arrives.has(cle));
+      historique = historique.filter(p => !touche(p));
+      aRefaire = aRefaire.filter(p => !touche(p));
     }
     enregistrer();
     notifier();
