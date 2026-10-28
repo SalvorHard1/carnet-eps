@@ -421,7 +421,8 @@ async function ficheNotes(eleveId) {
     const el = eleves[idx], avant = garderOuverts ? ouverts() : null;
     $('h2', d).innerHTML = Trombi.titre(el, `Fiche bilan — ${el.nom} ${el.prenom}`); // (avec sa photo, pour le reconnaître)
     $('[data-fiche-onglets]', d).innerHTML = [['annee', 'Toute l’année'], ...periodesAnnee().map(p => [p.id, p.code])]
-      .map(([v, nom]) => `<button type="button" class="${v === periode ? 'actif' : ''}" data-fiche-periode="${v}">${nom}</button>`).join('');
+      .map(([v, nom]) => `<button type="button" class="${v === periode ? 'actif' : ''}" data-fiche-periode="${v}">${nom}</button>`).join('')
+      + `<label class="case delegue-fiche"><input type="checkbox" data-fiche-delegue ${el.delegue ? 'checked' : ''}> 👑 L’élève est délégué${el.sexe === 'F' ? 'e' : ''}</label>`;
     $('[data-fiche]', d).innerHTML = htmlFicheNotes(el, periode, eleves, { classe: moyClasse(), reglagesOuverts });
     if (avant) d.querySelectorAll('.depli-fiche').forEach((x, k) => { if (k < avant.length) x.open = avant[k]; });
     d.querySelector('[data-fiche-nav="-1"]').disabled = idx === 0;
@@ -440,6 +441,15 @@ async function ficheNotes(eleveId) {
       lancer(() => imprimerFiche(eleves[idx], periode, eleves, moyClasse(), $('[data-fiche-anonyme]', d).checked));
     }
   });
+  // 👑 Délégué de classe : enregistré aussitôt ; la liste des élèves est redessinée à la fermeture.
+  let delegueModifie = false;
+  d.addEventListener('change', e => {
+    if (!e.target.matches('[data-fiche-delegue]')) return;
+    const el = eleves[idx];
+    Donnees.ecrire('eleves', { ...Donnees.get('eleves', el.id), delegue: e.target.checked });
+    eleves[idx] = Donnees.get('eleves', el.id);
+    delegueModifie = true;
+  });
   d.addEventListener('input', e => {
     if (!e.target.matches('[data-obs-notes]')) return;
     enAttente = { eleve: eleves[idx].id, texte: e.target.value.trim() };
@@ -450,6 +460,7 @@ async function ficheNotes(eleveId) {
   await resultat;
   enregistrerObs();
   cartes.enregistrerTexte();
+  if (delegueModifie) rendreVue();
 }
 
 // Toucher le nom d'un élève dans la grille des notes ouvre sa fiche (les badges PAI, BEP, ⚠… gardent leur action).

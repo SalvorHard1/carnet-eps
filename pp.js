@@ -618,24 +618,121 @@ function rubriquesPP(r, a, perso = {}) {
   return r.ordre.filter(k => (r.actives.includes(k) || vigilancePP(a, k)) && (k === 'objectif' || !(k in perso) || !!perso[k]));
 }
 
-// Mention proposée (désactivable dans les réglages) d'après la moyenne et les niveaux de l'appréciation.
-// Une mention retirée de la liste n'est jamais proposée : on descend à la suivante (félicitations → compliments…).
-function mentionProposeePP(niv, a, r) {
-  const m = mentionCalculeePP(niv, a, r), l = mentionsPP(r);
-  return [m, ...({ felicitations: ['compliments', 'encouragements'], compliments: ['encouragements'] }[m] || [])].find(k => l.includes(k)) || 'aucune';
+/* ---------- Mentions : règle de chaque mention ----------
+   Pour chaque mention (⚙ Réglages) : une fourchette de moyenne générale (min, max ; vide = pas de limite) et un critère
+   écrit par l'enseignant (« pour un élève volontaire, qui progresse »), que l'appli traduit en niveaux de rubriques.
+   Critère laissé vide : celui de base (montré en gris dans le champ) pour les mentions de base, aucun pour les autres
+   (une mention sans fourchette ni critère n'est jamais proposée : elle se choisit à la main). */
+const REGLES_MENTIONS_PP = {
+  felicitations: { min: 16, critere: 'pour un élève sérieux, qui participe, au bon comportement' },
+  compliments: { min: 14, critere: 'pour un élève sérieux, au bon comportement' },
+  encouragements: { critere: 'pour un élève sérieux, qui participe, au bon comportement, qui progresse ou aux résultats encore modestes ou au travail excellent' },
+  avTravail: { critere: 'travail très insuffisant' },
+  avComportement: { critere: 'comportement très insuffisant' },
+};
+const EXEMPLE_CRITERE_PP = 'ex. pour un élève volontaire, qui progresse';
+
+// Mots qui désignent une rubrique (texte sans accents, en minuscules).
+const MOTS_RUBRIQUES_PP = [
+  ['assiduite', /assidu|ponctu|absen|retard/],
+  ['progression', /progres|hausse|amelior|remonte|baisse|regress|recul/],
+  ['resultats', /resultat|moyenne|\bnotes?\b/],
+  ['participation', /particip|\boral|dynamique|\bacti(f|ve)\b|curieu|interesse/],
+  ['comportement', /comportement|attitude|conduite|respect|\bpolie?\b|calme|\bsage|discipline|bavard|perturb|insolen|agite/],
+  ['travail', /travail|serieu|volontaire|investi|implique|motive|effort|appliqu|rigoureu|persever|regulier|courag/],
+];
+const NEGATION_PP = /\b(sans|aucune?|jamais|ni|pas d(e)?)\b/;
+const NEG_FORT_PP = /tres insuffisant|inacceptable|inadmissible|grave|tres faible|alarmant|tres mauvais|perturbateur|insolen|tres irregulier/;
+const NEG_PP = /insuffisant|manque|pas assez|\bpeu\b|irregulier|fragile|\bmoyens?\b|juste|modeste|faible|difficult|bavard|perturb|a amelior|baisse|regress|recul|absen|retard|souci|probleme|mauvais|irrespect|agite|decevant|passif/;
+const POS_FORT_PP = /tres bon|tres bien|excellent|exemplaire|irreprochable|remarquable|brillant|parfait|tres serieu|tres investi|tres volontaire|tres acti|tres implique|tres regulier|nette hausse|nets? progres|grands? progres|gros progres/;
+// (Sans avis des collègues, « au moins satisfaisant » est accordé pour ces rubriques : pas de remarque = pas de souci ;
+// pour le travail, seulement si les résultats sont bons.)
+const SANS_AVIS_OK_PP = ['participation', 'comportement', 'assiduite'];
+
+// Sens d'un morceau de critère : '++' très bien, '+' au moins satisfaisant, '-' fragile ou moins, '--' insuffisant.
+function sensCriterePP(s) {
+  const nie = NEGATION_PP.test(s);
+  if (NEG_FORT_PP.test(s)) return nie ? '+' : '--';
+  if (NEG_PP.test(s)) return nie ? '+' : '-'; // (« sans souci de comportement »)
+  if (nie) return '-';                          // (« pas de travail »)
+  return POS_FORT_PP.test(s) ? '++' : '+';
 }
-function mentionCalculeePP(niv, a, r) {
+function conditionPP(k, sens) {
+  if (k === 'progression' && sens.startsWith('-')) return { k, max: 1 }; // (en baisse)
+  return sens === '++' ? { k, min: 4 } : sens === '+' ? { k, min: 3 } : sens === '-' ? { k, max: 2 } : { k, max: 1 };
+}
+// Critère → { clauses: [[ [conditions] ou [conditions] ]…], ignores: [morceaux pas compris] }.
+// Les virgules, « et », « qui », « avec », « dont » séparent ce qui est exigé ensemble ; « ou » donne le choix.
+function interpreterCriterePP(texte) {
+  const clauses = [], ignores = [];
+  for (const morceau of String(texte || '').toLowerCase().split(/[,;.:!?()]|\bet\b|\bqui\b|\bavec\b|\bdont\b|\bmais\b/)) {
+    const alts = [];
+    for (const brut of morceau.split(/\bou\b/)) {
+      const s = sansAccent(brut).replace(/'/g, ' ');
+      if (!s) continue;
+      const ks = MOTS_RUBRIQUES_PP.filter(([, re]) => re.test(s)).map(([k]) => k);
+      if (ks.length) { const sens = sensCriterePP(s); alts.push(ks.map(k => conditionPP(k, sens))); continue; }
+      if (/[a-z]{3}/.test(s.replace(/\b(pour|une?|l|eleves?|les|des|de|d|du|au|aux|a|est|sont|son|sa|ses|encore|toujours|bien)\b/g, ''))) ignores.push(brut.trim());
+    }
+    if (alts.length) clauses.push(alts);
+  }
+  return { clauses, ignores };
+}
+function conditionOkPP(c, niv) {
+  const v = niv[c.k];
+  if (!v) return c.min === 3 && (SANS_AVIS_OK_PP.includes(c.k) || (c.k === 'travail' && niv.resultats >= 3));
+  return (c.min === undefined || v >= c.min) && (c.max === undefined || v <= c.max);
+}
+const critereOkPP = (crit, niv) => crit.clauses.every(alts => alts.some(conds => conds.every(c => conditionOkPP(c, niv))));
+
+// Règle d'une mention : ce qui est réglé, sinon celle de base (anciens réglages « Félicitations / Compliments dès »).
+function regleMentionPP(k, r) {
+  const base = REGLES_MENTIONS_PP[k], e = r.reglesMentions?.[k];
+  const nb = x => (x === null || x === undefined || x === '' || !Number.isFinite(+x) ? null : +x);
+  const ancien = k === 'felicitations' ? r.felicitations : k === 'compliments' ? r.compliments : undefined;
+  const ecrit = String(e?.critere || '').trim();
+  return { min: e ? nb(e.min) : nb(ancien ?? base?.min), max: e ? nb(e.max) : null,
+    ecrit, base: base?.critere || '', critere: ecrit || base?.critere || '' };
+}
+
+// Ce que l'appli a compris d'une règle (affiché sous la règle, dans les réglages).
+function texteConditionPP(c) {
+  const nom = RUBRIQUES_PP[c.k].nom.toLowerCase(), e = ['participation', 'assiduite'].includes(c.k) ? 'e' : '';
+  if (c.k === 'progression') return c.min === 4 ? 'nette progression' : c.min ? 'en progrès' : 'en baisse';
+  if (c.k === 'resultats') return c.min === 4 ? 'très bons résultats' : c.min ? 'bons résultats' : c.max === 2 ? 'résultats encore fragiles' : 'résultats insuffisants';
+  return c.min === 4 ? `${nom} très bien` : c.min ? `${nom} au moins satisfaisant${e}` : c.max === 2 ? `${nom} fragile ou insuffisant${e}` : `${nom} insuffisant${e}`;
+}
+function htmlRegleComprisePP(g) {
+  const crit = interpreterCriterePP(g.critere);
+  const moy = g.min !== null && g.max !== null ? `moyenne de ${fmt(g.min)} à ${fmt(g.max)}` : g.min !== null ? `moyenne dès ${fmt(g.min)}`
+    : g.max !== null ? `moyenne jusqu’à ${fmt(g.max)}` : '';
+  const conds = crit.clauses.map(alts => {
+    const l = alts.map(cs => cs.map(texteConditionPP).join(' et '));
+    return l.length > 1 ? `(${l.join(' ou ')})` : l[0];
+  });
+  const morceaux = [moy, ...conds].filter(Boolean);
+  if (!morceaux.length) return g.critere ? `⚠ Critère pas compris${crit.ignores.length ? ` (${crit.ignores.map(x => '« ' + esc(x) + ' »').join(', ')})` : ''} : jamais proposée. Écris par ex. « sérieux », « qui progresse », « bon comportement »…`
+    : 'Pas de règle : jamais proposée par l’appli (à choisir à la main pour un élève).';
+  return `${g.ecrit || !g.base ? 'L’appli comprend' : 'Règle de base'} : ${esc(morceaux.join(' · '))}`
+    + (crit.clauses.flat(2).some(c => c.k === 'progression') ? ' <span class="aide">(progrès : moyenne générale comparée à celle de la période précédente)</span>' : '')
+    + (crit.ignores.length ? ` <span class="pp-pas-compris">· pas compris : ${crit.ignores.map(x => '« ' + esc(x) + ' »').join(', ')}</span>` : '');
+}
+
+// Mention proposée (désactivable dans les réglages) d'après la moyenne générale et les niveaux de l'appréciation :
+// les avertissements d'abord (comportement, puis travail), puis les autres mentions dans l'ordre de la liste ;
+// la première dont la règle est remplie. Une mention retirée de la liste n'est jamais proposée.
+function mentionProposeePP(niv, a, r) {
   if (!r.mentions) return 'aucune';
-  const m = a.details.moy;
-  if (niv.comportement === 1) return 'avComportement';
-  if (niv.travail === 1) return 'avTravail';
-  const ok = k => !niv[k] || niv[k] >= 3;
-  if (m !== null && m !== undefined && m >= r.felicitations && ok('travail') && ok('comportement') && ok('participation')) return 'felicitations';
-  if (m !== null && m !== undefined && m >= r.compliments && ok('travail') && ok('comportement')) return 'compliments';
-  // Encouragements : un travail sérieux qui mérite d'être salué — résultats encore modestes, travail très bien, ou
-  // moyenne générale en hausse (d'après les bulletins, pas d'après les mots des collègues).
-  if (niv.travail >= 3 && ok('participation') && ok('comportement')
-    && (niv.resultats <= 2 || niv.travail === 4 || a.details.ecart >= 0.5)) return 'encouragements';
+  const m = a.details.moy, l = mentionsPP(r).filter(k => k !== 'aucune');
+  // (Progrès : d'après les moyennes générales des bulletins, pas d'après les mots des collègues.)
+  if (a.details.ecart === undefined) niv = { ...niv, progression: undefined };
+  const ordre = [...l.filter(k => k === 'avComportement'), ...l.filter(k => estAvertPP(k) && k !== 'avComportement'), ...l.filter(k => !estAvertPP(k))];
+  for (const k of ordre) {
+    const g = regleMentionPP(k, r), crit = interpreterCriterePP(g.critere), fourchette = g.min !== null || g.max !== null;
+    if (!fourchette && !crit.clauses.length) continue; // (pas de règle, ou critère pas compris : jamais proposée)
+    if (fourchette && (m === null || m === undefined || (g.min !== null && m < g.min) || (g.max !== null && m > g.max))) continue;
+    if (critereOkPP(crit, niv)) return k;
+  }
   return 'aucune';
 }
 
@@ -924,6 +1021,7 @@ function reglagePP() {
   r.longueur = Math.max(80, Math.min(2000, +r.longueur || 300));
   if (!(Array.isArray(r.seuils) && r.seuils.length === 3 && r.seuils.every(Number.isFinite))) r.seuils = [10, 13, 16];
   r.mentionsMasquees = Array.isArray(r.mentionsMasquees) ? r.mentionsMasquees.filter(k => MENTIONS_PP[k] && k !== 'aucune') : [];
+  if (!r.reglesMentions || typeof r.reglesMentions !== 'object' || Array.isArray(r.reglesMentions)) r.reglesMentions = {};
   r.mentionsPerso = Array.isArray(r.mentionsPerso) ? [...new Set(r.mentionsPerso.map(n => String(n).replace(/\s+/g, ' ').trim()).filter(Boolean))] : [];
   return r;
 }
@@ -964,13 +1062,35 @@ function htmlReglagePP(r) {
       ${r.mentionsMasquees.length ? `<span class="aide">Retirées : ${r.mentionsMasquees.map(k => `<button type="button" class="lien" data-pp="mention-remettre" data-arg="${k}" title="Remettre dans la liste">↺ ${esc(MENTIONS_PP[k])}</button>`).join(' ')}</span>` : ''}
       <span class="aide">« ✎ Saisie manuelle… », en bas de la liste des mentions d’un élève, ajoute aussi un intitulé ici. Une mention retirée n’est plus proposée par l’appli.</span>
     </div>
-    <p><button type="button" data-pp="reglages-base" title="Résultats, travail, comportement et objectif ; 300 caractères ; 3e personne, bienveillant, en phrases">↺ Réglages de base</button></p>
-    <div class="ligne">
-      <label class="etroit">Félicitations dès<input type="number" name="pp-felicitations" min="0" max="20" step="0.5" value="${r.felicitations}"></label>
-      <label class="etroit">Compliments dès<input type="number" name="pp-compliments" min="0" max="20" step="0.5" value="${r.compliments}"></label>
-      <span class="aide">de moyenne générale, avec un travail et un comportement au moins satisfaisants. Encouragements : travail sérieux,
-        avec des résultats encore modestes, un travail très bien ou une moyenne en hausse. Avertissement : travail ou comportement au niveau 1.</span>
-    </div>`;
+    <div class="pp-regles-mentions">
+      <p class="aide">Pour chaque mention : la moyenne générale qui y donne droit (vide = pas de limite) et, en quelques mots, à quel élève
+        elle revient. L’appli reconnaît le travail (sérieux, volontaire…), la participation, le comportement, les progrès, les résultats,
+        l’assiduité, et les mots « très », « excellent », « insuffisant », « sans »… ; « ou » laisse le choix. Les avertissements passent
+        en premier, puis les mentions dans l’ordre de la liste. Un critère laissé vide garde celui écrit en gris.</p>
+      ${mentionsPP(r).filter(k => k !== 'aucune').map(k => {
+        const g = regleMentionPP(k, r);
+        return `<div class="pp-regle-mention${estAvertPP(k) ? ' avert' : ''}" data-pp-regle="${esc(k)}">
+        <b>${esc(nomMentionPP(k))}</b>
+        <label class="pp-fourchette">Moyenne de<input type="number" name="pp-rm-min" min="0" max="20" step="0.5" value="${g.min ?? ''}" placeholder="—" aria-label="${esc(nomMentionPP(k))} : moyenne minimale">
+          à<input type="number" name="pp-rm-max" min="0" max="20" step="0.5" value="${g.max ?? ''}" placeholder="—" aria-label="${esc(nomMentionPP(k))} : moyenne maximale"></label>
+        <label class="pp-critere">Critère<input type="text" name="pp-rm-critere" maxlength="200" value="${esc(g.ecrit)}" placeholder="${esc(g.base || EXEMPLE_CRITERE_PP)}" aria-label="${esc(nomMentionPP(k))} : critère"></label>
+        <span class="aide pp-compris" data-pp-compris>${htmlRegleComprisePP(g)}</span>
+      </div>`;
+      }).join('')}
+    </div>
+    <p><button type="button" data-pp="reglages-base" title="Résultats, travail, comportement et objectif ; 300 caractères ; 3e personne, bienveillant, en phrases (la liste des mentions et leurs règles sont gardées)">↺ Réglages de base</button></p>`;
+}
+
+// Règles des mentions lues dans le formulaire (celles des mentions retirées de la liste sont gardées).
+function lireReglesMentionsPP(form) {
+  const nb = d => { const x = parseFloat(String(d?.value ?? '').replace(',', '.')); return Number.isFinite(x) ? Math.max(0, Math.min(20, x)) : null; };
+  const regles = { ...(reglagePP().reglesMentions || {}) };
+  form.querySelectorAll('[data-pp-regle]').forEach(d => {
+    let min = nb(d.querySelector('[name="pp-rm-min"]')), max = nb(d.querySelector('[name="pp-rm-max"]'));
+    if (min !== null && max !== null && min > max) [min, max] = [max, min];
+    regles[d.dataset.ppRegle] = { min, max, critere: d.querySelector('[name="pp-rm-critere"]').value.replace(/\s+/g, ' ').trim() };
+  });
+  return regles;
 }
 
 function lireReglagePP(form) {
@@ -981,7 +1101,7 @@ function lireReglagePP(form) {
     adresse: v('pp-adresse') || 'il', ton: v('pp-ton') || 'bienveillant', style: v('pp-style') || 'phrases',
     longueur: Math.max(80, Math.min(2000, +v('pp-longueur') || 300)),
     seuils: [nb('pp-s2', 10), nb('pp-s3', 13), nb('pp-s4', 16)].sort((a, b) => a - b),
-    mentions: !!form.elements['pp-mentions']?.checked, felicitations: nb('pp-felicitations', 16), compliments: nb('pp-compliments', 14),
+    mentions: !!form.elements['pp-mentions']?.checked, reglesMentions: lireReglesMentionsPP(form),
   };
 }
 
@@ -1514,8 +1634,8 @@ async function actionPP(action, arg, b) {
     case 'trombi': return Trombi.voir(classePP());
     case 'reglages-base': {
       // (La liste des mentions de l'établissement est gardée.)
-      const { mentionsMasquees, mentionsPerso } = reglagePP();
-      Donnees.ecrire('reglages', { ...Donnees.get('reglages', 'pp'), id: 'pp', ...structuredClone(REGLAGES_DEFAUT.pp), mentionsMasquees, mentionsPerso });
+      const { mentionsMasquees, mentionsPerso, reglesMentions, felicitations, compliments } = reglagePP();
+      Donnees.ecrire('reglages', { ...Donnees.get('reglages', 'pp'), id: 'pp', ...structuredClone(REGLAGES_DEFAUT.pp), mentionsMasquees, mentionsPerso, reglesMentions, felicitations, compliments });
       $('#vue [data-pp-reglages]').innerHTML = htmlReglagePP(reglagePP());
       return reglagesModifiesPP();
     }
@@ -1635,6 +1755,17 @@ document.addEventListener('input', e => {
   if (ui.vue !== 'pp' || !t.closest?.('#vue')) return;
   const c = classePP();
   if (!c) return;
+  // Règle d'une mention : ce que l'appli comprend s'affiche pendant la frappe ; enregistrée après une courte pause.
+  const regle = t.closest('[data-pp-regle]');
+  if (regle) {
+    const nb = n => { const x = parseFloat(String(regle.querySelector(`[name="${n}"]`).value).replace(',', '.')); return Number.isFinite(x) ? x : null; };
+    const g = regleMentionPP(regle.dataset.ppRegle, { ...reglagePP(), reglesMentions: { [regle.dataset.ppRegle]: {
+      min: nb('pp-rm-min'), max: nb('pp-rm-max'), critere: regle.querySelector('[name="pp-rm-critere"]').value } } });
+    $('[data-pp-compris]', regle).innerHTML = htmlRegleComprisePP(g);
+    clearTimeout(minuteurReglagesPP);
+    minuteurReglagesPP = setTimeout(reglagesModifiesPP, t.type === 'number' ? 500 : 800);
+    return;
+  }
   // Réglages chiffrés (longueur, seuils) : appréciations refaites pendant la frappe, après une courte pause.
   if (t.closest('[data-pp-reglages]') && t.type === 'number') {
     clearTimeout(minuteurReglagesPP);

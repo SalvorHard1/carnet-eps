@@ -16,6 +16,7 @@ const FILTRES_ELEVES = {
   adaptes: ['Adaptés', el => !!el.adapte],
   besoins: ['PAI / BEP', el => aPai(el) || aBep(el)],
   alertes: ['À surveiller', el => !!(absencesEleve(el).niveau || oublisTenue(el).niveau)],
+  delegues: ['👑 Délégués', el => !!el.delegue],
   photo: ['Sans photo', el => !el.photo],
 };
 
@@ -50,7 +51,7 @@ function htmlCarteEleve(el, i, periode) {
   return `
     <div class="carte-eleve ${lisere}" data-carte-eleve="${el.id}" role="button" tabindex="0" title="${esc(titre)}" aria-label="${esc(titre)}">
       <span class="num-carte">${i + 1}</span>
-      ${avatarEleve(el)}
+      <span class="avatar-carte">${avatarEleve(el)}${el.delegue ? `<span class="couronne-delegue" title="Délégué${el.sexe === 'F' ? 'e' : ''} de classe" aria-label="délégué de classe">👑</span>` : ''}</span>
       <span class="prenom-carte">${esc(el.prenom)}</span>
       <span class="nom-carte">${esc(el.nom)}</span>
       <span class="etiquettes-carte">${etiquettes}</span>

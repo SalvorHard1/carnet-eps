@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.143.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.146.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -609,7 +609,7 @@ function rendreClasses() {
   $('#liste-classes').innerHTML = classes.map(c => `
     <li class="${c.id === active?.id ? 'active' : ''}" data-id="${c.id}">
       <button class="classe" data-classe="${c.id}" title="Appui long pour changer l’ordre des classes">
-        <span class="classe-nom">${esc(c.nom)}</span>
+        <span class="classe-nom">${esc(c.nom)}${c.pp ? '<span class="etoile-pp" title="Je suis professeur principal de cette classe" aria-label="professeur principal">⭐</span>' : ''}</span>
         <span class="classe-info">${esc(c.niveau || '')}${c.niveau ? ' · ' : ''}${elevesDe(c.id).length} élèves${c.exemple ? ' · exemple' : ''}</span>
       </button>
       ${c.id === active?.id ? `<button class="modif" data-modif-classe="${c.id}" title="Modifier la classe" aria-label="Modifier la classe">✎</button>` : ''}
