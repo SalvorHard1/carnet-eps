@@ -70,6 +70,9 @@ une fonction de même nom dans deux fichiers écrase silencieusement l'autre. Ch
 | `ppinfos.js` | Espace Prof principal › 📎 Incorporer des informations : tableaux d’absences, de vie scolaire, d’infirmerie (Excel, CSV, Word .docx, PDF, tableau collé) lus par l’appli ; listes « une ligne par événement » de la Vie scolaire École Directe (absences / retards, sanctions, dispenses) comptées par élève pour la période ; valeurs par élève et période (`suivis` « pp infos … »), seuils → élèves à suivre (`alertesPP`), blocs de la fiche bilan du conseil. |
 | `baremes.js` | Onglet « Barèmes ». |
 | `verrou.js` | Verrouillage automatique de l'écran. |
+| `aide.js` | Aide « Hugo » (bulle ? en bas à droite) : arborescence `AIDE_RUBRIQUES` (nœud = titre + `enfants`, ou `reponse` [+ `intro`, `puces` = points à savoir au lieu d'étapes numérotées] + `guide`), construite par `rubriquesAide()` à chaque affichage :
+tout texte propre à une discipline passe par `eps`, `mot()`, `aideCodes()`, `oubliTenue()`… (jamais « Leçons », « APSA » ou « tenue » en dur ; une question
+propre à l'EPS s'ajoute avec `...(eps ? [question] : [])`), puis guidage à l'écran : étapes `{ cible, texte, fait, suivant, defiler, sinon }` vérifiées toutes les 200 ms (fabriquées par `etapeOnglet`, `etapeBouton`, `etapeZone`, `etapeZonePage`, `etapeValider`), bulle et anneau placés dans la fenêtre ouverte s'il y en a une. Ajouter un thème = ajouter un nœud. Logo « cadran » (`teteHugo`) en `currentColor` : toujours la couleur de l'appli (`--accent`), jamais une couleur fixe. |
 | `app.js` | Vues principales, classes, élèves, notes, navigation, mises à jour. |
 | `sw.js` | Service worker « réseau d'abord », cache par version. |
 

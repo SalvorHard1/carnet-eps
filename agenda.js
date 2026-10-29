@@ -693,7 +693,7 @@ async function importerEdtPdf(fichier) {
   creneaux.forEach(x => { x.semaine = semaineDuTexte(x.texte, reg); }); // (« Sem. A », « semaine paire »… écrit dans la case)
   const { resultat } = ouvrirModale('Créneaux trouvés dans le PDF', `
     <p><b>${esc(fichier.name)}</b> : ${creneaux.length} cours trouvé${creneaux.length > 1 ? 's' : ''}.
-      Vérifie, corrige la classe si besoin, et décoche ce qui n’est pas un cours d’EPS de tes classes.</p>
+      Vérifie, corrige la classe si besoin, et décoche ce qui n’est pas un cours ${profil().id === 'svt' ? 'de SVT' : 'd’EPS'} de tes classes.</p>
     ${notes.map(n => `<p class="aide">⚠ ${esc(n)}</p>`).join('')}
     <div class="liste-import-edt">${creneaux.map((x, k) => `<div class="ligne import-edt">
       <input type="checkbox" name="garder" value="${k}" ${x.classeId ? 'checked' : ''} aria-label="Garder ce créneau">

@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.146.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.157.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2403,8 +2403,11 @@ const CONSIGNES_DOSSIER = {
   drive: ['Dossier du carnet sur le Drive', 'ouvre le dossier de ton <b>Drive</b> sur cet ordinateur (« Google Drive », « OneDrive »… dans le menu de gauche),'
     + ' puis un dossier <b>Carnet EPS</b> (« Nouveau dossier » pour le créer la première fois). Le logiciel du Drive doit être installé sur l’ordinateur'],
 };
+// Dossier conseillé dans les consignes : « Carnet EPS », « Carnet SVT »… selon la discipline du carnet.
+const nomDossierCarnet = texte => texte.split('Carnet EPS').join(profil().carnet);
 async function choisirDossierCle() {
-  const [titre, ou] = CONSIGNES_DOSSIER[destinationActive()];
+  const [titre, consigne] = CONSIGNES_DOSSIER[destinationActive()];
+  const ou = nomDossierCarnet(consigne);
   const { resultat } = ouvrirModale(titre, `
     <p>Dans la fenêtre qui va s’ouvrir, ${ou}, puis clique sur <b>« Sélectionner un dossier »</b>.</p>
     <p class="aide">On choisit bien un <b>dossier</b>, pas un fichier : l’appli y range elle-même <b>carnet-eps.json</b> (ton carnet)
@@ -2529,7 +2532,7 @@ async function exporterTablette({ secours = false } = {}) {
   const mode = Cle.modeTablettePour(ailleurs ? 'cle' : dest);
   // Dossier de la tablette : toujours carnet-eps.json (la tablette propose de remplacer : pas d'accumulation).
   const nomFixe = dest === 'dossier' && !ailleurs ? Cle.NOM_FICHIER : undefined;
-  const consigne = CONSIGNES_TABLETTE[ailleurs ? 'ailleurs' : dest][mode] + (nomFixe ? APRES_DOSSIER : APRES_DEPOT);
+  const consigne = nomDossierCarnet(CONSIGNES_TABLETTE[ailleurs ? 'ailleurs' : dest][mode]) + (nomFixe ? APRES_DOSSIER : APRES_DEPOT);
   const libelle = ailleurs ? '📦 Enregistrer la copie' : `${x.icone} Enregistrer ${esc(x.sur)}`;
   const { d } = ouvrirModale(secours ? 'Copie de secours prête' : 'Fichier prêt', `<p>Touche le bouton ci-dessous : ${consigne}</p>`,
     `<span class="espace"></span><button type="button" data-fermer>Annuler</button><button type="button" class="primaire" data-partager>${libelle}</button>`);
@@ -2632,7 +2635,9 @@ $('#menu-cle').addEventListener('change', e => {
 });
 // Fermeture : toucher ailleurs, ou Échap.
 document.addEventListener('click', e => {
-  if (!$('#menu-cle').hidden && !e.target.closest('#menu-cle, [data-action="cle"]')) ouvrirMenuCle(false);
+  // (la bulle du guide de l'aide montre le contenu du menu : la toucher ne le ferme pas ; composedPath, car son
+  // bouton « Suivant » est déjà remplacé quand ce clic arrive ici)
+  if (!$('#menu-cle').hidden && !e.target.closest('#menu-cle, [data-action="cle"]') && !e.composedPath().some(n => n.id === 'hugo-guide')) ouvrirMenuCle(false);
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !$('#menu-cle').hidden) { ouvrirMenuCle(false); $('#btn-sauver').focus(); }

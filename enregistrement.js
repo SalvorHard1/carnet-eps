@@ -19,7 +19,7 @@ const DESTINATIONS = {
   dossier: {
     icone: '💻', nom: 'Dossier de l’appareil', mon: 'Mon dossier', sur: 'dans le dossier', depuis: 'depuis le dossier', le: 'le dossier', ta: 'ton dossier',
     introuvable: 'Dossier introuvable ?', verifier: 'vérifie que le dossier existe toujours',
-    explication: 'Une copie rangée sur cet appareil (ex. Documents › Carnet EPS). Elle ne protège pas d’une panne de l’appareil.',
+    get explication() { return `Une copie rangée sur cet appareil (ex. Documents › ${profil().carnet}). Elle ne protège pas d’une panne de l’appareil.`; },
   },
   drive: {
     icone: '☁', nom: 'Drive', mon: 'Mon Drive', sur: 'sur le Drive', depuis: 'depuis le Drive', le: 'le Drive', ta: 'ton Drive',
@@ -43,7 +43,7 @@ const AVERTISSEMENT_DRIVE = `
 // un fichier .json à poser ou à choisir sur tablette.
 function htmlFormeSauvegarde(dest = ui.destination) {
   return Cle.accesDirect
-    ? `<b>📁 Sur cet ordinateur, tu choisis un dossier</b> (une seule fois, ex. « Carnet EPS ») ; l’appli y range :
+    ? `<b>📁 Sur cet ordinateur, tu choisis un dossier</b> (une seule fois, ex. « ${esc(profil().carnet)} ») ; l’appli y range :
       <span class="arbre-sauvegarde">carnet-eps.json <small>— ton carnet (ne pas le renommer)</small><br>
       Sauvegardes/ <small>— copies datées, triées toutes seules</small></span>
       Tu n’as aucun fichier à ouvrir toi-même.`
@@ -52,7 +52,7 @@ function htmlFormeSauvegarde(dest = ui.destination) {
     ? '<b>Enregistrer</b> écrit toujours <b>carnet-eps.json</b> <small>(remplace l’ancien : un seul fichier)</small>'
     : '<b>Enregistrer</b> pose un fichier <b>carnet-eps-tablette_date_heure.json</b> <small>(nom unique : il ne remplace rien)</small>'}<br>
       <b>Récupérer</b> : choisis les <b>.json</b> du dossier, <b>un ou plusieurs</b> <small>(l’appli prend tout, dans l’ordre des dates : pas d’erreur possible)</small></span>
-      Mets-les toujours dans le <b>même dossier</b> (ex. « Carnet EPS »).`;
+      Mets-les toujours dans le <b>même dossier</b> (ex. « ${esc(profil().carnet)} »).`;
 }
 
 // Fenêtre « Où enregistrer ton carnet ? ». Renvoie la destination choisie, ou null (annulé).

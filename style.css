@@ -2427,3 +2427,106 @@ body.mode-eleve .bandeau-recup { display: none; }
 #zone-impression .fc-table tbody tr:nth-child(even) td { background: #f7faf9; }
 #zone-impression .fc-table td.nom { font-weight: 600; }
 #zone-impression .fc-compte { font-size: 8pt; font-weight: 700; color: #9a5b00; background: #fff1d6; padding: 1pt 6pt; border-radius: 20pt; white-space: nowrap; }
+
+/* ---------- Aide « Hugo » (aide.js) ---------- */
+#hugo-bouton {
+  position: fixed; right: 16px; bottom: calc(16px + var(--bas, 0px) + env(safe-area-inset-bottom)); z-index: 60;
+  width: 52px; height: 52px; padding: 4px; border-radius: 50%; border: 0;
+  background: var(--accent); color: var(--accent-texte);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .25); cursor: pointer;
+}
+#hugo-bouton .hugo-tete { width: 100%; height: 100%; color: inherit; }
+#hugo-bouton.ouvert { background: var(--accent-doux); color: var(--accent); outline: 2px solid var(--accent); }
+body:has(#saisie:not([hidden])) #hugo-bouton { bottom: calc(84px + var(--bas, 0px) + env(safe-area-inset-bottom)); }
+#hugo-panneau {
+  position: fixed; right: 16px; bottom: calc(74px + var(--bas, 0px) + env(safe-area-inset-bottom)); z-index: 61;
+  width: min(360px, calc(100vw - 32px)); max-height: min(560px, calc(100dvh - 120px)); display: flex; flex-direction: column;
+  background: var(--surface); color: var(--texte); border: 1px solid var(--bord); border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .25); overflow: hidden; animation: apparait .15s ease-out;
+}
+#hugo-panneau[hidden], #hugo-bouton[hidden] { display: none; }
+body.mode-eleve #hugo-bouton, body.mode-eleve #hugo-panneau, body.mode-eleve #hugo-guide, body.mode-eleve #hugo-anneau { display: none; }
+.hugo-entete { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--accent-doux); }
+.hugo-entete b { font-size: 16px; }
+.hugo-corps { padding: 10px 14px 14px; overflow-y: auto; }
+.hugo-retour { display: block; margin-bottom: 6px; }
+.hugo-dit { margin: 4px 0 10px; padding: 8px 12px; border-radius: 12px 12px 12px 2px; background: var(--surface2); }
+.hugo-question { margin: 0 0 8px; font-size: 15px; }
+.hugo-reponse { margin: 0 0 8px; padding-left: 22px; line-height: 1.45; }
+.hugo-reponse li { margin-bottom: 6px; }
+.hugo-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.hugo-liste button { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; padding: 10px 12px; }
+.hugo-liste button:disabled { opacity: .55; }
+.hugo-liste .hugo-icone { font-size: 20px; }
+.hugo-liste .hugo-fleche { margin-left: auto; color: var(--texte2); font-size: 12px; white-space: nowrap; }
+.hugo-choix { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Logo de Hugo (cadran) : couleur de l'appli (⚙ Réglages), rayons en transparence, un rayon plein */
+.hugo-tete { display: inline-block; width: 36px; height: 36px; flex: none; color: var(--accent); }
+.hugo-tete svg { width: 100%; height: 100%; display: block; }
+.hg-rayon { fill: currentColor; opacity: .35; }
+.hg-rayon-actif { fill: currentColor; transition: opacity .2s; }
+.hg-question { fill: currentColor; font: 800 26px/1 system-ui, sans-serif; }
+/* Hugo à l'écran : anneau autour de ce qu'il faut toucher + bulle à côté (couleur de l'appli) */
+#hugo-anneau {
+  position: fixed; z-index: 2147483646; pointer-events: none; border-radius: 12px;
+  border: 3px solid var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent);
+  animation: hugo-pulse 1.2s ease-in-out infinite;
+}
+#hugo-anneau[hidden] { display: none; }
+@keyframes hugo-pulse { 50% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent); } }
+#hugo-guide {
+  position: fixed; z-index: 2147483647; width: min(320px, calc(100vw - 24px)); display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 12px; border-radius: 14px; background: var(--surface); color: var(--texte); text-align: left;
+  border: 2px solid var(--accent); box-shadow: 0 10px 30px rgba(0, 0, 0, .3); font-size: 14px; font-weight: normal;
+}
+#hugo-guide .hugo-tete { width: 44px; height: 44px; }
+#hugo-guide p { margin: 2px 0 8px; }
+#hugo-guide small { color: var(--texte2); }
+.hugo-guide-boutons { display: flex; gap: 6px; flex-wrap: wrap; }
+#hugo-guide[data-pointe="haut"]::before, #hugo-guide[data-pointe="bas"]::before {
+  content: ''; position: absolute; left: var(--pointe-x, 20px); width: 14px; height: 14px; background: var(--surface);
+  border: 2px solid var(--accent); transform: rotate(45deg);
+}
+#hugo-guide[data-pointe="haut"]::before { top: -9px; border-right: 0; border-bottom: 0; }
+#hugo-guide[data-pointe="bas"]::before { bottom: -9px; border-left: 0; border-top: 0; }
+@media print { #hugo-bouton, #hugo-panneau, #hugo-guide, #hugo-anneau { display: none !important; } }
+.hugo-intro { margin: 0 0 8px; color: var(--texte2); font-style: italic; }
+/* Taille de l'écran : un peu plus large sur grand écran ; sur téléphone, fenêtre étroite ou très basse
+   (même seuil que ECRAN_DEROULANT, aide.js), panneau pleine largeur en bas et rubriques en accordéon. */
+@media (min-width: 1200px) and (min-height: 700px) { #hugo-panneau { width: 400px; max-height: min(640px, calc(100dvh - 120px)); } }
+@media (max-width: 700px), (max-height: 560px) {
+  #hugo-panneau {
+    left: 8px; right: 8px; width: auto; bottom: calc(8px + var(--bas, 0px) + env(safe-area-inset-bottom));
+    max-height: calc(100dvh - 16px - var(--bas, 0px) - env(safe-area-inset-bottom) - env(safe-area-inset-top));
+  }
+  #hugo-bouton.ouvert { display: none; } /* (le panneau a son ✕) */
+  .hugo-corps { padding: 8px 10px 12px; }
+}
+.hugo-arbre { display: grid; gap: 6px; }
+.hugo-deroulant { border: 1px solid var(--bord); border-radius: 12px; background: var(--surface); }
+.hugo-deroulant > summary, .hugo-bientot {
+  display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; cursor: pointer; list-style: none;
+}
+.hugo-deroulant > summary::-webkit-details-marker { display: none; }
+.hugo-deroulant > summary::after { content: '▸'; margin-left: auto; color: var(--texte2); transition: transform .15s; }
+.hugo-deroulant[open] > summary::after { transform: rotate(90deg); }
+.hugo-deroulant[open] > summary { font-weight: 600; color: var(--accent); }
+.hugo-deroulant .hugo-icone { font-size: 20px; }
+.hugo-bientot { opacity: .55; cursor: default; }
+.hugo-bientot small { margin-left: auto; }
+.hugo-sous { display: grid; gap: 6px; padding: 0 8px 8px 14px; }
+.hugo-feuille > summary { font-size: 14px; }
+.hugo-feuille[open] { background: var(--surface2); }
+.hugo-feuille .hugo-sous { display: block; padding: 0 12px 12px; }
+.hugo-dit small { display: block; color: var(--texte2); margin-top: 2px; }
+
+/* Recherche dans l'aide de Hugo (aide.js) */
+.hugo-recherche { padding: 8px 12px 0; }
+.hugo-recherche input { width: 100%; }
+.hugo-resultats { padding: 8px 12px 12px; overflow-y: auto; }
+.hugo-resultats-liste .hugo-res-titre { display: block; }
+.hugo-fil { display: block; color: var(--texte2); font-size: 12px; font-weight: normal; }
+.hugo-fil-page { margin: 0 0 6px; }
+.hugo-corps[hidden], .hugo-resultats[hidden] { display: none; }
+.hugo-trouve { animation: hugo-trouve 1.6s ease-out; border-radius: 10px; }
+@keyframes hugo-trouve { 0%, 40% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 3px transparent; } }
