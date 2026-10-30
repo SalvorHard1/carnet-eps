@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.157.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '0.159.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -570,12 +570,12 @@ function migrerCodes() {
   for (const n of Donnees.liste('notes', n => n.valeur === 'NN')) Donnees.ecrireNote(n.evalId, n.eleveId, 'NE');
 }
 
-// Moyenne sur 20, pondérée par les coefficients ; ABS / DISP / NE ne comptent pas.
+// Moyenne sur 20, pondérée par les coefficients ; ABS / DISP / NE et les évaluations « non significatives » ne comptent pas.
 function moyenneEleve(eleveId, evals) {
   let somme = 0, poids = 0;
   for (const e of evals) {
     const n = nombre(Donnees.note(e.id, eleveId));
-    if (n === null || !e.coef) continue;
+    if (n === null || !e.coef || e.nonSignificative) continue; // (note non significative : affichée, pas comptée)
     somme += (n / e.max) * 20 * e.coef;
     poids += e.coef;
   }
@@ -948,6 +948,7 @@ function htmlNotes(c) {
               <div class="eval-titre">${esc(e.titre)}</div>
               <div class="eval-info">${esc(e.apsa || '')}</div>
               <div class="eval-info">${dateCourte(e.date)} · /${fmt(e.max)}${e.coef !== 1 ? ' · coef ' + fmt(e.coef) : ''}</div>
+              ${e.nonSignificative ? '<div class="eval-info eval-non-signif" title="Note non significative : affichée entre parenthèses, elle ne compte pas dans la moyenne">non significative</div>' : ''}
               ${nb ? '' : flechesTri('note|' + e.id)}
             </th>`;
           }).join('')}
@@ -966,6 +967,7 @@ function htmlNotes(c) {
             ${celluleNom(el, i)}
             ${evals.map(e => {
               const v = Donnees.note(e.id, el.id);
+              const ns = e.nonSignificative ? ' non-signif' : ''; // (note non significative : entre parenthèses, hors moyenne)
               const nomEleve = el.nom + ' ' + el.prenom;
               // Case vide un jour où l'élève était dispensé : on le suggère discrètement.
               const suggestion = !v && dispenseLe(el, e.date) ? ' placeholder="disp."' : '';
@@ -977,7 +979,7 @@ function htmlNotes(c) {
                   return brut === '' ? '' : `${p.nom} : ${texteBrutBareme(e, p, brut)} → ${affichage(pts) || '–'} pt(s)`;
                 }).filter(Boolean).join('\n');
                 return partiesEval(e).map((p, k) => celluleBareme(e, el, p, k, i, col++)).join('')
-                  + `<td class="total-parties td-total-bareme"><input class="cellule cellule-total${classeCode(v)}" value="${esc(affichage(v))}" size="4" data-eval="${e.id}" data-eleve="${el.id}"
+                  + `<td class="total-parties td-total-bareme${ns}"><input class="cellule cellule-total${classeCode(v)}"${ns ? ' placeholder=" "' : ''} value="${esc(affichage(v))}" size="4" data-eval="${e.id}" data-eleve="${el.id}"
                     data-ligne="${i}" data-col="${col++}" autocomplete="off" enterkeyhint="next" title="${esc((detail ? detail + '\n' : '') + `Total sur ${fmt(e.max)} (calculé avec le barème « ${e.bareme.titre} ») — ici, seulement un code : ${lettresCodes()}`)}"
                     aria-label="${esc(nomEleve + ' — ' + e.titre + ' — total')}"></td>`
                   + celluleDegres(e, el, i, () => col++);
@@ -988,10 +990,10 @@ function htmlNotes(c) {
                   return `<td class="${k ? '' : 'debut-eval' + classeCa(e)}"><input class="cellule cellule-partie${classeCode(vp)}"${k ? '' : suggestion} value="${esc(affichage(vp))}" size="4"
                     data-eval="${e.id}" data-eleve="${el.id}" data-partie="${esc(p.id)}" data-ligne="${i}" data-col="${col++}" inputmode="decimal" autocomplete="off" enterkeyhint="next"
                     aria-label="${esc(nomEleve + ' — ' + e.titre + ' — ' + p.nom + ' (sur ' + fmt(p.max) + ')')}"></td>`;
-                }).join('') + `<td class="total-parties${classeCode(v)}" data-total-parties="${e.id}|${el.id}" title="Total des parties (sur ${fmt(e.max)})">${esc(affichage(v))}</td>`
+                }).join('') + `<td class="total-parties${classeCode(v)}${ns}" data-total-parties="${e.id}|${el.id}" title="Total des parties (sur ${fmt(e.max)})">${esc(affichage(v))}</td>`
                 + celluleDegres(e, el, i, () => col++);
               }
-              return `<td class="debut-eval${classeCa(e)}"><input class="cellule${classeCode(v)}"${suggestion} value="${esc(affichage(v))}" size="${taillesNotes.get(e.id)}" data-eval="${e.id}" data-eleve="${el.id}"
+              return `<td class="debut-eval${classeCa(e)}${ns}"><input class="cellule${classeCode(v)}"${suggestion || (ns ? ' placeholder=" "' : '')} value="${esc(affichage(v))}" size="${taillesNotes.get(e.id)}" data-eval="${e.id}" data-eleve="${el.id}"
                 data-ligne="${i}" data-col="${col++}" inputmode="decimal" autocomplete="off" enterkeyhint="next" aria-label="${esc(nomEleve + ' — ' + e.titre)}"></td>
                 ${celluleDegres(e, el, i, () => col++)}`;
             }).join('')}
@@ -1564,7 +1566,7 @@ function majLigneParties(e, eleveId) {
     if (i) { const v = valeurPartie(e, eleveId, p); i.value = affichage(v); i.className = 'cellule cellule-partie' + classeCode(v); }
   }
   const td = $(`[data-total-parties="${e.id}|${eleveId}"]`);
-  if (td) { const v = Donnees.note(e.id, eleveId); td.textContent = affichage(v); td.className = 'total-parties' + classeCode(v); }
+  if (td) { const v = Donnees.note(e.id, eleveId); td.textContent = affichage(v); td.className = 'total-parties' + classeCode(v) + (e.nonSignificative ? ' non-signif' : ''); }
 }
 
 /* ---------- Évaluation liée à un barème (bibliothèque, baremes.js) ----------
@@ -1791,6 +1793,8 @@ async function editerEval(id) {
       <label>Noté sur<input type="number" name="max" min="1" step="any" required value="${e.max}"></label>
       <label>Coefficient<input type="number" name="coef" min="0" step="any" required value="${e.coef}"></label>
     </div>
+    <label class="case"><input type="checkbox" name="nonSignificative" ${e.nonSignificative ? 'checked' : ''}>
+      <span><b>Note non significative</b> : affichée entre parenthèses, elle ne compte pas dans la moyenne (évaluation formative, devoir de rattrapage…)</span></label>
     <fieldset class="parties-note lien-bareme">
       <legend>Barème <span class="aide">(bibliothèque, onglet Barèmes)</span></legend>
       <label>Calculer la note avec<select name="bareme"><option value="">— aucun barème —</option>${optionsBaremesEval(e, e.apsa, c.niveau, e.bareme?.id)}</select></label>
@@ -1957,6 +1961,7 @@ async function editerEval(id) {
       ...e, id: e.id || Donnees.nouvelId(), classeId: c.id, cree: e.cree || Date.now(),
       parties: parties.length ? parties : undefined, bareme: lien,
       titre: r.data.titre.trim(), apsa: r.data.apsa.trim(), date: r.data.date, max, coef: +r.data.coef,
+      nonSignificative: r.data.nonSignificative === 'on' || undefined,
       referentiel: r.data.referentiel, ca: toutes ? '' : r.data.ca,
       competences: r.data.ca || toutes ? r.fd.getAll('competence').filter(duChamp) : [],
       competencesLibres: r.data.competencesLibres.trim(),

@@ -428,6 +428,18 @@ body[data-disposition="bas"] .notif-auto { bottom: calc(16px + var(--bas) + env(
   text-align: center; font-size: 16px; /* 16px : évite le zoom automatique sur iPad */
 }
 .cellule:focus { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-doux); }
+/* Note non significative : entre parenthèses (case remplie seulement), en gris ; elle ne compte pas dans la moyenne. */
+.grille td.non-signif { position: relative; }
+.grille td.non-signif .cellule { color: var(--texte2); font-style: italic; }
+.grille td.non-signif:has(.cellule:not(:placeholder-shown):not(:focus))::before,
+.grille td.non-signif:has(.cellule:not(:placeholder-shown):not(:focus))::after {
+  position: absolute; top: 50%; transform: translateY(-50%); color: var(--texte2); font-size: 16px; pointer-events: none;
+}
+.grille td.non-signif:has(.cellule:not(:placeholder-shown):not(:focus))::before { content: '('; left: max(2px, calc(50% - 1.6em)); }
+.grille td.non-signif:has(.cellule:not(:placeholder-shown):not(:focus))::after { content: ')'; right: max(2px, calc(50% - 1.6em)); }
+.grille td.total-parties.non-signif:not(.td-total-bareme):not(:empty)::before { content: '('; }
+.grille td.total-parties.non-signif:not(.td-total-bareme):not(:empty)::after { content: ')'; }
+.eval-non-signif { font-style: italic; }
 .code-ABS { background: var(--abs) !important; color: var(--abs-t) !important; font-weight: 600; font-size: 13px !important; }
 .code-DISP { background: var(--disp) !important; color: var(--disp-t) !important; font-weight: 600; font-size: 13px !important; }
 .code-BLE { background: #ffe2c6 !important; color: #9a4a00 !important; font-weight: 600; font-size: 13px !important; }

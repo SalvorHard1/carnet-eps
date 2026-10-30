@@ -369,7 +369,7 @@ function analyserAppr(el, periode, eleves) {
       if (avant !== null && moy !== null) { d = moy - avant; morceaux.push(`${periodes[k - 1].code} ${fmtD(avant)} → ${periodes[k].code} ${fmtD(moy)}`); }
     }
     if (d === null) {
-      const notes = evals.map(e => sur20(e, Donnees.note(e.id, el.id))).filter(n => n !== null);
+      const notes = evals.filter(e => !e.nonSignificative).map(e => sur20(e, Donnees.note(e.id, el.id))).filter(n => n !== null);
       const t = tendanceNotes(notes);
       if (t !== null) { d = t; morceaux.push(`tendance des notes ${t >= 0 ? '+' : ''}${fmtD(t)}`); }
     }

@@ -258,7 +258,7 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
     const v = Donnees.note(e.id, el.id), n = sur20(e, v), mc = moyenneEval(e, eleves);
     return { e, v, n, classe: mc === null ? null : (mc / e.max) * 20 };
   });
-  const notees = lignes.filter(l => l.n !== null);
+  const notees = lignes.filter(l => l.n !== null && !l.e.nonSignificative); // (note non significative : pas dans la tendance)
   const deplie = opts.impression ? ' open' : '';
 
   // 1. Synthèse : toile (élève / classe) et valeurs
@@ -314,9 +314,9 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
   if (lignes.length) {
     html += `<details class="depli-fiche"${deplie}><summary>📝 Notes <span class="aide">moyenne ${fmt1(moy)}/20 · classe ${fmt1(moyClasse)}</span></summary>
       <table class="tableau-fiche notes-fiche"><tbody>${lignes.map(l => `<tr>
-      <th>${l.e.ca ? `<span class="chip-ca ca-${l.e.ca}">${l.e.ca}</span> ` : ''}<b>${esc(l.e.titre)}</b> <span class="aide">${dateCourte(l.e.date)}${l.e.apsa ? ' · ' + esc(l.e.apsa) : ''}${l.e.coef !== 1 ? ' · coef ' + fmt(l.e.coef) : ''}</span></th>
+      <th>${l.e.ca ? `<span class="chip-ca ca-${l.e.ca}">${l.e.ca}</span> ` : ''}<b>${esc(l.e.titre)}</b> <span class="aide">${dateCourte(l.e.date)}${l.e.apsa ? ' · ' + esc(l.e.apsa) : ''}${l.e.coef !== 1 ? ' · coef ' + fmt(l.e.coef) : ''}${l.e.nonSignificative ? ' · non significative' : ''}</span></th>
       <td>${CODES[l.v] ? `<span class="code-fiche code-${l.v}">${esc(CODES[l.v])}</span>` : l.v === '' ? '<span class="aide">non saisie</span>'
-      : `<b>${esc(affichage(l.v))}</b>/${fmt(l.e.max)}${l.e.max !== 20 ? ` <span class="aide">(${fmt1(l.n)}/20)</span>` : ''}`}
+      : `${l.e.nonSignificative ? '(' : ''}<b>${esc(affichage(l.v))}</b>/${fmt(l.e.max)}${l.e.nonSignificative ? ')' : ''}${l.e.max !== 20 ? ` <span class="aide">(${fmt1(l.n)}/20)</span>` : ''}`}
         ${l.n !== null && l.classe !== null ? `<span class="aide"> · classe ${fmt1(l.classe)}/20</span>` : ''}</td></tr>`).join('')}</tbody></table></details>`;
   }
   if (!opts.anonyme) {
