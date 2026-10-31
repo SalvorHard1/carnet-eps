@@ -11,6 +11,30 @@ const Cle = (() => {
   const accesDirect = typeof window.showDirectoryPicker === 'function';
 
   class ErreurMdp extends Error {}
+  class ErreurVersion extends Error {} // carnet d'une appli plus récente (format de données inconnu ici)
+
+  // Version de l'appli qui écrit le carnet (VERSION_APP, app.js) et comparaison « 1.2.0 » > « 0.159.0 ».
+  const versionAppli = () => (typeof VERSION_APP === 'string' ? VERSION_APP : '');
+  function compareVersions(a, b) {
+    const pa = String(a).split('.').map(n => parseInt(n, 10) || 0), pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+    return 0;
+  }
+  let versionSignalee = ''; // pour ne prévenir qu'une fois par version
+
+  // Carnet écrit par une appli plus récente : format de données inconnu → refus (rien n'est lu ni réécrit) ;
+  // même format → simple conseil de mise à jour.
+  function verifierVersion(f) {
+    const ici = versionAppli();
+    if ((f.niveau || 0) > Donnees.NIVEAU) {
+      throw new ErreurVersion(`Ce carnet a été enregistré par une version plus récente de l’appli${f.appli ? ` (v${f.appli})` : ''} que celle de cet appareil${ici ? ` (v${ici})` : ''}. `
+        + 'Mets d’abord l’appli à jour (touche le numéro de version en haut à gauche, ou recharge la page) : rien n’a été lu ni modifié.');
+    }
+    if (f.appli && ici && compareVersions(f.appli, ici) > 0 && versionSignalee !== f.appli) {
+      versionSignalee = f.appli;
+      if (typeof toast === 'function') toast(`Ce carnet vient de la v${f.appli} de l’appli, plus récente que celle-ci (v${ici}) : pense à mettre à jour cet appareil.`);
+    }
+  }
 
   function versB64(tampon) {
     const octets = new Uint8Array(tampon);
@@ -48,6 +72,7 @@ const Cle = (() => {
     const chiffre = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cle, clair);
     return JSON.stringify({
       app: APP, format: compressionDispo ? 2 : 1, compression: compressionDispo ? 'gzip' : null, enregistreLe: new Date().toISOString(),
+      appli: versionAppli(), niveau: Donnees.NIVEAU,
       iterations: ITERATIONS, sel: versB64(sel), iv: versB64(iv), donnees: versB64(chiffre),
     });
   }
@@ -57,6 +82,7 @@ const Cle = (() => {
     try { f = JSON.parse(texte); } catch { throw new Error('Ce fichier n’est pas un carnet lisible.'); }
     if (f.app !== APP) throw new Error('Ce fichier n’est pas un carnet de l’appli.');
     if (f.format > FORMAT_MAX) throw new Error('Ce fichier a été enregistré par une version plus récente de l’appli : mets à jour l’appli sur cet appareil.');
+    verifierVersion(f);
     const cle = await deriver(mdp, deB64(f.sel), f.iterations);
     let clair;
     try {
@@ -275,7 +301,7 @@ const Cle = (() => {
   }
 
   return {
-    NOM_FICHIER, accesDirect, ErreurMdp, chiffrer, dechiffrer, creerTemoin, verifierTemoin, memoriser, dossierMemorise, choisirDossier, contientCarnet, estDossierCopies,
+    NOM_FICHIER, accesDirect, ErreurMdp, ErreurVersion, compareVersions, chiffrer, dechiffrer, creerTemoin, verifierTemoin, memoriser, dossierMemorise, choisirDossier, contientCarnet, estDossierCopies,
     fichierCarnet, dateCarnet, autresCarnets, copieDatee, copiesDatees, rechiffrer, nettoyerCopies, autoriser, lire, ecrire, partagerOuTelecharger, enregistrerSurCle, estFichierTablette, modeTablette, modeTablettePour,
   };
 })();

@@ -1,57 +1,70 @@
-CARNET EPS S-A — copie de l'application (v0.94.0)
+CARNET EPS S-A — copie de l'application (v1.0.2)
 =================================================
+
+Carnet de bord de l'enseignant (EPS ou SVT) : élèves, appel, notes, compétences, séances,
+outils de cours, agenda, barèmes, appréciations, espace professeur principal.
+Tout reste sur tes appareils : l'appli n'envoie rien sur internet.
 
 Lancer l'appli :
   - Sur ordinateur, depuis la clé : double-clic sur « Lancer Carnet EPS S-A.bat »
     (s'ouvre dans Microsoft Edge ; sans rien installer et sans internet).
   - Sur tablette / téléphone (ou ordinateur) : https://salvorhard1.github.io/carnet-eps/
-    puis « Ajouter à l'écran d'accueil » / « Installer » : l'appli marche ensuite sans internet.
+    puis « Ajouter à l'écran d'accueil » / « Installer » (⚙ Réglages > 📲 L'application) :
+    l'appli marche ensuite sans internet.
 
 Premier lancement :
   - choisis ta discipline (EPS ou SVT) et, si tu veux, ton établissement ;
-  - en EPS, une « classe exemple » (3e Exemple, élèves inventés) est proposée : elle montre
-    un carnet rempli (appel, leçons, évaluations, observations, appréciations, agenda).
-    On la supprime d'un clic avec le bandeau en haut de la classe ;
-    on peut la recréer avec « + Nouvelle classe » > « 🎓 Classe exemple ».
+  - une « classe exemple » (élèves inventés) montre un carnet rempli : essaie tout dessus,
+    puis supprime-la d'un clic (on peut la recréer avec « + Nouvelle classe ») ;
+  - une visite guidée d'une minute est proposée (on la retrouve dans l'aide : ? en bas à droite).
 
 Ce que contient l'appli (onglets en haut) :
-  Élèves    : fiches, PAI / BEP / dispenses, photos (trombinoscope PDF), import École Directe / Pronote
-  Appel     : la présence du jour, rangée dans la leçon du jour
-  Notes     : évaluations, degrés de compétences, fiche élève, ⇅ Excel,
-              ✍ Appréciations proposées par l'appli (relues par une vérification grammaticale
-              faite sur l'appareil ; tu peux toujours les modifier)
-  Leçons    : données relevées à chaque leçon, observations, ⇅ Excel
-  Outils    : chronos, équipes, tirage, tournoi, tableau blanc, vidéo-delay, natation, ASNS…
-              (🎓 mode élève : la tablette ne donne accès qu'aux outils choisis)
-  Agenda    : programmation de l'année, séquences, emploi du temps (PDF École Directe)
-  Barèmes   : bibliothèque de barèmes par activité
+  Élèves          : fiches, PAI / BEP / dispenses, photos (trombinoscope), import École Directe / Pronote
+  Appel           : la présence du jour, rangée dans la séance du jour
+  Notes           : évaluations, compétences, fiche élève, import des relevés, ⇅ Excel,
+                    ✍ appréciations proposées par l'appli (toujours modifiables)
+  Leçons/Séances  : ce qui est relevé à chaque séance, observations, ⇅ Excel
+  Outils          : EPS : chronos, équipes, tournoi, tableau, vidéo-delay, natation, ASNS…
+                    SVT : ECE, labo, binômes, fiches TP…
+                    (🎓 mode élève : la tablette ne donne accès qu'aux outils choisis)
+  Agenda          : programmation de l'année, séquences, emploi du temps
+  Barèmes         : bibliothèque de barèmes, import de barèmes (PDF, Word, Excel)
+  Prof principal  : bulletins, tableau synthèse, appréciations générales, conseil de classe
+                    (visible si tu coches « Je suis professeur principal » dans une classe)
   ⚙ Réglages du carnet (en bas de la liste des classes) : apparence, notes, compétences,
     appréciations, onglets, verrouillage automatique, partage des réglages avec un collègue.
+  ? en bas à droite : l'aide « Hugo » (questions par thème, et « montre-moi sur l'écran »).
 
-Le principe : chaque appareil garde sa propre copie du carnet ; la clé fait passer le carnet
-de l'un à l'autre. Tout se fait avec le bouton 🔑 en haut de l'appli :
-  ⬇ En arrivant sur un appareil : « Récupérer depuis la clé »
-  ⬆ En partant                  : « Enregistrer sur la clé » (automatique sur ordinateur)
+Le principe : chaque appareil garde sa propre copie du carnet ; le bouton « Enregistrer »
+(en haut à droite) l'écrit, chiffrée par ton mot de passe, sur ta clé USB, ton Drive ou un
+dossier de l'appareil. C'est ce qui fait passer le carnet d'un appareil à l'autre :
+  ⬇ En arrivant sur un appareil : « Récupérer »
+  ⬆ En partant                  : « Enregistrer » (automatique sur ordinateur)
 Rien n'est écrasé : les modifications des appareils sont réunies.
-Le guide complet : bouton 🔑 > « Comment ça marche ? »
+Le guide complet : menu Enregistrer > Aide et dépannage > « Comment ça marche ? »
 
 Tes données :
-  - le carnet chiffré est dans : Claude\carnet-eps.json (ne pas le renommer ni le déplacer)
-  - les copies datées sont dans : Claude\Sauvegardes\
-  - même mot de passe sur tous les appareils ; s'il est perdu, le carnet est illisible.
-  - tout reste sur tes appareils : l'appli n'envoie rien sur internet.
+  - le carnet chiffré s'appelle carnet-eps.json : ne pas le renommer ni le déplacer ;
+  - les copies datées sont dans le dossier « Sauvegardes » à côté ;
+  - même mot de passe sur tous les appareils ; s'il est perdu, le carnet est illisible ;
+  - avant chaque mise à jour de l'appli, une copie de secours est prise sur l'appareil
+    (Aide et dépannage > Plus d'options > « Revenir à avant la mise à jour ») ;
   - 🔒 l'écran se verrouille après quelques minutes sans activité (réglable) ;
     on le déverrouille avec le mot de passe du carnet.
+  - la copie gardée dans le navigateur n'est pas chiffrée : protège l'appareil lui-même
+    (code de verrouillage, session à ton nom).
 
 Attention sur un PC qui n'est pas le tien (salle des profs…) :
   l'appli garde aussi une copie des données dans le navigateur de ce PC.
-  Avant de partir : enregistre sur la clé, puis efface les données du site
-  (Edge > Paramètres > Cookies et autorisations de site > localhost:8080 > Effacer les données).
+  Avant de partir : enregistre, puis efface les données du site
+  (Edge > Paramètres > Cookies et autorisations de site > le site de l'appli > Effacer les données).
 
 Si l'appli ne se lance pas : certains PC (établissement) bloquent PowerShell.
   Dans ce cas, utilise l'adresse internet ci-dessus.
 
 Mettre à jour : le numéro de version en haut à gauche devient orange quand une nouvelle
-version est prête ; touche-le pour recharger.
+version est prête ; touche-le pour recharger. Les nouveautés s'affichent ensuite une fois.
+Un carnet enregistré par une version plus récente n'est pas ouvert par une ancienne :
+mets d'abord l'appli à jour sur cet appareil.
 
 Pour les développeurs (et les assistants de code) : voir AGENTS.md.

@@ -59,3 +59,23 @@ if (!Object.hasOwn) Object.defineProperty(Object, 'hasOwn', {
   configurable: true, writable: true,
   value: (o, k) => Object.prototype.hasOwnProperty.call(o, k),
 });
+
+// Filet de sécurité : une erreur inattendue (un bug) est retenue dès le chargement, puis montrée par app.js
+// (bandeau « ton carnet n'est pas perdu » : filetErreur). Erreurs des extensions du navigateur et annulations ignorées.
+window.erreursAppli = [];
+function retenirErreurAppli(message, ou) {
+  const x = { message: String(message || 'Erreur inconnue').slice(0, 300), ou: ou || '', date: Date.now() };
+  window.erreursAppli.push(x);
+  if (window.erreursAppli.length > 20) window.erreursAppli.shift();
+  if (typeof filetErreur === 'function') filetErreur(x);
+}
+window.addEventListener('error', e => {
+  if (!e.filename) return; // (ex. « ResizeObserver loop » : sans fichier, sans conséquence)
+  try { if (new URL(e.filename, location.href).origin !== location.origin) return; } catch { return; }
+  retenirErreurAppli(e.message, `${e.filename.split('/').pop()}:${e.lineno}`);
+});
+window.addEventListener('unhandledrejection', e => {
+  const r = e.reason;
+  if (r?.constructor?.name === 'Annule' || ['AbortError', 'NotAllowedError', 'NotSupportedError', 'SecurityError'].includes(r?.name)) return;
+  retenirErreurAppli(r?.message || r, 'promesse');
+});

@@ -238,6 +238,44 @@ const zoneSecurite = (sel, texte) => ({
   sinon: 'Rouvre « 🔒 Sécurité » dans les Réglages.', fait: () => !fenetreReglages(),
 });
 
+/* ---------- Visite guidée (proposée au premier lancement, et en tête de l'aide) ---------- */
+
+// Complète sans être longue (une dizaine d'étapes, une phrase chacune) : chaque onglet affiché une fois, dans l'ordre
+// de la barre ; ce qui va ensemble est dit dans la même étape (Réglages avec les classes, Appel avec les Élèves).
+function etapesVisite() {
+  const eps = disciplineActive() === 'eps';
+  const onglet = (vue, rideau, explication) => {
+    const e = etapeOnglet(vue, () => nomOnglet(vue), rideau);
+    return { ...e, texte: el => `${e.texte(el)} ${explication}` };
+  };
+  const visibles = ongletsVisibles(), si = (vue, etapes) => (visibles.includes(vue) ? etapes : []);
+  return [
+    { cible: () => premierVisible('#liste-classes', '#btn-menu'), suivant: true,
+      texte: el => `${el?.id === 'btn-menu' ? 'Derrière ☰ : tes classes' : 'Ici : tes classes'} (la classe « Exemple » est inventée, essaie tout dessus)`
+        + ' et, en dessous, ⚙ Réglages du carnet. « ✕ Terminer la visite » arrête quand tu veux.' },
+    // (sans classe, les onglets n'ont rien à montrer : en créer une d'abord)
+    ...(Donnees.liste('classes').length ? [] : [{ ...ETAPES_HUGO.classe, fait: () => !!classeActive(),
+      sinon: 'Crée d’abord une classe (« + Nouvelle classe »), puis relance la visite depuis le ?.' }]),
+    ...si('eleves', [onglet('eleves', 'classe', (eps ? 'Fiches, dispenses, PAI…' : 'Fiches, PAI et BEP…')
+      + (visibles.includes('appel') ? ' Juste à côté, « Appel » : l’appel du jour en un toucher par élève.' : ''))]),
+    ...si('notes', [onglet('notes', 'suivi', 'Évaluations, notes et compétences.'),
+      etapeZonePage('#vue [data-action="appreciations"]', `« ✍ Appréciations » : l’appli en propose une par élève, d’après ses notes et les ${motMin('lecons')}. Tu ajustes comme tu veux.`,
+        'Reviens dans l’onglet « Notes » pour voir le bouton « ✍ Appréciations ».')]),
+    ...si('entrainement', [onglet('entrainement', 'suivi', `Ce que tu relèves à chaque ${motMin('lecon')}.`)]),
+    ...si('outils', [onglet('outils', null, eps ? 'Chronos, équipes, tournois… pour le cours.' : 'ECE, binômes, fiches TP… pour le cours.')]),
+    ...si('agenda', [onglet('agenda', null, 'Ton année : emploi du temps, séquences, vacances, conseils.')]),
+    ...si('baremes', [onglet('baremes', 'suivi', 'Tes barèmes : modèles fournis, les tiens, ou importés (PDF, Word, Excel).')]),
+    ...si('pp', [onglet('pp', null, 'Professeur principal : bulletins, appréciation générale, conseil de classe.')]),
+    etapeZonePage('#btn-sauver', 'Le plus important : « Enregistrer », ta sauvegarde chiffrée (clé, Drive ou ordinateur). Utilise-le souvent !'),
+  ];
+}
+
+function visiteGuidee() {
+  ouvrirHugo(false);
+  lancerGuideHugo({ titre: 'Visite guidée', guide: etapesVisite(), arreter: '✕ Terminer la visite',
+    fin: 'C’est tout pour la visite 🎉 Une question ? Touche le ? en bas à droite : Hugo t’explique et te montre.' });
+}
+
 /* ---------- L'arborescence des questions ---------- */
 
 // Construite à chaque affichage : les mots, les exemples et les codes suivent la discipline du carnet
@@ -254,6 +292,14 @@ function rubriquesAide() {
   return {
     titre: 'Sur quoi je peux t’aider ?',
     enfants: [
+      {
+        id: 'visite', icone: '🧭', titre: 'Visite guidée de l’appli',
+        intro: 'Une minute pour repérer l’essentiel : tu touches chaque onglet, Hugo t’explique.',
+        reponse: ['À gauche : <b>tes classes</b>, et en dessous <b>⚙ Réglages du carnet</b>.', `En haut : les onglets <b>Élèves</b>, <b>Appel</b>, <b>Notes</b> (et ses <b>✍ Appréciations</b>), <b>${Lecons}</b>, <b>Outils</b>, <b>Agenda</b>, <b>Barèmes</b>, et <b>Prof principal</b> si tu l’es.`,
+          'En haut à droite : <b>« Enregistrer »</b>, ta sauvegarde chiffrée (clé, Drive ou ordinateur).',
+          'En bas à droite : le <b>?</b> de Hugo, pour toutes tes questions.'],
+        guide: etapesVisite(), arreter: '✕ Terminer la visite', fin: 'C’est tout pour la visite 🎉 Une question ? Touche le ? en bas à droite : Hugo t’explique et te montre.',
+      },
       {
         id: 'eleves', icone: '👥', titre: 'Les élèves et les classes',
         enfants: [
@@ -1831,7 +1877,7 @@ const ETAPE_CONFIRMER = { cible: () => premierVisible('dialog[open] .modale-acti
 
 function lancerGuideHugo(n) {
   arreterGuideHugo();
-  guideHugo.etapes = n.guide; guideHugo.i = 0; guideHugo.titre = n.titre;
+  guideHugo.etapes = n.guide; guideHugo.i = 0; guideHugo.titre = n.titre; guideHugo.messageFin = n.fin; guideHugo.libelleArreter = n.arreter;
   const anneau = document.createElement('div'); anneau.id = 'hugo-anneau';
   const bulle = document.createElement('div'); bulle.id = 'hugo-guide'; bulle.setAttribute('role', 'status');
   document.body.append(anneau, bulle);
@@ -1865,7 +1911,7 @@ function tourGuideHugo() {
   const hote = modaleOuverte() || document.body;
   if (bulle.parentElement !== hote || !bulle.isConnected) hote.append(anneau, bulle);
   // Dernière étape faite mais l'appli demande encore « Confirmation » (ex. supprimer) : montrer où confirmer.
-  if (g.i >= g.etapes.length && !confirmationOuverte()) return finGuideHugo(bulle, anneau);
+  if (g.i >= g.etapes.length && !confirmationOuverte()) return finGuideHugo(bulle, anneau, g.messageFin);
   const etape = g.etapes[g.i] || ETAPE_CONFIRMER;
   const cible = etape.cible();
   if (cible && etape.defiler && g.cibleDefilee !== cible) { g.cibleDefilee = cible; cible.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
@@ -1873,7 +1919,7 @@ function tourGuideHugo() {
   const contenu = `${teteHugo(g.i)}<div class="hugo-guide-texte"><small>${esc(g.titre)} · étape ${Math.min(g.i + 1, g.etapes.length)}/${g.etapes.length}</small>
     <p>${esc(cible ? texte : etape.sinon || 'Je ne trouve pas ce qu’il faut toucher sur cet écran… Ferme la fenêtre ouverte s’il y en a une, ou recommence depuis le ?.')}</p>
     <div class="hugo-guide-boutons">${etape.suivant && cible ? '<button type="button" class="primaire" data-hugo="suivant">Suivant ›</button>' : ''}
-      <button type="button" data-hugo="arreter">Arrêter</button></div></div>`;
+      <button type="button" data-hugo="arreter">${esc(g.libelleArreter || 'Arrêter')}</button></div></div>`;
   if (bulle.dataset.contenu !== contenu) { bulle.innerHTML = contenu; bulle.dataset.contenu = contenu; }
   anneau.hidden = !cible;
   placerGuideHugo(hote, cible, anneau, bulle);

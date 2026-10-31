@@ -127,7 +127,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#rideau
 addEventListener('resize', () => { fermerRideau(); const n = document.getElementById('onglets-compact'); if (n) marquerSuiteOnglets(n); });
 document.getElementById('onglets-compact')?.addEventListener('scroll', e => marquerSuiteOnglets(e.target), { passive: true });
 // Tablette tournée, fenêtre agrandie… : la barre s'adapte. (addListener : anciens Safari.)
-const surEcranCompact = () => { if (typeof Donnees === 'object' && $('#onglets-compact')) majOnglets(); };
+// (Pas avant le premier rendu d'app.js : les données ne sont pas encore chargées.)
+const surEcranCompact = () => { if (window.appliPrete && $('#onglets-compact')) majOnglets(); };
 if (ecranCompact.addEventListener) ecranCompact.addEventListener('change', surEcranCompact); else ecranCompact.addListener(surEcranCompact);
 
 // Réglages › Onglets : disposition (cet appareil) et favoris (dans le carnet).

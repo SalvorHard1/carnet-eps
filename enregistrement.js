@@ -142,7 +142,7 @@ async function dossiersAnnexes(principal) {
 // Appelée par synchroniser (app.js) une fois le dossier principal réécrit. Renvoie { n, faits, absents, autreMdp }
 // (n = éléments récupérés dans les autres dossiers ; s'il y en a, le dossier principal est réécrit aussi).
 async function enregistrerAnnexes(principal, mdp, { silencieux = false, copie = false } = {}) {
-  const bilan = { n: 0, faits: [], absents: [], autreMdp: [] };
+  const bilan = { n: 0, faits: [], absents: [], autreMdp: [], recents: [] };
   if (!Cle.accesDirect || !mdp) return bilan;
   const joignables = [];
   for (const { id, dossier } of await dossiersAnnexes(principal)) {
@@ -165,6 +165,7 @@ async function enregistrerAnnexes(principal, mdp, { silencieux = false, copie = 
       joignables.push({ x, dossier, h });
     } catch (e) {
       if (e instanceof Cle.ErreurMdp) bilan.autreMdp.push(x); // carnet chiffré autrement : on n'y touche pas
+      else if (e instanceof Cle.ErreurVersion) bilan.recents.push(x); // écrit par une appli plus récente : idem
       else bilan.absents.push(x);
     }
   }
@@ -192,7 +193,8 @@ function texteAnnexes(b) {
   const noms = l => l.map(x => `${x.icone} ${x.nom}`).join(', ');
   return [b.faits.length ? `Aussi à jour : ${noms(b.faits)}` : '',
     b.absents.length ? `Pas joignable (pas mis à jour) : ${noms(b.absents)}` : '',
-    b.autreMdp.length ? `⚠ Autre mot de passe, laissé tel quel : ${noms(b.autreMdp)}` : ''].filter(Boolean).join('\n');
+    b.autreMdp.length ? `⚠ Autre mot de passe, laissé tel quel : ${noms(b.autreMdp)}` : '',
+    b.recents?.length ? `⚠ Carnet d’une version plus récente de l’appli, laissé tel quel (mets à jour cet appareil) : ${noms(b.recents)}` : ''].filter(Boolean).join('\n');
 }
 
 // Premier enregistrement sur cet appareil : on demande où (sauf si le carnet a déjà été enregistré : on garde la clé).

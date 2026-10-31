@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '0.159.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.0.3'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2476,17 +2476,20 @@ async function importerFichiers(fichiers, { sauvegarde = false } = {}) {
   }
   lus.sort((a, b) => a.date.localeCompare(b.date));
   let n = 0;
-  const repris = [], ignores = [];
+  const repris = [], ignores = [], recents = [];
   for (const c of lus) {
     try {
       n += (await importerTexte(c.texte, { sauvegarde })).n;
       repris.push(c);
     } catch (e) {
       if (e instanceof Annule) throw e;
-      ignores.push(c.nom); // pas un carnet de l'appli (ou version plus récente)
+      if (e instanceof Cle.ErreurVersion) { recents.push({ nom: c.nom, message: e.message }); continue; }
+      ignores.push(c.nom); // pas un carnet de l'appli
     }
   }
   rendre();
+  if (!repris.length && recents.length) throw new Error(recents[0].message);
+  if (recents.length) toast(`Pas récupéré (version plus récente de l’appli : mets à jour cet appareil) : ${recents.map(r => r.nom).join(', ')}`, 'erreur');
   if (!repris.length) throw new Error(`Aucun carnet lisible dans ${lus.length > 1 ? 'ces fichiers' : 'ce fichier'} : choisis un fichier carnet-eps….json.`);
   const recent = repris[repris.length - 1];
   toast(`Récupéré ✔ ${repris.length > 1 ? `${repris.length} fichiers réunis` : recent.nom}`
@@ -2655,6 +2658,7 @@ document.addEventListener('keydown', e => {
 // mot de passe vérifié, dossier « Sauvegardes » refusé…). Le reste est replié dans « Plus d'options ».
 async function panneauCle() {
   const dossier = await Cle.dossierMemorise(cleDossierDest());
+  const avantMaj = await Donnees.copieAvantMaj();
   const m = Donnees.meta();
   const derniere = !m.dernierEnvoi ? 'aucune pour l’instant'
     : quandCourt(m.dernierEnvoi).replace(/^auj\./, 'aujourd’hui') + (aEnregistrer() ? ' — des modifications ont été faites depuis' : ' ✔');
@@ -2686,6 +2690,10 @@ async function panneauCle() {
           <button type="button" data-cle="changer">Changer de dossier</button>` : ''}
         ${mdpSession || m.temoinMdp ? `<button type="button" data-cle="verrouiller">Oublier le mot de passe sur cet appareil</button>
           <p class="aide">Au prochain enregistrement, l’appli redemandera le mot de passe (à taper deux fois), sans le comparer à l’ancien.</p>` : ''}
+        ${avantMaj ? `<button type="button" data-cle="avant-maj">🛟 Revenir à avant la mise à jour</button>
+          <p class="aide">Copie prise automatiquement sur cet appareil le ${esc(dateHeure(avantMaj.date))}, quand l’appli est passée
+            de la ${esc(nomVersion(avantMaj.version))} à une plus récente. À n’utiliser que si la mise à jour a abîmé ton carnet :
+            ce qui a été fait depuis sur cet appareil serait perdu (sauf s’il a été enregistré : tu pourras le récupérer).</p>` : ''}
         <div class="bloc-version">
           <span>${esc(profil().carnet)} S-A — <b>version ${VERSION_APP}</b></span>
           <button type="button" data-cle="maj-appli" title="Recharge la dernière version de l’appli (tes données ne sont pas touchées)">🔄 Mettre à jour l’appli</button>
@@ -2709,6 +2717,13 @@ async function panneauCle() {
       case 'maj-appli': return lancer(forcerMiseAJour);
       case 'destination': d.fermer(); return lancer(choisirDestination);
       case 'changer': return occupe(async () => synchroniser(await choisirDossierCle(), { copie: true }));
+      case 'avant-maj': return occupe(async () => {
+        if (!(await confirmer('Revenir à l’état du carnet d’avant la mise à jour, sur cet appareil ? Ce qui a été fait depuis sur cet appareil sera perdu (sauf s’il est enregistré ailleurs).', 'Revenir en arrière'))) return;
+        await Donnees.restaurerAvantMaj();
+        migrerTout();
+        rendre();
+        toast('Carnet revenu à son état d’avant la mise à jour.', 'ok');
+      });
       case 'verrouiller':
         mdpSession = null;
         Donnees.reglerMeta('temoinMdp', undefined);
@@ -2830,6 +2845,72 @@ async function boutonVersion() {
   session.ecrire('maj-depuis', VERSION_APP);
   await forcerMiseAJour();
 }
+
+/* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
+
+const NOUVEAUTES = [
+  { version: '1.0.0', titre: 'Version 1.0', points: [
+    '🧭 <b>Visite guidée</b> : touche le <b>?</b> en bas à droite, puis « Visite guidée de l’appli ».',
+    '🛟 <b>Copie de secours automatique</b> sur cet appareil avant chaque mise à jour de l’appli. En cas de souci : '
+      + 'Aide et dépannage › Plus d’options › « Revenir à avant la mise à jour ».',
+    '⚠ <b>Filet de sécurité</b> : si un problème survient, un bandeau te propose d’enregistrer ton carnet tout de suite.',
+    '🔒 Un carnet enregistré par une version <b>plus récente</b> de l’appli n’est plus ouvert par une ancienne : '
+      + 'l’appli te demande de la mettre à jour (rien n’est perdu).',
+  ] },
+];
+const CLE_VERSION_VUE = 'carnet-eps-version-vue'; // dernière version de l'appli lancée sur cet appareil
+const versionVue = () => { try { return localStorage.getItem(CLE_VERSION_VUE); } catch { return null; } };
+const retenirVersionVue = () => { try { localStorage.setItem(CLE_VERSION_VUE, VERSION_APP); } catch { /* sans importance */ } };
+const nomVersion = v => (/^\d/.test(v) ? `v${v}` : 'version d’avant la 1.0'); // (« ancienne » : rien n'était retenu)
+
+async function afficherNouveautes(depuis) {
+  const liste = NOUVEAUTES.filter(n => (!/^\d/.test(depuis) || Cle.compareVersions(n.version, depuis) > 0)
+    && Cle.compareVersions(n.version, VERSION_APP) <= 0);
+  if (!liste.length) return;
+  const { resultat } = ouvrirModale(`🎉 Quoi de neuf ? (v${VERSION_APP})`,
+    liste.map(n => `<h3>${esc(n.titre)}</h3><ul class="nouveautes">${n.points.map(p => `<li>${p}</li>`).join('')}</ul>`).join(''),
+    '<span class="espace"></span><button value="ok" class="primaire">Super !</button>');
+  await resultat;
+}
+
+// Premier lancement sur cet appareil : proposer la visite guidée de Hugo (aide.js).
+async function proposerVisite() {
+  ui.visiteProposee = true;
+  memoriserUi();
+  if (typeof visiteGuidee !== 'function') return;
+  const { resultat } = ouvrirModale('🧭 Petite visite ?',
+    `<p>Une minute pour repérer l’essentiel : tu touches chaque onglet, Hugo t’explique.</p>
+     <p class="aide">Tu pourras la refaire quand tu veux : <b>?</b> en bas à droite › « Visite guidée de l’appli ».</p>`,
+    '<span class="espace"></span><button type="button" data-fermer>Plus tard</button><button value="ok" class="primaire">▶ Faire la visite</button>');
+  if ((await resultat).action === 'ok') visiteGuidee();
+}
+
+/* ---------- Filet de sécurité : une erreur inattendue (retenue par compat.js) → bandeau, sans rien bloquer ---------- */
+
+function filetErreur() {
+  if (filetErreur.pause || $('#filet-erreur')) return; // un seul bandeau à la fois
+  const eleve = typeof enModeEleve === 'function' && enModeEleve();
+  const b = document.createElement('div');
+  b.id = 'filet-erreur';
+  b.className = 'filet-erreur';
+  b.setAttribute('role', 'alert');
+  b.innerHTML = `<p><b>⚠ Un petit problème est survenu dans l’appli.</b> ${eleve ? 'Recharge la page.'
+    : 'Ton carnet n’est pas perdu : enregistre-le maintenant, puis recharge la page si quelque chose ne marche plus.'}</p>
+    <div class="filet-boutons">${eleve ? '' : '<button type="button" class="primaire" data-filet="enregistrer">💾 Enregistrer maintenant</button>'}
+      <button type="button" data-filet="recharger">↻ Recharger</button>
+      <button type="button" data-filet="fermer" aria-label="Fermer">✕</button></div>`;
+  ($('dialog[open]') || document.body).append(b); // (dans la fenêtre ouverte : sinon on ne pourrait pas le toucher)
+}
+
+document.addEventListener('click', e => {
+  const t = e.target.closest?.('[data-filet]');
+  if (!t) return;
+  $('#filet-erreur')?.remove();
+  filetErreur.pause = true; // (pas de nouveau bandeau pendant 30 s)
+  setTimeout(() => { filetErreur.pause = false; }, 30000);
+  if (t.dataset.filet === 'enregistrer') lancer(() => actionCle(sauvegarder));
+  else if (t.dataset.filet === 'recharger') location.reload();
+});
 
 function surveillerMisesAJour() {
   // Message de confirmation après une mise à jour automatique
@@ -3195,6 +3276,13 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) rapp
     toast('Impossible de lire les données de cet appareil. Récupère ton carnet là où il est enregistré (bouton « Enregistrer »).', 'erreur');
     await Donnees.charger().catch(() => {});
   }
+  // Nouvelle version de l'appli sur cet appareil : copie de secours du carnet AVANT ses mises à jour des données
+  // (migrerTout). Avant la v1.0.0 rien n'était retenu : un carnet déjà rempli vient donc d'une ancienne version.
+  const depuis = versionVue() || (Donnees.liste('classes').length ? 'ancienne' : null);
+  if (depuis !== VERSION_APP) {
+    if (depuis) await Donnees.copierAvantMaj(depuis).catch(e => console.warn('Copie d’avant la mise à jour impossible :', e));
+    retenirVersionVue();
+  }
   migrerTout();
   Donnees.surChangement(majPastille);
   Donnees.surChangement(planifierSauvegardeAuto);
@@ -3202,6 +3290,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) rapp
   const demarrage = reglage('onglets').demarrage; // onglet choisi pour le lancement (⚙ Réglages → Onglets)
   if (demarrage) ui.vue = demarrage;
   rendre();
+  window.appliPrete = true; // (onglets.js : écran tourné pendant le chargement → rien à redessiner avant ce premier rendu)
   Donnees.oublierHistorique(); // (mises à jour faites au démarrage : pas à annuler)
   majBoutonAnnuler();
   if (typeof verifierVerrouDemarrage === 'function') verifierVerrouDemarrage(); // 🔒 fermée depuis longtemps : verrouillée
@@ -3210,13 +3299,17 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) rapp
   // Ensuite : bandeau « Ouvrir mon carnet » pour aller chercher le carnet là où il est enregistré (enregistrement.js).
   if (!enModeEleve()) {
     lancer(async () => {
+      const nouveau = !ui.guideVu; // (premier lancement sur cet appareil)
       await premierLancement();
       Donnees.oublierHistorique(); // (réglages de bienvenue, classe exemple : pas à annuler)
       majBoutonAnnuler();
       if (!ui.guideVu) await afficherGuide();
+      if (depuis && depuis !== VERSION_APP && !nouveau) await afficherNouveautes(depuis);
       if (typeof afficherBandeauRecuperer === 'function') await afficherBandeauRecuperer();
+      if (nouveau && !ui.visiteProposee) await proposerVisite();
     });
   }
+  if (window.erreursAppli?.length) filetErreur(); // (erreur survenue pendant le chargement)
   // (Copie du navigateur rendue durable : enregistrement.js › demanderStockageDurable.)
   enregistrerServiceWorker();
   surveillerMisesAJour();

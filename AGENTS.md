@@ -35,7 +35,11 @@ la publication sur GitHub Pages (https://salvorhard1.github.io/carnet-eps/) est 
 1. Augmenter `VERSION` dans `sw.js` **et** `VERSION_APP` dans `app.js` (toujours identiques).
 2. Tout nouveau fichier doit être ajouté à la liste `FICHIERS` de `sw.js` (cache hors ligne), à la liste `$fichiers`
    de `copier-sur-cle.ps1` et, si c'est un script, à `index.html`.
-3. Lancer `copier-sur-cle.ps1`.
+3. Si la version ajoute une collection ou change le sens d'un champ : augmenter `NIVEAU` dans `donnees.js`
+   (une appli plus ancienne refusera alors ce carnet au lieu de l'enregistrer sans ce qu'elle ne connaît pas).
+4. Ajouter une entrée en tête de `NOUVEAUTES` (app.js) si la version apporte quelque chose de visible :
+   elle s'affiche une fois sur chaque appareil après la mise à jour.
+5. Lancer `copier-sur-cle.ps1`.
 
 Encodage : fichiers de l'appli en **UTF-8 sans BOM** ; les scripts `.ps1` contenant des accents en **UTF-8 avec BOM**
 (Windows PowerShell 5.1 en a besoin). En PowerShell, écrire avec

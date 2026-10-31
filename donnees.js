@@ -11,6 +11,10 @@ const Donnees = (() => {
   // (modeles : banque de séances réutilisables, sans données d'élèves — tp.js.)
   const COLLECTIONS = ['classes', 'eleves', 'evals', 'notes', 'seances', 'reglages', 'documents', 'suivis', 'agenda', 'baremes', 'modeles'];
   const COLLECTIONS_OBLIGATOIRES = ['classes', 'eleves', 'evals', 'notes'];
+  // Niveau du format des données, écrit en clair dans l'en-tête du carnet (cle.js). L'augmenter dès qu'une version
+  // ajoute une collection ou change le sens d'un champ : une appli plus ancienne refusera alors ce carnet (sinon elle
+  // l'enregistrerait sans ce qu'elle ne connaît pas). 1 = v1.0.0.
+  const NIVEAU = 1;
   const auditeurs = [];
   let db;
 
@@ -34,18 +38,18 @@ const Donnees = (() => {
     });
   }
 
-  function lireBase() {
+  function lireBase(cle = 'db') {
     return new Promise((ok, ko) => {
-      const q = base.transaction('carnet', 'readonly').objectStore('carnet').get('db');
+      const q = base.transaction('carnet', 'readonly').objectStore('carnet').get(cle);
       q.onsuccess = () => ok(q.result || null);
       q.onerror = () => ko(q.error);
     });
   }
 
-  function ecrireBase(valeur) {
+  function ecrireBase(valeur, cle = 'db') {
     return new Promise((ok, ko) => {
       const tx = base.transaction('carnet', 'readwrite');
-      tx.objectStore('carnet').put(valeur, 'db'); // copie instantanée des données à cet instant
+      tx.objectStore('carnet').put(valeur, cle); // copie instantanée des données à cet instant
       tx.oncomplete = () => ok();
       tx.onerror = tx.onabort = () => ko(tx.error);
     });
@@ -349,6 +353,30 @@ const Donnees = (() => {
     return n;
   }
 
+  // Copie de secours prise au démarrage d'une nouvelle version de l'appli, AVANT ses mises à jour des données
+  // (app.js › démarrage) : une seule, la dernière, rangée sur l'appareil à côté du carnet. Restaurer = revenir
+  // exactement à cet état sur cet appareil (ce qui a été fait depuis y est perdu, sauf s'il a été enregistré ailleurs).
+  const CLE_AVANT_MAJ = 'avant-maj';
+  async function copierAvantMaj(version) {
+    if (!base) return false;
+    await ecrireBase({ version, date: Date.now(), db }, CLE_AVANT_MAJ);
+    return true;
+  }
+  async function copieAvantMaj() {
+    if (!base) return null;
+    const c = await lireBase(CLE_AVANT_MAJ).catch(() => null);
+    return c ? { version: c.version, date: c.date } : null;
+  }
+  async function restaurerAvantMaj() {
+    const c = base && await lireBase(CLE_AVANT_MAJ);
+    if (!c?.db) throw new Error('Aucune copie d’avant la mise à jour sur cet appareil.');
+    oublier();
+    db = normaliser(c.db);
+    await ecrireBase(db);
+    canal?.postMessage('maj');
+    notifier();
+  }
+
   // Ce qui part sur la clé : tout sauf les infos propres à cet appareil.
   function exporter() {
     const { meta, ...reste } = db;
@@ -375,7 +403,8 @@ const Donnees = (() => {
   }
 
   return {
-    CLE_STOCKAGE, charger, nouvelId, ecrire, supprimer, get, liste, note, noteComplete, ecrireNote,
+    CLE_STOCKAGE, NIVEAU, charger, nouvelId, ecrire, supprimer, get, liste, note, noteComplete, ecrireNote,
+    copierAvantMaj, copieAvantMaj, restaurerAvantMaj,
     fusionner, exporter, marquerEnvoi, reglerMeta, enAttente, fusionnerFiche, antidater, // (fusionnerFiche : exposée pour les tests)
     annuler, refaire, peutAnnuler: () => historique.length > 0, peutRefaire: () => aRefaire.length > 0, oublierHistorique: oublier,
     meta: () => db?.meta ?? vide().meta,
