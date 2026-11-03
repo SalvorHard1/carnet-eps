@@ -428,7 +428,10 @@ const PdfTexte = (() => {
       const premier = doc.resoudre(f.FirstChar) || 0;
       (doc.resoudre(f.Widths) || []).forEach((x, k) => largeurs.set(premier + k, doc.resoudre(x)));
     }
-    const largeur = b => codes(b).reduce((s, c) => s + (largeurs.get(c) ?? parDefaut), 0) / 1000;
+    // (Police Type3, ex. PDF « imprimé » par Chrome : largeurs dans les unités de sa FontMatrix, souvent 1/2048 et non 1/1000.)
+    const matrice = doc.resoudre(f.Subtype)?.n === 'Type3' ? (doc.resoudre(f.FontMatrix) || []).map(x => doc.resoudre(x)) : null;
+    const unite = matrice && Math.abs(matrice[0]) > 0 ? Math.abs(matrice[0]) : 0.001;
+    const largeur = b => codes(b).reduce((s, c) => s + (largeurs.get(c) ?? parDefaut), 0) * unite;
     f._police = { octets, texte, largeur };
     return f._police;
   }
@@ -548,9 +551,11 @@ const PdfTexte = (() => {
     const L = lecteur(contenu);
     const pile = [];
     let ctm = ctmDepart, tm = [1, 0, 0, 1, 0, 0], tlm = tm, fonte = null, taille = 10, interligne = 0;
+    // Espacement des lettres (Tc), des mots (Tw) et étirement horizontal (Tz, en %).
+    let espLettres = 0, espMots = 0, etirement = 1;
     const args = [];
     const polices = doc.resoudre(ressources.Font) || {}, objets = doc.resoudre(ressources.XObject) || {};
-    const avancer = dx => { tm = mult([1, 0, 0, 1, dx, 0], tm); };
+    const avancer = dx => { tm = mult([1, 0, 0, 1, dx * etirement, 0], tm); };
     let depart = null, courant = null;
     const trait = (p, q) => {
       const dx = Math.abs(q[0] - p[0]), dy = Math.abs(q[1] - p[1]);
@@ -562,7 +567,8 @@ const PdfTexte = (() => {
       if (!(b instanceof Chaine)) return;
       const t = fonte ? fonte.texte(b.b) : b.b;
       const m = mult(tm, ctm), [x, y] = point(m, 0, 0), echelle = Math.hypot(m[2], m[3]) || 1;
-      avancer((fonte ? fonte.largeur(b.b) : b.b.length * 0.5) * taille);
+      const nb = fonte ? b.b.length / fonte.octets : b.b.length, blancs = fonte?.octets === 1 ? (b.b.match(/ /g) || []).length : 0;
+      avancer((fonte ? fonte.largeur(b.b) : b.b.length * 0.5) * taille + nb * espLettres + blancs * espMots);
       const [fin, finY] = point(mult(tm, ctm), 0, 0);
       if (!t) return;
       const corps = Math.abs(taille * echelle) || taille, prec = items.at(-1);
@@ -592,8 +598,13 @@ const PdfTexte = (() => {
       if (!(v instanceof Op)) { args.push(v); continue; }
       const a = args.splice(0);
       switch (v.o) {
-        case 'q': pile.push(ctm); break;
-        case 'Q': ctm = pile.pop() || ctm; break;
+        // La police, sa taille et les espacements font partie de l'état graphique : Q les rétablit aussi
+        // (Word enferme chaque morceau de ligne dans q … Q, et le morceau suivant reprend la police d'avant).
+        case 'q': pile.push({ ctm, fonte, taille, interligne, espLettres, espMots, etirement }); break;
+        case 'Q': { const e = pile.pop(); if (e) ({ ctm, fonte, taille, interligne, espLettres, espMots, etirement } = e); break; }
+        case 'Tc': espLettres = a[0] || 0; break;
+        case 'Tw': espMots = a[0] || 0; break;
+        case 'Tz': etirement = (a[0] ?? 100) / 100; break;
         case 'cm': if (a.length >= 6) ctm = mult(a.slice(-6), ctm); break;
         case 'BT': tm = tlm = [1, 0, 0, 1, 0, 0]; break;
         case 'ET': break;

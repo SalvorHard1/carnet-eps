@@ -1,5 +1,5 @@
 'use strict';
-// Outil « 🔬 ECE » (Outils › SVT) : évaluation des compétences expérimentales (spécialité SVT, terminale), pour les ECE
+// Outil « 🔬 ECE » (Outils › Sciences, carnet de SVT seulement) : évaluation des compétences expérimentales (spécialité SVT, terminale), pour les ECE
 // blanches en classe. D'après le guide de l'inspection générale (Eduscol) : épreuve d'1 h, notée sur 20 puis ramenée sur 5.
 //   Réalisation pratique /9 et étape spécifique /3 : curseur à quatre niveaux selon le nombre et la nature des aides
 //     (A seul ou une aide mineure ; B plus d'une aide mineure ; C une aide majeure ; D pas de résultat exploitable /
@@ -9,8 +9,10 @@
 // L'examinateur compte les aides au toucher ; l'appli propose le niveau (modifiable) et calcule la note. Rien n'est
 // envoyé nulle part ; « 📝 Vers les notes » crée une évaluation sur 20 dans l'onglet Notes.
 
-if (!FAMILLES_OUTILS.some(f => f.id === 'svt')) FAMILLES_OUTILS.push({ id: 'svt', nom: 'SVT' });
-OUTILS.push({ id: 'ece', famille: 'svt', icone: '🔬', nom: 'ECE', info: 'Épreuve des compétences expérimentales : aides, grille, note', classe: true });
+// Famille « Sciences » (ECE, labo, TP) : commune aux disciplines scientifiques, titrée du nom de la discipline (« SVT »…).
+if (!FAMILLES_OUTILS.some(f => f.id === 'sciences')) FAMILLES_OUTILS.push({ id: 'sciences', get nom() { return profil().nom; } });
+// (L'ECE de SVT suit le guide de SVT : une autre discipline aura sa propre grille.)
+OUTILS.push({ id: 'ece', famille: 'sciences', disciplines: ['svt'], icone: '🔬', nom: 'ECE', info: 'Épreuve des compétences expérimentales : aides, grille, note', classe: true });
 
 const NIVEAUX_ECE = ['A', 'B', 'C', 'D'];
 const BAREME_ECE = { pratique: [9, 6, 3, 0], specifique: [3, 2, 1, 0], communication: [5, 3, 1, 0], conclusion: [3, 2, 1, 0] };

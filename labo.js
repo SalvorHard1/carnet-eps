@@ -1,5 +1,5 @@
 'use strict';
-// Outils de laboratoire (Outils › SVT ; cachés en EPS, comme l'ECE) :
+// Outils de laboratoire (Outils › Sciences ; cachés en EPS, comme l'ECE ; schéma et gestes : SVT seulement) :
 //   ✏️ Grille de schéma   : critères d'un schéma d'observation cochés en passant dans les rangs → note, vers les notes.
 //   🧪 Gestes techniques  : pour un geste (microscope, préparation, dissection…), qui réussit, avec aide, à reprendre.
 //   📊 Mise en commun     : les mesures de chaque groupe → moyenne, médiane, écart-type, valeurs à vérifier, graphique.
@@ -8,13 +8,15 @@
 // Comme les autres outils : état sur cet appareil (etatOutils, par classe) ; tout est calculé ici, par l'appli.
 // Rien ne sort de l'appareil ; « Vers les notes » / « Vers une séance » écrivent dans le carnet, à la demande.
 
-if (!FAMILLES_OUTILS.some(f => f.id === 'svt')) FAMILLES_OUTILS.push({ id: 'svt', nom: 'SVT' });
+if (!FAMILLES_OUTILS.some(f => f.id === 'sciences')) FAMILLES_OUTILS.push({ id: 'sciences', get nom() { return profil().nom; } });
+// (Schéma d'observation : propre à la SVT ; gestes techniques : liste de la discipline (profil().labo) ; les autres servent partout.)
 OUTILS.push(
-  { id: 'schema', famille: 'svt', icone: '✏️', nom: 'Grille de schéma', info: 'Critères cochés en passant dans les rangs, note calculée', classe: true, eleve: false },
-  { id: 'gestes', famille: 'svt', icone: '🧪', nom: 'Gestes techniques', info: 'Microscope, préparation, dissection… : qui réussit, qui aider', classe: true, eleve: false },
-  { id: 'resultats', famille: 'svt', icone: '📊', nom: 'Mise en commun', info: 'Les mesures des groupes : moyenne, écarts, graphique à projeter', classe: true },
-  { id: 'securite', famille: 'svt', icone: '⚠️', nom: 'Sécurité au labo', info: 'Consignes du TP à projeter ; PAI et oublis de matériel du jour', classe: true, eleve: false },
-  { id: 'binomes', famille: 'svt', icone: '👫', nom: 'Binômes de TP', info: 'Une paillasse par binôme, sans refaire les mêmes binômes', classe: true },
+  { id: 'schema', famille: 'sciences', disciplines: ['svt'], icone: '✏️', nom: 'Grille de schéma', info: 'Critères cochés en passant dans les rangs, note calculée', classe: true, eleve: false },
+  { id: 'gestes', famille: 'sciences', disciplines: ['svt', 'pc'], icone: '🧪', nom: 'Gestes techniques', classe: true, eleve: false,
+    get info() { return profil().labo?.gestesInfo || 'Microscope, préparation, dissection… : qui réussit, qui aider'; } },
+  { id: 'resultats', famille: 'sciences', icone: '📊', nom: 'Mise en commun', info: 'Les mesures des groupes : moyenne, écarts, graphique à projeter', classe: true },
+  { id: 'securite', famille: 'sciences', icone: '⚠️', nom: 'Sécurité au labo', info: 'Consignes du TP à projeter ; PAI et oublis de matériel du jour', classe: true, eleve: false },
+  { id: 'binomes', famille: 'sciences', icone: '👫', nom: 'Binômes de TP', info: 'Une paillasse par binôme, sans refaire les mêmes binômes', classe: true },
 );
 
 const idLabo = () => Math.random().toString(36).slice(2, 9);
@@ -107,8 +109,10 @@ const GESTES_DEFAUT = ['Réglage du microscope (mise au point, grossissement)', 
 // États d'un élève pour un geste (un toucher passe au suivant).
 const ETATS_GESTE = { ok: ['✅', 'Réussi'], aide: ['🟠', 'Avec aide'], non: ['❌', 'À reprendre'] };
 const SUITE_GESTE = { '': 'ok', ok: 'aide', aide: 'non', non: '' };
+// Gestes proposés au départ : ceux de la discipline (physique-chimie : verrerie, mesures électriques…), sinon ceux de SVT.
+const gestesDefaut = () => profil().labo?.gestes || GESTES_DEFAUT;
 function cfgGestes(c) {
-  const cfg = ((etatOutils.gestes ??= {})[c.id] ??= { gestes: GESTES_DEFAUT.map(nom => ({ id: idLabo(), nom })), actif: '', etats: {} });
+  const cfg = ((etatOutils.gestes ??= {})[c.id] ??= { gestes: gestesDefaut().map(nom => ({ id: idLabo(), nom })), actif: '', etats: {} });
   if (!cfg.gestes.some(g => g.id === cfg.actif)) cfg.actif = cfg.gestes[0]?.id || '';
   return cfg;
 }
@@ -123,7 +127,7 @@ function htmlGestes(c) {
   return `
     <div class="ligne reglage-outil">
       <label class="large-outil">Geste observé<select data-lb-champ="gestes.actif">${cfg.gestes.map(x => `<option value="${x.id}" ${x.id === cfg.actif ? 'selected' : ''}>${esc(x.nom)}</option>`).join('')}</select></label>
-      <label>Autre geste<input data-lb-nouveau-geste maxlength="80" placeholder="ex. Réaliser un frottis"></label>
+      <label>Autre geste<input data-lb-nouveau-geste maxlength="80" placeholder="${esc(exempleOutil('geste', 'ex. Réaliser un frottis'))}"></label>
       <button data-lb="geste-ajout">+ Ajouter</button>
       ${g && cfg.gestes.length > 1 ? `<button class="icone-petit" data-lb="geste-suppr" data-arg="${g.id}" title="Retirer ce geste de la liste" aria-label="Retirer ce geste">🗑</button>` : ''}
     </div>
@@ -172,14 +176,19 @@ function htmlResultats(c) {
   const cfg = cfgResultats(c), avecX = !!cfg.variable.trim();
   return `
     <div class="ligne reglage-outil">
-      <label class="large-outil">Mesure<input data-lb-res="mesure" value="${esc(cfg.mesure)}" maxlength="60" placeholder="ex. Volume de dioxygène produit"></label>
-      <label class="etroit">Unité<input data-lb-res="unite" value="${esc(cfg.unite)}" maxlength="15" placeholder="ex. mL"></label>
+      <label class="large-outil">Mesure<input data-lb-res="mesure" value="${esc(cfg.mesure)}" maxlength="60" placeholder="${esc(exempleOutil('grandeur', 'ex. Grandeur mesurée'))}"></label>
+      <label class="etroit">Unité<input data-lb-res="unite" value="${esc(cfg.unite)}" maxlength="15" placeholder="${esc(exempleOutil('unite', 'unité'))}"></label>
     </div>
     <div class="ligne reglage-outil">
-      <label class="large-outil">Selon (facultatif)<input data-lb-res="variable" value="${esc(cfg.variable)}" maxlength="60" placeholder="ex. Température — chaque groupe teste une valeur"></label>
-      <label class="etroit">Unité<input data-lb-res="uniteX" value="${esc(cfg.uniteX)}" maxlength="15" placeholder="ex. °C"></label>
+      <label class="large-outil">Selon (facultatif)<input data-lb-res="variable" value="${esc(cfg.variable)}" maxlength="60" placeholder="${esc(exempleOutil('condition', 'ex. Condition testée par chaque groupe'))}"></label>
+      <label class="etroit">Unité<input data-lb-res="uniteX" value="${esc(cfg.uniteX)}" maxlength="15" placeholder="${esc(exempleOutil('uniteCondition', 'unité'))}"></label>
       <button data-lb="res-appliquer">✔ Appliquer</button>
     </div>
+    ${incertitudesLabo() ? `<div class="ligne reglage-outil">
+      <label>Valeur de référence (facultatif)<input data-lb-res="reference" value="${esc(cfg.reference || '')}" maxlength="15" inputmode="decimal" placeholder="ex. 340"></label>
+      ${avecX ? `<label>Modèle<select data-lb-res="modele">${[['', 'Aucun'], ['lineaire', 'Linéaire : y = a·x'], ['affine', 'Affine : y = a·x + b']]
+        .map(([v, nom]) => `<option value="${v}" ${(cfg.modele || '') === v ? 'selected' : ''}>${nom}</option>`).join('')}</select></label>` : ''}
+    </div>` : ''}
     <div class="table-defile"><table class="table-labo saisie-labo"><thead><tr><th>Groupe</th>${avecX ? `<th>${esc(cfg.variable)}${cfg.uniteX ? ' (' + esc(cfg.uniteX) + ')' : ''}</th>` : ''}
       <th>${esc(cfg.mesure || 'Mesure')}${cfg.unite ? ' (' + esc(cfg.unite) + ')' : ''}</th><th></th></tr></thead>
       <tbody>${cfg.lignes.map(l => `<tr>
@@ -206,14 +215,87 @@ function htmlBilanResultats(cfg) {
     const st = statsLabo(liste.map(p => p.y));
     return st.n >= 4 && st.et ? liste.filter(p => Math.abs(p.y - st.moy) > 2 * st.et) : [];
   });
-  const ligne = (nom, st) => `<tr><th>${esc(nom)}</th><td>${st.n}</td><td><b>${fmtLabo(st.moy)}</b></td><td>${fmtLabo(st.med)}</td><td>${fmtLabo(st.min)} – ${fmtLabo(st.max)}</td><td>${fmtLabo(st.et)}</td></tr>`;
+  // (Physique-chimie : incertitudes-types en plus, profil().incertitudes.)
+  const incert = incertitudesLabo();
+  const ligne = (nom, st) => `<tr><th>${esc(nom)}</th><td>${st.n}</td><td><b>${fmtLabo(st.moy)}</b></td><td>${fmtLabo(st.med)}</td><td>${fmtLabo(st.min)} – ${fmtLabo(st.max)}</td><td>${fmtLabo(st.et)}</td>`
+    + (incert ? `<td>${st.n > 1 ? fmtSig(st.et / Math.sqrt(st.n)) : '–'}</td>` : '') + '</tr>';
   const conditions = avecX ? trierConditions([...parX.keys()]) : [];
+  // Droite de modélisation : avec un modèle choisi et une condition chiffrée pour chaque groupe.
+  const numeriques = avecX && points.every(p => nombreLabo(p.x) !== null) && new Set(points.map(p => nombreLabo(p.x))).size >= 2;
+  const modele = incert && numeriques && cfg.modele ? modeleLabo(points.map(p => ({ ...p, xn: nombreLabo(p.x) })), cfg.modele) : null;
   return `
-    <div class="table-defile"><table class="table-labo stats-labo"><thead><tr><th>${avecX ? esc(cfg.variable) : ''}</th><th>Groupes</th><th>Moyenne${esc(u)}</th><th>Médiane</th><th>Min – max</th><th>Écart-type</th></tr></thead>
+    <div class="table-defile"><table class="table-labo stats-labo"><thead><tr><th>${avecX ? esc(cfg.variable) : ''}</th><th>Groupes</th><th>Moyenne${esc(u)}</th><th>Médiane</th><th>Min – max</th>
+      <th${incert ? ' title="Écart-type de la série = incertitude-type d’une mesure"' : ''}>Écart-type${incert ? ' s' : ''}</th>${incert ? '<th title="Incertitude-type de la moyenne : s / √n">u(moyenne) = s/√n</th>' : ''}</tr></thead>
       <tbody>${avecX ? conditions.map(x => ligne(x + (cfg.uniteX ? ' ' + cfg.uniteX : ''), statsLabo(parX.get(x).map(p => p.y)))).join('') : ''}${ligne(avecX ? 'Toute la classe' : 'Classe', s)}</tbody></table></div>
+    ${incert && !avecX ? htmlIncertitudes(cfg, s) : ''}
+    ${modele ? htmlModele(cfg, modele) : ''}
     ${aVerifier.length ? `<p class="alerte-sante">🔎 <b>À vérifier</b> (loin des autres) : ${aVerifier.map(p => `${esc(p.l.groupe)} (${fmtLabo(p.y)}${esc(u)})`).join(', ')}
       — erreur de mesure, ou résultat à discuter ?</p>` : ''}
-    ${avecX ? graphiqueConditions(cfg, conditions, parX) : graphiqueGroupes(cfg, points, s)}`;
+    ${modele ? graphiqueModele(cfg, points.map(p => ({ ...p, xn: nombreLabo(p.x) })), modele)
+      : avecX ? graphiqueConditions(cfg, conditions, parX) : graphiqueGroupes(cfg, points, s)}`;
+}
+
+/* ---------- Incertitudes et modélisation (carnet de physique-chimie : profil().incertitudes) ---------- */
+
+const incertitudesLabo = () => !!profil().incertitudes;
+// 3 chiffres significatifs (pente, ordonnée à l'origine, incertitude dans le tableau).
+const fmtSig = v => (Number.isFinite(v) ? fmt(Number(v.toPrecision(3))) : '–');
+// Incertitude-type arrondie par excès à 2 chiffres significatifs ; la valeur est arrondie à la même décimale.
+function arrondiIncertitude(u) {
+  const e = Math.floor(Math.log10(u)) - 1, p = 10 ** e;
+  return { u: Math.ceil(u / p - 1e-9) * p, dec: Math.max(0, -e), p };
+}
+const fmtDec = (v, dec) => v.toLocaleString('fr-FR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+
+// Résultat de la classe : moyenne et incertitude-type sur la moyenne (s / √n), puis comparaison à la référence
+// par l'écart normalisé z = |moyenne − référence| / u (compatible si z ≤ 2).
+function htmlIncertitudes(cfg, s) {
+  const u = cfg.unite ? ' ' + cfg.unite : '';
+  if (s.n < 2 || !s.et) return '<p class="aide">Incertitude : il faut au moins deux valeurs différentes.</p>';
+  const uMoy = s.et / Math.sqrt(s.n), a = arrondiIncertitude(uMoy);
+  const ref = nombreLabo(cfg.reference), z = ref !== null ? Math.abs(s.moy - ref) / uMoy : null;
+  return `<div class="resultat-labo">
+    <p>📏 <b>Résultat de la classe</b> : moyenne = <b>${fmtDec(Math.round(s.moy / a.p) * a.p, a.dec)}${esc(u)}</b>,
+      incertitude-type u = <b>${fmtDec(a.u, a.dec)}${esc(u)}</b> <span class="aide">(${s.n} mesures indépendantes ; u = s / √n, arrondie par excès à 2 chiffres significatifs)</span></p>
+    ${z !== null ? `<p>${z <= 2 ? '✅' : '⚠️'} Écart normalisé à la référence (${fmtLabo(ref)}${esc(u)}) : z = |moyenne − référence| / u = <b>${fmtSig(z)}</b>
+      — ${z <= 2 ? 'résultat compatible avec la valeur de référence (z ≤ 2).' : 'écart important (z > 2) : chercher les sources d’erreur.'}</p>` : ''}
+  </div>`;
+}
+
+// Régression sur tous les points des groupes (moindres carrés) : y = a·x (linéaire) ou y = a·x + b (affine).
+function modeleLabo(points, type) {
+  const n = points.length, sx = points.reduce((t, p) => t + p.xn, 0), sy = points.reduce((t, p) => t + p.y, 0);
+  if (type === 'lineaire') {
+    const sxx = points.reduce((t, p) => t + p.xn * p.xn, 0), sxy = points.reduce((t, p) => t + p.xn * p.y, 0);
+    return sxx ? { type, a: sxy / sxx, b: 0, n } : null;
+  }
+  const mx = sx / n, my = sy / n, vx = points.reduce((t, p) => t + (p.xn - mx) ** 2, 0);
+  if (!vx) return null;
+  const a = points.reduce((t, p) => t + (p.xn - mx) * (p.y - my), 0) / vx;
+  return { type, a, b: my - a * mx, n };
+}
+function htmlModele(cfg, m) {
+  const uniteA = cfg.unite && cfg.uniteX ? ` ${cfg.unite}/${cfg.uniteX}` : '', uniteB = cfg.unite ? ' ' + cfg.unite : '';
+  const b = m.type === 'affine' ? ` ${m.b < 0 ? '−' : '+'} ${fmtSig(Math.abs(m.b))}` : '';
+  return `<div class="resultat-labo"><p>📈 <b>Modèle ${m.type === 'affine' ? 'affine' : 'linéaire'}</b> (${m.n} points) :
+    ${esc(cfg.mesure || 'y')} = <b>${fmtSig(m.a)}</b> × ${esc(cfg.variable || 'x')}${b}
+    <span class="aide">— a = ${fmtSig(m.a)}${esc(uniteA)}${m.type === 'affine' ? ` ; b = ${fmtSig(m.b)}${esc(uniteB)}` : ''}</span></p>
+    <p class="aide">Les points sont-ils proches de la droite ? Sinon : point aberrant, ou modèle à changer.</p></div>`;
+}
+// Nuage de points sur un axe horizontal chiffré, et la droite du modèle.
+function graphiqueModele(cfg, points, m) {
+  const L = 720, H = 320, g = { l: 56, r: 16, t: 26, b: 56 };
+  const xsv = points.map(p => p.xn), [xmin, xmax, pasx] = echelleLabo(Math.min(...xsv), Math.max(...xsv));
+  const yDroite = x => m.a * x + m.b, ys = [...points.map(p => p.y), yDroite(xmin), yDroite(xmax)];
+  const { y, svg } = axesLabo(L, H, g, echelleLabo(Math.min(...ys), Math.max(...ys)), cfg.unite);
+  const x = v => g.l + ((v - xmin) / (xmax - xmin)) * (L - g.l - g.r);
+  const graduations = Array.from({ length: Math.round((xmax - xmin) / pasx) + 1 }, (_, k) => xmin + k * pasx)
+    .map(v => `<text class="texte-graph" x="${x(v)}" y="${H - g.b + 16}" text-anchor="middle">${fmtLabo(v)}</text>`).join('');
+  return `<figure class="graph-labo"><svg viewBox="0 0 ${L} ${H}" role="img" aria-label="${esc(cfg.mesure || 'Mesure')} en fonction de ${esc(cfg.variable)}">${svg}${graduations}
+    <line class="courbe-graph" x1="${x(xmin)}" y1="${y(yDroite(xmin))}" x2="${x(xmax)}" y2="${y(yDroite(xmax))}"/>
+    ${points.map(p => `<circle class="point-graph" cx="${x(p.xn)}" cy="${y(p.y)}" r="5"><title>${esc(p.l.groupe)} : ${fmtLabo(p.xn)} ; ${fmtLabo(p.y)}</title></circle>`).join('')}
+    <text class="texte-graph" x="${L - g.r}" y="${H - 10}" text-anchor="end">${esc(cfg.variable)}${cfg.uniteX ? ' (' + esc(cfg.uniteX) + ')' : ''}</text></svg>
+    <figcaption>Points : chaque groupe ; droite : modèle ${m.type === 'affine' ? 'affine' : 'linéaire'}.</figcaption></figure>`;
 }
 
 // Conditions dans l'ordre des nombres (« 10 °C » avant « 37 °C »), sinon dans l'ordre de saisie.
@@ -279,13 +361,20 @@ const DANGERS_LABO = [
   ['electrique', '🔌', 'Appareils électriques, ExAO : mains sèches, pas d’eau à côté'],
   ['dechets', '🗑️', 'Déchets et produits : dans les bacs prévus, jamais à l’évier'],
 ];
+// Dangers proposés selon la discipline (profil().labo) : certains retirés (scalpel, matériel biologique en
+// physique-chimie), d'autres reformulés ou ajoutés (laser, hotte). Aussi pour les fiches TP (tp.js).
+function dangersLabo() {
+  const p = profil().labo || {};
+  return [...DANGERS_LABO.filter(d => !(p.dangersMasques || []).includes(d[0])).map(d => (p.dangersTextes?.[d[0]] ? [d[0], d[1], p.dangersTextes[d[0]]] : d)),
+    ...(p.dangersEnPlus || [])];
+}
 function cfgSecurite(c) {
   return ((etatOutils.securite ??= {})[c.id] ??= { titre: '', epi: ['blouse', 'paillasse'], dangers: [], consignes: '' });
 }
 
 function htmlSecurite(c) {
   const cfg = cfgSecurite(c), auj = aujourdhui();
-  const choisis = [...EPI_LABO.filter(x => cfg.epi.includes(x[0])), ...DANGERS_LABO.filter(x => cfg.dangers.includes(x[0]))];
+  const choisis = [...EPI_LABO.filter(x => cfg.epi.includes(x[0])), ...dangersLabo().filter(x => cfg.dangers.includes(x[0]))];
   const libres = cfg.consignes.split('\n').map(t => t.trim()).filter(Boolean);
   // Pour le professeur : élèves avec un PAI, oublis de matériel notés aujourd'hui (appel ou séance du jour).
   const els = elevesDe(c.id), pai = els.filter(el => aPai(el));
@@ -294,9 +383,9 @@ function htmlSecurite(c) {
   const coche = (liste, [id, icone, texte]) => `<label class="case"><input type="checkbox" data-lb-secu="${liste}|${id}" ${cfg[liste].includes(id) ? 'checked' : ''}> ${icone} ${esc(texte)}</label>`;
   return `
     <details class="reglages-labo" data-lb-details="securite" ${cfg.prepa !== false ? 'open' : ''}><summary>⚙ Préparer les consignes du TP</summary>
-      <div class="ligne reglage-outil"><label class="large-outil">TP<input data-lb-champ="securite.titre" value="${esc(cfg.titre)}" maxlength="120" placeholder="ex. Dissection de la souris — appareil digestif"></label></div>
+      <div class="ligne reglage-outil"><label class="large-outil">TP<input data-lb-champ="securite.titre" value="${esc(cfg.titre)}" maxlength="120" placeholder="${esc(exempleOutil('titreTp', mot('titreSeanceExemple')))}"></label></div>
       <div class="colonnes-labo"><fieldset><legend>Équipement</legend>${EPI_LABO.map(x => coche('epi', x)).join('')}</fieldset>
-        <fieldset><legend>Dangers du TP</legend>${DANGERS_LABO.map(x => coche('dangers', x)).join('')}</fieldset></div>
+        <fieldset><legend>Dangers du TP</legend>${dangersLabo().map(x => coche('dangers', x)).join('')}</fieldset></div>
       <label>Autres consignes (une par ligne)<textarea data-lb-champ="securite.consignes" rows="3" placeholder="ex. Lire tout le protocole avant de commencer">${esc(cfg.consignes)}</textarea></label>
       <div class="boutons-outil"><button data-lb="secu-appliquer">✔ Mettre à jour l’affichage</button></div>
     </details>
@@ -506,6 +595,7 @@ document.addEventListener('change', e => {
     cfg[k] = t.type === 'checkbox' ? t.checked : k === 'taille' ? +t.value : t.value;
     return rendreOutil();
   }
+  if (t.dataset.lbRes && t.tagName === 'SELECT') { cfgResultats(c)[t.dataset.lbRes] = t.value; return rendreOutil(); } // (modèle de la droite)
   if (t.dataset.lbSecu) {
     const [liste, id] = t.dataset.lbSecu.split('|'), cfg = cfgSecurite(c);
     cfg[liste] = t.checked ? [...new Set([...cfg[liste], id])] : cfg[liste].filter(x => x !== id);
@@ -526,7 +616,15 @@ document.addEventListener('input', e => {
     if (crit) crit[k] = k === 'pts' ? Math.max(0, nombreLabo(t.value) ?? 0) : t.value;
     return sauverOutils();
   }
-  if (t.dataset.lbRes) { cfgResultats(c)[t.dataset.lbRes] = t.value; return sauverOutils(); }
+  if (t.dataset.lbRes) {
+    const cfg = cfgResultats(c);
+    cfg[t.dataset.lbRes] = t.value;
+    sauverOutils();
+    // (Valeur de référence : le bilan suit la frappe, comme pour les mesures.)
+    const zone = t.dataset.lbRes === 'reference' && $('#vue [data-lb-bilan]');
+    if (zone) zone.innerHTML = htmlBilanResultats(cfg);
+    return;
+  }
   if (t.dataset.lbLigne) {
     const cfg = cfgResultats(c), [id, k] = t.dataset.lbLigne.split('|'), l = cfg.lignes.find(x => x.id === id);
     if (!l) return;

@@ -39,7 +39,10 @@ const REGLAGES_DEFAUT = {
     masques: [], refsMasques: [], ajouts: [], refsPerso: [],
   },
   // (favoris : onglets de la barre en disposition « Favoris + Plus » sur tablette, voir onglets.js)
-  onglets: { masques: [], noms: {}, demarrage: '', favoris: ['appel', 'notes', 'entrainement', 'outils'] },
+  // (ordre : ordre des onglets choisi dans 🎨 Apparence et personnalisation ; vide = ordre d'origine, voir perso.js)
+  onglets: { masques: [], noms: {}, demarrage: '', favoris: ['appel', 'notes', 'entrainement', 'outils'], ordre: [] },
+  // 🎨 Apparence et personnalisation, partie poussée (perso.js) : ambiance, coins, police (clair / sombre : anciennes couleurs une à une, plus proposées).
+  perso: { ambiance: 'origine', clair: {}, sombre: {}, arrondi: 'normal', police: 'systeme' },
   // Appréciations proposées par l'appli (appreciations.js) : rubriques abordées et leur ordre, ton, style, longueur.
   appreciations: {
     // Par défaut (choix de l'auteur) : attitude, compétences, motricité (performances, notes) et objectif ; les autres
@@ -82,7 +85,7 @@ const seuilsDefaut = () => reglage('notes').seuils;
 // Bouton de la barre de saisie affiché : code de la discipline non décoché, ou code ajouté à la main dans les réglages.
 const codeVisible = (n, code) => (codesDiscipline().includes(code) ? !n.codesMasques.includes(code) : (n.codesAjoutes || []).includes(code));
 // (L'onglet « Prof principal » n'existe que si une classe est marquée « Je suis PP » : pp.js.)
-const ongletsVisibles = () => Object.keys(NOMS_ONGLETS).filter(v => !reglage('onglets').masques.includes(v)
+const ongletsVisibles = () => (typeof ordreOnglets === 'function' ? ordreOnglets() : Object.keys(NOMS_ONGLETS)).filter(v => !reglage('onglets').masques.includes(v)
   && (v !== 'pp' || (typeof classesPP === 'function' && classesPP().length > 0)));
 
 /* ---------- Couleurs ---------- */
@@ -118,8 +121,8 @@ function variablesApparence(a) {
   return { v, mode: a.mode, clair: t.clair, sombre: t.sombre };
 }
 
-// Applique l'apparence ; `appareil` : { taille, densite } (propres à cet appareil).
-function appliquerApparence(a, appareil, etablissement) {
+// Applique l'apparence ; `appareil` : { taille, densite, boutons } (propres à cet appareil) ; `perso` : 🎛 personnalisation avancée.
+function appliquerApparence(a, appareil, etablissement, perso = reglage('perso')) {
   const r = document.documentElement, ap = variablesApparence(a);
   for (const p of ['--accent-clair', '--accent-sombre', '--accent-doux-clair', '--accent-doux-sombre', '--n1', '--n2', '--n3', '--n4',
     '--ca1', '--ca2', '--ca3', '--ca4', '--ca5']) {
@@ -130,6 +133,7 @@ function appliquerApparence(a, appareil, etablissement) {
   else delete r.dataset.theme;
   const sombre = a.mode === 'sombre' || (a.mode !== 'clair' && matchMedia('(prefers-color-scheme: dark)').matches);
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', sombre ? ap.sombre : ap.clair);
+  if (typeof appliquerPerso === 'function') appliquerPerso(perso, sombre, appareil.boutons);
   r.style.setProperty('--zoom', (TAILLES_TEXTE[appareil.taille] || TAILLES_TEXTE.normale)[1]);
   if (DENSITES[appareil.densite] && appareil.densite !== 'normale') document.body.dataset.densite = appareil.densite;
   else delete document.body.dataset.densite;
@@ -141,18 +145,18 @@ function appliquerApparence(a, appareil, etablissement) {
   if (h1?.firstChild?.nodeType === Node.TEXT_NODE) h1.firstChild.textContent = carnet + ' ';
   document.title = etab ? `${carnet} ${etab}` : carnet;
   // Copie pour le prochain lancement : la bonne couleur s'affiche tout de suite, avant même la lecture du carnet.
-  try { localStorage.setItem('carnet-eps-apparence', JSON.stringify({ a, appareil })); } catch { /* sans importance */ }
+  try { localStorage.setItem('carnet-eps-apparence', JSON.stringify({ a, appareil, p: perso })); } catch { /* sans importance */ }
 }
 
 // Au chargement de la page, avant la lecture du carnet : dernière apparence connue sur cet appareil.
 (() => {
   try {
     const memo = JSON.parse(localStorage.getItem('carnet-eps-apparence'));
-    if (memo?.a) appliquerApparence({ ...REGLAGES_DEFAUT.apparence, ...memo.a }, memo.appareil || {});
+    if (memo?.a) appliquerApparence({ ...REGLAGES_DEFAUT.apparence, ...memo.a }, memo.appareil || {}, undefined, REGLAGES_DEFAUT.perso);
   } catch { /* première fois : couleurs d'origine */ }
 })();
 
-const reglagesAppareil = () => ({ taille: ui.taille || 'normale', densite: ui.densite || 'normale' });
+const reglagesAppareil = () => ({ taille: ui.taille || 'normale', densite: ui.densite || 'normale', boutons: ui.boutons || 'normale' });
 
 /* ---------- Application de tous les réglages ---------- */
 
@@ -192,6 +196,7 @@ function appliquerReglages(forcer = false) {
     b.hidden = !ongletsVisibles().includes(b.dataset.vue);
     b.textContent = (o.noms[b.dataset.vue] || '').trim() || NOMS_ONGLETS[b.dataset.vue];
   });
+  if (typeof rangerOnglets === 'function') rangerOnglets();
 }
 
 /* ---------- Fenêtre des réglages ---------- */
@@ -205,9 +210,12 @@ const htmlChoixDiscipline = actuel => `<div class="segments choix-discipline">${
 const AIDE_DISCIPLINE = 'Elle adapte le vocabulaire (APSA ou thèmes, leçons ou séances), les compétences officielles proposées, '
   + 'les modèles de séance, les appréciations et les outils. Changer de discipline n’efface rien.';
 
-function htmlReglageApparence(a, appareil) {
+// Rubrique 🎨 Apparence et personnalisation, parties « Couleurs » et « Formes et tailles » (p : fiche perso, voir perso.js).
+function htmlReglageApparence(a, appareil, p) {
   const palette = PALETTES_DEGRES[a.palette] ? a.palette : 'perso';
   return `
+    <p class="aide">Tout se voit tout de suite ; « Annuler » en bas de la fenêtre revient en arrière.</p>
+    <h3 class="sous-rubrique">Couleurs</h3>
     <h4>Couleur de l’appli</h4>
     <div class="pastilles">
       ${Object.entries(THEMES).map(([id, t]) => `<label class="pastille" title="${t.nom}"><input type="radio" name="theme" value="${id}" ${a.theme === id ? 'checked' : ''}
@@ -218,11 +226,7 @@ function htmlReglageApparence(a, appareil) {
     <h4>Mode</h4>
     <div class="segments">${radio('mode', 'auto', a.mode, 'Automatique')}${radio('mode', 'clair', a.mode, '☀ Clair')}${radio('mode', 'sombre', a.mode, '🌙 Sombre')}</div>
     <p class="aide">Automatique : suit le réglage de l’appareil (clair le jour, sombre le soir…).</p>
-    <h4>Taille du texte <span class="appareil">— sur cet appareil</span></h4>
-    <div class="segments">${Object.entries(TAILLES_TEXTE).map(([id, [nom]]) => radio('taille', id, appareil.taille, nom)).join('')}</div>
-    <h4>Espacement des grilles <span class="appareil">— sur cet appareil</span></h4>
-    <div class="segments">${Object.entries(DENSITES).map(([id, nom]) => radio('densite', id, appareil.densite, nom)).join('')}</div>
-    <p class="aide">Compacte : plus d’élèves à l’écran. Aérée : des cases plus grandes, pratiques au doigt.</p>
+    ${htmlCouleursPerso(p)}
     <h4>Couleurs des degrés de maîtrise</h4>
     <label>Palette<select name="palette">
       ${Object.entries(PALETTES_DEGRES).map(([id, p]) => `<option value="${id}" ${palette === id ? 'selected' : ''}>${p.nom}</option>`).join('')}
@@ -230,7 +234,14 @@ function htmlReglageApparence(a, appareil) {
     </select></label>
     <div class="couleurs">${a.degres.map((c, i) => `<label class="couleur"><input type="color" name="degre${i + 1}" value="${esc(c)}">${i + 1}</label>`).join('')}</div>
     ${profil().champsSequence ? '' : '<div hidden>'}<h4>Couleurs des champs d’apprentissage</h4>
-    <div class="couleurs">${Object.keys(COULEURS_CA).map(ca => `<label class="couleur"><input type="color" name="${ca}" value="${esc(a.ca[ca] || COULEURS_CA[ca])}">${ca}</label>`).join('')}</div>${profil().champsSequence ? '' : '</div>'}`;
+    <div class="couleurs">${Object.keys(COULEURS_CA).map(ca => `<label class="couleur"><input type="color" name="${ca}" value="${esc(a.ca[ca] || COULEURS_CA[ca])}">${ca}</label>`).join('')}</div>${profil().champsSequence ? '' : '</div>'}
+    <h3 class="sous-rubrique">Formes et tailles</h3>
+    <h4>Taille du texte <span class="appareil">— sur cet appareil</span></h4>
+    <div class="segments">${Object.entries(TAILLES_TEXTE).map(([id, [nom]]) => radio('taille', id, appareil.taille, nom)).join('')}</div>
+    <h4>Espacement des grilles <span class="appareil">— sur cet appareil</span></h4>
+    <div class="segments">${Object.entries(DENSITES).map(([id, nom]) => radio('densite', id, appareil.densite, nom)).join('')}</div>
+    <p class="aide">Compacte : plus d’élèves à l’écran. Aérée : des cases plus grandes, pratiques au doigt.</p>
+    ${htmlFormesPerso(p, appareil)}`;
 }
 
 function htmlReglageNotes(n) {
@@ -270,17 +281,15 @@ function htmlReglageNotes(n) {
     </div>`;
 }
 
+// Rubrique 🎨 Apparence et personnalisation, partie « Onglets » : ordre, affichage, noms (perso.js), tablette, lancement.
 function htmlReglageOnglets(o) {
-  return `${typeof htmlReglageDisposition === 'function' ? htmlReglageDisposition(o) : ''}
-    <p class="aide">Décoche un onglet pour le masquer (ses données sont gardées) ; tu peux aussi le renommer.</p>
-    <div class="table-reglages">
-      ${Object.entries(NOMS_ONGLETS).map(([v, nom]) => `
-        <label class="case"><input type="checkbox" name="onglet-${v}" ${o.masques.includes(v) ? '' : 'checked'}> ${nom}</label>
-        <input name="nom-${v}" value="${esc(o.noms[v] || '')}" placeholder="${nom}" aria-label="Nom de l’onglet ${nom}" maxlength="16">`).join('')}
-    </div>
+  return `<h3 class="sous-rubrique">Onglets</h3>
+    ${htmlOngletsPerso(o)}
+    ${typeof htmlReglageDisposition === 'function' ? htmlReglageDisposition(o) : ''}
+    <h4>Au lancement</h4>
     <label>Onglet ouvert au lancement<select name="demarrage">
       <option value="">Le dernier utilisé</option>
-      ${Object.entries(NOMS_ONGLETS).map(([v, nom]) => `<option value="${v}" ${o.demarrage === v ? 'selected' : ''}>${esc((o.noms[v] || '').trim() || nom)}</option>`).join('')}
+      ${ordreOnglets().map(v => `<option value="${v}" ${o.demarrage === v ? 'selected' : ''}>${esc((o.noms[v] || '').trim() || NOMS_ONGLETS[v])}</option>`).join('')}
     </select></label>`;
 }
 
@@ -297,15 +306,21 @@ function lireApparence(form, base) {
 const lireAppareil = form => ({
   taille: form.querySelector('[name="taille"]:checked')?.value || 'normale',
   densite: form.querySelector('[name="densite"]:checked')?.value || 'normale',
+  boutons: form.querySelector('[name="boutons"]:checked')?.value || 'normale',
 });
 
 async function ouvrirReglages(rubrique = 'apparence') {
-  const a = reglage('apparence'), n = reglage('notes'), c = reglage('competences'), o = reglage('onglets');
+  const a = reglage('apparence'), n = reglage('notes'), c = reglage('competences'), o = reglage('onglets'), p = reglage('perso');
   const ouvert = r => (r === rubrique ? 'open' : '');
   const { d, resultat } = ouvrirModale('Réglages du carnet', `
     <p class="aide">Ces réglages sont à toi : ils sont enregistrés dans ton carnet et te suivent sur la clé, d’un appareil à l’autre.</p>
-    <details ${ouvert('apparence')}><summary>🎨 Apparence <small>couleurs, mode sombre, taille</small></summary>
-      <div class="rubrique" data-rubrique="apparence">${htmlReglageApparence(a, reglagesAppareil())}</div></details>
+    <details ${ouvert('apparence')}><summary>🎨 Apparence et personnalisation <small>couleurs, formes et tailles, onglets</small></summary>
+      <div class="rubrique" data-rubrique="apparence">${htmlReglageApparence(a, reglagesAppareil(), p)}</div>
+      <div class="rubrique">${htmlReglageOnglets(o)}</div>
+      <div class="rubrique origine-apparence">
+        <button value="origine-apparence" formnovalidate class="danger">↺ Remettre l’apparence d’origine</button>
+        <p class="aide">Couleurs, formes, tailles et onglets comme au premier jour. Tes notes, compétences et autres réglages ne bougent pas.</p>
+      </div></details>
     <details ${ouvert('etablissement')}><summary>🏫 Établissement <small>nom, professeur, périodes</small></summary>
       <div class="rubrique">
         <div class="ligne">
@@ -334,8 +349,6 @@ async function ouvrirReglages(rubrique = 'apparence') {
     ${typeof htmlReglageAppr === 'function' ? `<details ${ouvert('appreciations')}><summary>✍ Appréciations <small>rubriques, ton, style, longueur</small></summary>
       <div class="rubrique" data-rubrique="appreciations">${htmlReglageAppr(reglageAppr())}
         <p class="aide">Les appréciations se préparent dans l’onglet Notes › ✍ Appréciations, ou dans la fiche d’un élève.</p></div></details>` : ''}
-    <details ${ouvert('onglets')}><summary>🗂 Onglets <small>disposition sur tablette, afficher, renommer</small></summary>
-      <div class="rubrique">${htmlReglageOnglets(o)}</div></details>
     <details ${ouvert('partage')}><summary>🔄 Partager <small>avec un collègue, ou revenir à l’origine</small></summary>
       <div class="rubrique">
         <p class="aide">Le fichier de réglages ne contient <b>aucune donnée d’élève</b> : couleurs, barème, compétences, onglets, périodes.
@@ -365,20 +378,22 @@ async function ouvrirReglages(rubrique = 'apparence') {
   // Pastilles : la couleur est posée par script (le verrou de sécurité interdit les styles écrits dans la page).
   d.querySelectorAll('[data-pastille]').forEach(s => s.style.setProperty('--p', s.dataset.pastille));
   const form = $('form', d);
-  const apercu = () => appliquerApparence(lireApparence(form, a), lireAppareil(form), form.elements.etablissement.value);
+  const apercu = () => appliquerApparence(lireApparence(form, a), lireAppareil(form), form.elements.etablissement.value, lirePerso(form, p));
+  const enApercu = el => el.closest('[data-rubrique="apparence"]');
   d.addEventListener('input', e => {
     if (/^degre\d$/.test(e.target.name)) form.elements.palette.value = 'perso';
     if (e.target.name === 'couleurLibre') form.querySelector('[name="theme"][value="libre"]').checked = true;
     if (e.target.name === 'palette' && PALETTES_DEGRES[e.target.value]) {
       PALETTES_DEGRES[e.target.value].couleurs.forEach((coul, i) => { form.elements['degre' + (i + 1)].value = coul; });
     }
-    if (e.target.closest('[data-rubrique="apparence"]') || e.target.name === 'etablissement') apercu();
+    if (enApercu(e.target) || e.target.name === 'etablissement') apercu();
   });
   d.addEventListener('change', e => {
-    if (e.target.closest('[data-rubrique="apparence"]')) apercu();
+    if (enApercu(e.target)) apercu();
     const f = e.target.matches('[data-importer-reglages]') && e.target.files[0];
     if (f) { d.fermer(); lancer(() => importerReglages(f)); }
   });
+  brancherReglagePerso(d, form, apercu);
   $('[data-exporter-reglages]', d).addEventListener('click', () => lancer(exporterReglages));
   $('[data-installer-appli]', d)?.addEventListener('click', () => lancer(installerAppli));
   d.addEventListener('click', e => { const b = e.target.closest('[data-appr-monter], [data-appr-descendre]'); if (b) deplacerRubriqueAppr(b); }); // (seulement si appreciations.js est là)
@@ -386,17 +401,20 @@ async function ouvrirReglages(rubrique = 'apparence') {
   const r = await resultat;
   if (r.action === 'annuler') { appliquerReglages(true); return; } // aperçu abandonné
   if (r.action === 'origine') { appliquerReglages(true); return lancer(revenirOrigine); }
+  if (r.action === 'origine-apparence') { appliquerReglages(true); return lancer(revenirApparenceOrigine); }
 
   // Contrôles
   const v = r.data;
   const visibles = Object.keys(NOMS_ONGLETS).filter(x => v['onglet-' + x] === 'on');
-  if (!visibles.length) { toast('Garde au moins un onglet affiché.', 'erreur'); appliquerReglages(true); return ouvrirReglages('onglets'); }
+  if (!visibles.length) { toast('Garde au moins un onglet affiché.', 'erreur'); appliquerReglages(true); return ouvrirReglages('apparence'); }
   const favoris = Object.keys(NOMS_ONGLETS).filter(x => v['favori-' + x] === 'on');
-  if (favoris.length > 4) { toast('4 onglets favoris au plus (les autres vont dans « Plus »).', 'erreur'); appliquerReglages(true); return ouvrirReglages('onglets'); }
+  if (favoris.length > 4) { toast('4 onglets favoris au plus (les autres vont dans « Plus »).', 'erreur'); appliquerReglages(true); return ouvrirReglages('apparence'); }
   if (+v.alerteRouge < +v.alerteOrange || +v.tenueRouge < +v.tenueOrange) { toast('L’alerte rouge doit venir après (ou en même temps que) l’orange.', 'erreur'); appliquerReglages(true); return ouvrirReglages('notes'); }
 
+  const perso = lirePerso(form, p);
   ui.taille = lireAppareil(form).taille;
   ui.densite = lireAppareil(form).densite;
+  ui.boutons = lireAppareil(form).boutons;
   if (v.disposition) ui.disposition = v.disposition; // (onglets sur tablette : propre à cet appareil)
   memoriserUi();
   ecrireReglage('apparence', { ...lireApparence(form, a), etablissement: v.etablissement.trim(), prof: v.prof.trim() });
@@ -415,8 +433,10 @@ async function ouvrirReglages(rubrique = 'apparence') {
     masques: Object.keys(NOMS_ONGLETS).filter(x => !visibles.includes(x)),
     noms: Object.fromEntries(Object.keys(NOMS_ONGLETS).map(x => [x, v['nom-' + x].trim()]).filter(([, l]) => l)),
     demarrage: visibles.includes(v.demarrage) ? v.demarrage : '',
+    ordre: (v.ordreOnglets || '').split(',').filter(x => NOMS_ONGLETS[x]),
     ...(typeof htmlReglageDisposition === 'function' ? { favoris } : {}),
   });
+  ecrireReglage('perso', perso);
   if (typeof lireReglageAppr === 'function') ecrireReglage('appreciations', lireReglageAppr(form));
   // Changement de discipline : confirmé, car tout l'affichage change (aucune donnée n'est effacée).
   const nouvelle = DISCIPLINES[v.discipline] ? v.discipline : disciplineActive();
@@ -438,16 +458,32 @@ async function ouvrirReglages(rubrique = 'apparence') {
   toast(messageFin, 'ok');
 }
 
+// 🎨 Apparence et personnalisation › « Remettre l'apparence d'origine » : seulement ce que montre cette rubrique.
+async function revenirApparenceOrigine() {
+  if (!(await confirmer('Remettre l’apparence d’origine (couleurs, formes, tailles, onglets) ? '
+    + 'Tes classes, notes, compétences et autres réglages ne sont pas touchés.', 'Remettre à l’origine'))) return ouvrirReglages('apparence');
+  const { etablissement, prof } = reglage('apparence');
+  ecrireReglage('apparence', { ...REGLAGES_DEFAUT.apparence, etablissement, prof });
+  ecrireReglage('perso', REGLAGES_DEFAUT.perso);
+  ecrireReglage('onglets', REGLAGES_DEFAUT.onglets);
+  delete ui.taille; delete ui.densite; delete ui.disposition; delete ui.boutons;
+  memoriserUi();
+  appliquerReglages(true);
+  rendre();
+  toast('Apparence d’origine rétablie ✔', 'ok');
+}
+
 async function revenirOrigine() {
-  if (!(await confirmer('Revenir aux réglages d’origine (apparence, notes, noms des degrés, onglets) ? '
+  if (!(await confirmer('Revenir aux réglages d’origine (apparence, personnalisation, notes, noms des degrés, onglets) ? '
     + 'Tes classes, élèves et notes ne sont pas touchés, ni tes compétences ajoutées ni tes périodes.', 'Revenir à l’origine'))) return;
   const { prof } = reglage('apparence');
   ecrireReglage('apparence', { ...REGLAGES_DEFAUT.apparence, prof });
   ecrireReglage('notes', REGLAGES_DEFAUT.notes);
   ecrireReglage('competences', { niveaux: REGLAGES_DEFAUT.competences.niveaux });
   ecrireReglage('onglets', REGLAGES_DEFAUT.onglets);
+  ecrireReglage('perso', REGLAGES_DEFAUT.perso);
   ecrireReglage('appreciations', REGLAGES_DEFAUT.appreciations);
-  delete ui.taille; delete ui.densite; delete ui.disposition;
+  delete ui.taille; delete ui.densite; delete ui.disposition; delete ui.boutons;
   memoriserUi();
   appliquerReglages(true);
   rendre();
@@ -679,7 +715,9 @@ function nettoyerReglage(nom, brut) {
     if (propre.noms) propre.noms = Object.fromEntries(Object.keys(NOMS_ONGLETS).filter(v => propre.noms[v]).map(v => [v, texte(propre.noms[v], 16)]));
     if (propre.demarrage && !NOMS_ONGLETS[propre.demarrage]) propre.demarrage = '';
     if (propre.favoris) propre.favoris = [...new Set(propre.favoris.filter(v => NOMS_ONGLETS[v]))].slice(0, 4);
+    if (propre.ordre) propre.ordre = [...new Set(propre.ordre.filter(v => NOMS_ONGLETS[v]))];
   }
+  if (nom === 'perso') nettoyerPerso(propre);
   if (nom === 'discipline' && propre.code && !DISCIPLINES[propre.code]) delete propre.code;
   if (nom === 'appreciations') {
     for (const k of ['ordre', 'actives']) if (propre[k]) propre[k] = propre[k].filter(x => REGLAGES_DEFAUT.appreciations.ordre.includes(x));
@@ -797,7 +835,7 @@ async function premierLancement() {
     rendre();
     return lancer(recupererCarnetExistant); // (attendu par le démarrage : le guide ne s'ouvre qu'après)
   }
-  if (discipline === disciplineActive() && !classesTriees().length) {
+  if (discipline === disciplineActive() && !classesTriees().length && aClasseExemple()) {
     ui.classeId = creerClasseExemple().id;
     for (const jeu of exemplesEnPlus()) creerClasseExemple(jeu); // (SVT : une 4e en plus de la 2nde)
     Donnees.antidater('exemple-');

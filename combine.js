@@ -1,6 +1,6 @@
 'use strict';
 // Outil « 🏅 Combiné » (onglet Outils) : combiné athlétique de plusieurs épreuves (temps, distances, points).
-//  - Épreuves au choix (course, saut, lancer…), 1 à 3 essais, meilleure performance retenue.
+//  - Épreuves au choix (course, saut, lancer…), 1 à 3 essais (ou « scores », « tirs »…), meilleur retenu ou somme des essais.
 //  - Classement : à la somme des places (la plus petite gagne), ou au barème (points par épreuve, de 0 au maximum,
 //    entre la performance « 0 point » et la performance « maximum » réglées par le prof).
 //  - Vagues de départ : N élèves par vague, au hasard, homogènes ou hétérogènes, mixtes ou non ; niveau d'après
@@ -32,7 +32,7 @@ function cfgCombine(c) {
 
 const plusPetitMieux = ep => ep.type === 'temps';
 // Texte tapé → nombre (secondes, mètres ou points), 'X' pour un essai nul, null si illisible.
-function lirePerf(ep, texte) {
+function lirePerfComb(ep, texte) {
   const v = String(texte ?? '').trim();
   if (!v) return '';
   if (/^x$/i.test(v)) return 'X';
@@ -49,11 +49,25 @@ function textePerf(ep, v) {
 // Avec l'unité : « 8,1 s », « 1:05,3 », « 3,6 m ».
 const textePerfUnite = (ep, v) => (ep.type === 'temps' ? formatTemps(v) : textePerf(ep, v) + unitePerf(ep));
 const unitePerf = ep => ' ' + (ep.unite || UNITES_EPREUVE[ep.type]);
+// Résultat retenu d'une épreuve : le meilleur essai, ou la somme des essais (ep.somme : « 2 scores » additionnés,
+// ex. deux tirs, deux manches ; un essai nul compte 0).
+// (Essais « séparés » : chaque essai est une épreuve à part dans le classement, voir epreuvesComptees.)
 function meilleurePerf(cfg, ep, id) {
+  if (ep.essai !== undefined) { const v = cfg.perfs[id]?.[ep.src]?.[ep.essai]; return typeof v === 'number' ? v : null; }
   const ok = (cfg.perfs[id]?.[ep.id] || []).filter(x => typeof x === 'number');
   if (!ok.length) return null;
+  if (ep.somme) return Math.round(ok.reduce((s, x) => s + x, 0) * 100) / 100;
   return plusPetitMieux(ep) ? Math.min(...ok) : Math.max(...ok);
 }
+// Nom des essais (« Essai », « Score », « Tir », « Manche »…) au singulier, et « 2 scores ».
+const nomEssai = ep => (ep.libelle || '').trim() || 'Essai';
+const nEssais = ep => `${ep.essais} ${nomEssai(ep).toLowerCase()}${ep.essais > 1 && !/[sx]$/i.test(nomEssai(ep)) ? 's' : ''}`;
+const nomRetenu = ep => (ep.somme ? 'Total' : 'Meilleure');
+const separes = ep => !!ep.separes && ep.essais > 1;
+// Épreuves du classement : une épreuve aux essais séparés compte une fois par essai (« Tir — Score 1 », « Tir — Score 2 »).
+const epreuvesComptees = cfg => cfg.epreuves.flatMap(ep => (separes(ep)
+  ? Array.from({ length: ep.essais }, (_, k) => ({ ...ep, id: `${ep.id}#${k}`, nom: `${ep.nom} — ${nomEssai(ep)} ${k + 1}`, src: ep.id, essai: k }))
+  : [ep]));
 
 // Points au barème : linéaire entre la perf « 0 point » et la perf « maximum », bornés.
 function pointsBareme(cfg, ep, v) {
@@ -68,7 +82,8 @@ function pointsBareme(cfg, ep, v) {
 function classementCombine(c, cfg) {
   const ids = [...new Set([...presentsOutil(c).map(el => el.id), ...Object.keys(cfg.perfs)])].filter(id => Donnees.get('eleves', id));
   const lignes = ids.map(id => ({ id, perfs: {}, scores: {}, total: 0, faites: 0 }));
-  for (const ep of cfg.epreuves) {
+  const eps = epreuvesComptees(cfg);
+  for (const ep of eps) {
     const avec = lignes.map(l => ({ l, v: meilleurePerf(cfg, ep, l.id) })).filter(x => x.v !== null);
     avec.sort((a, b) => (plusPetitMieux(ep) ? a.v - b.v : b.v - a.v));
     avec.forEach((x, k) => {
@@ -78,12 +93,12 @@ function classementCombine(c, cfg) {
       x.l.scores[ep.id] = cfg.calcul === 'places' ? place : pointsBareme(cfg, ep, x.v);
     });
   }
-  const sansBareme = cfg.calcul === 'bareme' && cfg.epreuves.some(ep => pointsBareme(cfg, ep, 0) === null);
+  const sansBareme = cfg.calcul === 'bareme' && eps.some(ep => pointsBareme(cfg, ep, 0) === null);
   for (const l of lignes) {
-    const scores = cfg.epreuves.map(ep => l.scores[ep.id]).filter(s => s !== null && s !== undefined);
+    const scores = eps.map(ep => l.scores[ep.id]).filter(s => s !== null && s !== undefined);
     l.faites = scores.length;
     l.total = Math.round(scores.reduce((a, b) => a + b, 0) * 10) / 10;
-    l.complet = l.faites === cfg.epreuves.length && cfg.epreuves.length > 0;
+    l.complet = l.faites === eps.length && eps.length > 0;
   }
   // Les élèves complets d'abord, puis par nombre d'épreuves faites ; places : petit total d'abord ; barème : grand total d'abord.
   lignes.sort((a, b) => b.complet - a.complet || b.faites - a.faites || (cfg.calcul === 'places' ? a.total - b.total : b.total - a.total));
@@ -97,7 +112,7 @@ function classementCombine(c, cfg) {
 /* ---------- Vagues de départ ---------- */
 
 function criteresVagues(c, cfg) {
-  const base = [['combine', 'Classement du combiné en cours'], ...cfg.epreuves.map(ep => ['ep:' + ep.id, 'Performance : ' + ep.nom])];
+  const base = [['combine', 'Classement du combiné en cours'], ...epreuvesComptees(cfg).map(ep => ['ep:' + ep.id, 'Performance : ' + ep.nom])];
   // En mode élève, pas de critère lu dans les notes du carnet.
   return enModeEleve() ? [{ groupe: '', liste: base }] : [{ groupe: 'Combiné', liste: base }, ...criteresNiveau(c).map(g => ({ ...g, groupe: g.groupe || 'Carnet' }))];
 }
@@ -109,7 +124,7 @@ function niveauVagues(c, cfg, critere) {
     return id => (id in total ? total[id] : null);
   }
   if (critere.startsWith('ep:')) {
-    const ep = cfg.epreuves.find(x => x.id === critere.slice(3));
+    const ep = epreuvesComptees(cfg).find(x => x.id === critere.slice(3));
     return id => { const v = ep && meilleurePerf(cfg, ep, id); return v === null || v === undefined ? null : plusPetitMieux(ep) ? -v : v; };
   }
   const n = niveauOutil(c, critere);
@@ -169,7 +184,9 @@ function htmlCombine(c) {
       <div class="liste-epreuves">${cfg.epreuves.map((x, k) => `<div class="ligne-epreuve">
         <input data-oc-ep="${x.id}|nom" value="${esc(x.nom)}" maxlength="40" aria-label="Nom de l’épreuve ${k + 1}">
         <select data-oc-ep="${x.id}|type" aria-label="Type de l’épreuve ${k + 1}">${choix(x.type, Object.entries(TYPES_EPREUVE))}</select>
-        <select data-oc-ep="${x.id}|essais" aria-label="Essais — ${esc(x.nom)}">${choix(String(x.essais), [['1', '1 essai'], ['2', '2 essais'], ['3', '3 essais']])}</select>
+        <select data-oc-ep="${x.id}|essais" aria-label="Nombre d’essais — ${esc(x.nom)}">${choix(String(x.essais), ['1', '2', '3'].map(n => [n, nEssais({ ...x, essais: +n })]))}</select>
+        <input class="etroit" data-oc-ep="${x.id}|libelle" value="${esc(x.libelle || '')}" maxlength="20" placeholder="Essai" title="Nom des essais : Essai, Score, Tir, Manche…" aria-label="Nom des essais — ${esc(x.nom)}">
+        ${x.essais > 1 ? `<select data-oc-ep="${x.id}|somme" aria-label="Résultat retenu — ${esc(x.nom)}">${choix(x.somme ? '1' : x.separes ? 's' : '', [['', 'meilleur retenu'], ['1', 'additionnés'], ['s', 'séparés (chacun compte à part)']])}</select>` : ''}
         ${cfg.calcul === 'bareme' ? `
           <label class="etroit">0 pt<input data-oc-ep="${x.id}|zero" value="${esc(textePerf(x, x.zero ?? ''))}" inputmode="decimal" placeholder="${x.type === 'temps' ? '15,0' : '0'}"></label>
           <label class="etroit">${fmt(cfg.maxPts)} pts<input data-oc-ep="${x.id}|max" value="${esc(textePerf(x, x.max ?? ''))}" inputmode="decimal" placeholder="${x.type === 'temps' ? '7,5' : ''}"></label>
@@ -248,9 +265,9 @@ function htmlSaisieCombine(c, cfg, ep) {
   const presents = presentsOutil(c).map(el => el.id);
   const ids = [...new Set([...vague, ...presents, ...Object.keys(cfg.perfs).filter(id => eps.some(x => cfg.perfs[id]?.[x.id]?.length))])]
     .filter(id => Donnees.get('eleves', id));
-  const infoEp = x => `${x.type === 'temps' ? 'temps' : esc(x.unite || UNITES_EPREUVE[x.type])}${x.essais > 1 ? ` · ${x.essais} essais` : ''}`;
+  const infoEp = x => `${x.type === 'temps' ? 'temps' : esc(x.unite || UNITES_EPREUVE[x.type])}${x.essais > 1 ? ` · ${esc(nEssais(x))}${x.somme ? ' additionnés' : separes(x) ? ' séparés' : ''}` : ''}`;
   const actif = x => (toutes && x.id === ep.id ? ' ep-active' : '');
-  const avecMeilleure = x => x.essais > 1 || !toutes; // (un seul essai côte à côte : la case suffit)
+  const avecMeilleure = x => !separes(x) && (x.essais > 1 || !toutes); // (un seul essai côte à côte : la case suffit)
   return `<div class="tete-saisie-combine">
       <h3>${toutes ? 'Toutes les épreuves' : esc(ep.nom)} <span class="aide">${toutes ? 'temps : 12,5 ou 1:05,3' : infoEp(ep)} · X = essai nul · Entrée = case suivante${
   toutes && ep.type === 'temps' && vague.length ? ` · le chrono de vague remplit « ${esc(ep.nom)} » (colonne surlignée)` : ''}</span></h3>
@@ -259,14 +276,14 @@ function htmlSaisieCombine(c, cfg, ep) {
     <div class="carte defile-combine"><table class="tableau-outil tableau-essais tableau-saisie-combine">
       <thead>
         ${toutes ? `<tr><th></th>${eps.map(x => `<th colspan="${x.essais + (avecMeilleure(x) ? 1 : 0)}" class="tete-ep debut-ep${actif(x)}">${esc(x.nom)} <span class="aide">${infoEp(x)}</span></th>`).join('')}</tr>` : ''}
-        <tr><th>Élève</th>${eps.map(x => `${Array.from({ length: x.essais }, (_, k) => `<th class="${k ? '' : 'debut-ep'}${actif(x)}">${x.essais > 1 ? `Essai ${k + 1}` : 'Résultat'}</th>`).join('')}
-          ${avecMeilleure(x) ? `<th class="${actif(x).trim()}">Meilleure</th>` : ''}`).join('')}</tr>
+        <tr><th>Élève</th>${eps.map(x => `${Array.from({ length: x.essais }, (_, k) => `<th class="${k ? '' : 'debut-ep'}${actif(x)}">${x.essais > 1 ? `${esc(nomEssai(x))} ${k + 1}` : 'Résultat'}</th>`).join('')}
+          ${avecMeilleure(x) ? `<th class="${actif(x).trim()}">${nomRetenu(x)}</th>` : ''}`).join('')}</tr>
       </thead>
       <tbody>${ids.map(id => `<tr class="${vague.includes(id) ? 'dans-vague' : ''}"><td>${esc(nomOutil(id))}${vague.includes(id) ? ' <span class="aide">· vague</span>' : ''}</td>
         ${eps.map(x => `${Array.from({ length: x.essais }, (_, k) => {
     const val = cfg.perfs[id]?.[x.id]?.[k];
     return `<td class="${k ? '' : 'debut-ep'}${actif(x)}"><input class="essai${val === 'X' ? ' nul' : ''}" inputmode="decimal" autocomplete="off" data-oc-perf="${id}|${x.id}|${k}" value="${esc(textePerf(x, val))}"
-            aria-label="${esc(nomOutil(id))} — ${esc(x.nom)} — essai ${k + 1}"></td>`;
+            aria-label="${esc(nomOutil(id))} — ${esc(x.nom)} — ${esc(nomEssai(x).toLowerCase())} ${k + 1}"></td>`;
   }).join('')}
         ${avecMeilleure(x) ? `<td class="meilleur${actif(x)}" data-oc-meilleur="${id}|${x.id}">${texteMeilleurComb(cfg, x, id)}</td>` : ''}`).join('')}</tr>`).join('')}</tbody>
     </table></div>`;
@@ -277,16 +294,16 @@ function htmlClassementCombine(c, cfg) {
   const { lignes, sansBareme } = classementCombine(c, cfg);
   const bareme = cfg.calcul === 'bareme', faits = lignes.filter(l => l.faites);
   if (!faits.length) return '<p class="aide">Aucun résultat pour l’instant : choisis une épreuve et saisis les performances.</p>';
-  const maxTotal = cfg.maxPts * cfg.epreuves.length;
+  const eps = epreuvesComptees(cfg), maxTotal = cfg.maxPts * eps.length;
   return `${sansBareme ? '<p class="aide">⚠ Barème incomplet : règle la performance « 0 point » et « maximum » de chaque épreuve (⚙ Épreuves et calcul).</p>' : ''}
     <div class="carte"><table class="tableau-outil tableau-combine">
-      <thead><tr><th>Rang</th><th>Élève</th>${cfg.epreuves.map(ep => `<th>${esc(ep.nom)}</th>`).join('')}
+      <thead><tr><th>Rang</th><th>Élève</th>${eps.map(ep => `<th>${esc(ep.nom)}</th>`).join('')}
         <th>${bareme ? `Total <span class="aide">/${fmt(maxTotal)}</span>` : 'Somme des places'}</th>${bareme ? '<th>Sur 20</th>' : ''}</tr></thead>
       <tbody>${lignes.map(l => `<tr class="${l.complet ? '' : 'incomplet'}"><td><b>${l.rang ?? '–'}</b>${l.rang && l.rang <= 3 && l.complet ? ' ' + ['🥇', '🥈', '🥉'][l.rang - 1] : ''}</td>
         <td>${esc(nomOutil(l.id))}</td>
-        ${cfg.epreuves.map(ep => `<td>${l.perfs[ep.id] !== undefined ? `${textePerfUnite(ep, l.perfs[ep.id])}
+        ${eps.map(ep => `<td>${l.perfs[ep.id] !== undefined ? `${textePerfUnite(ep, l.perfs[ep.id])}
           <span class="aide">· ${bareme ? (l.scores[ep.id] === null ? '?' : fmt(l.scores[ep.id])) + ' pts' : l.scores[ep.id] + (l.scores[ep.id] === 1 ? 'er' : 'e')}</span>` : '<span class="aide">–</span>'}</td>`).join('')}
-        <td><b>${l.faites ? fmt(l.total) : '–'}</b>${l.faites && !l.complet ? ` <span class="aide">(${l.faites}/${cfg.epreuves.length} épr.)</span>` : ''}</td>
+        <td><b>${l.faites ? fmt(l.total) : '–'}</b>${l.faites && !l.complet ? ` <span class="aide">(${l.faites}/${eps.length} épr.)</span>` : ''}</td>
         ${bareme ? `<td>${l.complet && !sansBareme ? fmt(Math.round((l.total / maxTotal) * 200) / 10) : '–'}</td>` : ''}</tr>`).join('')}</tbody>
     </table></div>
     <p class="aide">${bareme ? 'Total des points du barème ; « Sur 20 » = total ramené sur 20.' : 'Pour chaque épreuve, la place de l’élève (ex aequo : même place) ; le plus petit total gagne.'}
@@ -340,7 +357,8 @@ function actionCombine(action, arg, c) {
       });
     case 'bareme-auto': {
       const x = cfg.epreuves.find(e => e.id === arg);
-      const vals = Object.keys(cfg.perfs).map(id => meilleurePerf(cfg, x, id)).filter(y => y !== null);
+      const vals = separes(x) ? Object.values(cfg.perfs).flatMap(p => (p[x.id] || []).filter(y => typeof y === 'number'))
+        : Object.keys(cfg.perfs).map(id => meilleurePerf(cfg, x, id)).filter(y => y !== null);
       if (vals.length < 2) return toast('Il faut au moins deux performances dans cette épreuve.', 'erreur');
       [x.zero, x.max] = plusPetitMieux(x) ? [Math.max(...vals), Math.min(...vals)] : [Math.min(...vals), Math.max(...vals)];
       return rendreOutil();
@@ -408,14 +426,16 @@ document.addEventListener('change', e => {
     if (champ === 'nom') { x.nom = t.value.trim() || x.nom; return rendreOutil(); }
     if (champ === 'type') { x.type = t.value; delete x.zero; delete x.max; return rendreOutil(); }
     if (champ === 'essais') { x.essais = +t.value; return rendreOutil(); }
-    const val = lirePerf(x, t.value);
+    if (champ === 'libelle') { x.libelle = t.value.trim().slice(0, 20); return rendreOutil(); }
+    if (champ === 'somme') { x.somme = t.value === '1'; x.separes = t.value === 's'; delete x.zero; delete x.max; return rendreOutil(); }
+    const val = lirePerfComb(x, t.value);
     if (val === null || val === 'X') { toast(`« ${t.value} » : ${x.type === 'temps' ? 'tape un temps (12,5 ou 1:05,3)' : 'tape un nombre'}.`, 'erreur'); t.value = textePerf(x, x[champ] ?? ''); return; }
     if (val === '') delete x[champ]; else x[champ] = val;
     return rendreOutil(); // (le classement suit ; la case où l'on est passé garde le curseur)
   }
   if (t.dataset.ocPerf) {
     const [id, epId, k] = t.dataset.ocPerf.split('|'), x = cfg.epreuves.find(y => y.id === epId);
-    const val = lirePerf(x, t.value);
+    const val = lirePerfComb(x, t.value);
     const essais = ((cfg.perfs[id] ??= {})[epId] ??= []);
     if (val === null) { toast(`« ${t.value} » : ${x.type === 'temps' ? 'tape un temps (12,5 ou 1:05,3)' : 'tape un nombre'}, ou X pour un essai nul.`, 'erreur'); t.value = textePerf(x, essais[+k]); return; }
     essais[+k] = val;
@@ -442,7 +462,7 @@ document.addEventListener('keydown', e => {
 TRANSFERTS.combine = c => {
   const cfg = cfgCombine(c), { lignes } = classementCombine(c, cfg), faits = lignes.filter(l => l.faites);
   if (!faits.length) throw new Error('Aucun résultat enregistré dans le combiné.');
-  const colonnes = cfg.epreuves.map(ep => ({
+  const colonnes = epreuvesComptees(cfg).map(ep => ({
     nom: ep.nom, type: ep.type === 'temps' ? 'temps' : ep.type === 'distance' ? 'distance' : 'nombre',
     ...(ep.type !== 'temps' ? { unite: ep.unite || UNITES_EPREUVE[ep.type] } : {}),
     valeurs: Object.fromEntries(faits.filter(l => l.perfs[ep.id] !== undefined).map(l => [l.id, String(l.perfs[ep.id])])),

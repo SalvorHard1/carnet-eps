@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.0.3'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.4.4'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -685,10 +685,20 @@ $('#liste-classes').addEventListener('click', e => {
   if (Date.now() - finGlisse < 400) { e.stopPropagation(); e.preventDefault(); }
 }, true);
 
+// Même page, même classe : les tableaux redessinés (ex. degré d'un barème touché) gardent leur défilement,
+// sinon on revenait aux premières colonnes.
+let pageDessinee = '';
 function rendreVue() {
+  const c = classeActive(), page = ui.vue + '|' + (c?.id || '');
+  const defilements = page === pageDessinee ? [...document.querySelectorAll('#vue .grille-scroll')].map(z => [z.scrollLeft, z.scrollTop]) : [];
+  pageDessinee = page;
+  dessinerVue(c);
+  document.querySelectorAll('#vue .grille-scroll').forEach((z, i) => { if (defilements[i]) [z.scrollLeft, z.scrollTop] = defilements[i]; });
+}
+
+function dessinerVue(c) {
   planifierAscenseur(); // recalculé une fois la vue dessinée
   const v = $('#vue');
-  const c = classeActive();
   if (ui.vue === 'outils') { v.innerHTML = htmlOutils(c); return; } // (certains outils marchent sans classe)
   if (ui.vue === 'agenda') { v.innerHTML = htmlAgenda(); apresAgenda(); return; } // (toutes les classes : agenda.js)
   if (ui.vue === 'baremes') { v.innerHTML = htmlBaremes(); return; } // (bibliothèque, sans classe : baremes.js)
@@ -702,7 +712,7 @@ function rendreVue() {
         <p class="aide">Tu as déjà un carnet (clé USB, dossier ou Drive) ? <button class="lien" data-action="cle">Récupère-le ici</button>.
           · <button class="lien" data-action="guide">Comment ça marche ?</button>
           · <button class="lien" data-action="reglages">⚙ Personnaliser</button></p>
-        <p class="aide">Envie de voir un carnet déjà rempli ? <button class="lien" data-action="exemple">🎓 Ouvre la classe exemple</button> (élèves inventés).</p>
+        ${aClasseExemple() ? '<p class="aide">Envie de voir un carnet déjà rempli ? <button class="lien" data-action="exemple">🎓 Ouvre la classe exemple</button> (élèves inventés).</p>' : ''}
       </div>`;
     return;
   }
@@ -1728,7 +1738,7 @@ async function editerClasse(id) {
     ? BOUTON_SUPPRIMER + (elevesDe(id).some(el => el.responsables)
       ? '<button value="effacer-coord" formnovalidate title="Retire téléphones, emails et adresses des responsables de toute la classe">Effacer les coordonnées</button>' : '')
     : '<button value="ecole-directe" formnovalidate title="Créer la classe et ses élèves à partir de la liste exportée d’École Directe ou de Pronote (.xlsx, .csv)">📥 Depuis École Directe / Pronote…</button>'
-      + (classeExemple() ? '' : `<button value="exemple" formnovalidate title="Une classe inventée, déjà remplie, pour découvrir le carnet">🎓 Classe exemple${exemplesEnPlus().length ? ` (${esc(jeuExemple().niveau)})` : ''}</button>`)
+      + (classeExemple() || !aClasseExemple() ? '' : `<button value="exemple" formnovalidate title="Une classe inventée, déjà remplie, pour découvrir le carnet">🎓 Classe exemple${exemplesEnPlus().length ? ` (${esc(jeuExemple().niveau)})` : ''}</button>`)
       // (Autres classes exemples de la discipline : SVT 4e.)
       + exemplesEnPlus().filter(j => !Donnees.get('classes', idClasseExemple(j))).map(j => `<button value="exemple:${esc(j.prefixe)}" formnovalidate title="Une classe inventée, déjà remplie, pour découvrir le carnet">🎓 Classe exemple (${esc(j.niveau)})</button>`).join('')), 'modale-large');
   const r = await resultat;
@@ -2849,6 +2859,50 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.4.4', titre: 'Modèle de séance à la carte', points: [
+    '➕ Dans la fiche d’une séance, « + Depuis le modèle » <b>n’efface plus tes données</b> : tu coches ce que tu ajoutes, dont les <b>AFC / AFL</b> du champ de l’activité (une colonne de degrés 1 à 4 chacune).',
+    '↔ Dans les Notes, le tableau reste où il est quand tu touches un degré (plus de retour aux premières colonnes).',
+  ] },
+  { version: '1.4.2', titre: 'Apparence et personnalisation', points: [
+    '🎨 Dans ⚙ Réglages du carnet, la rubrique <b>Apparence et personnalisation</b> réunit tout le look de l’appli. Ambiances toutes prêtes : contraste fort pour le gymnase, papier, ardoise.',
+    '▢ Coins carrés ou très arrondis, police plus lisible, boutons plus grands sur la tablette.',
+    '🗂 Les <b>onglets</b> se rangent dans l’ordre que tu veux (▲ ▼), et se masquent ou se renomment au même endroit. En bas : « ↺ Remettre l’apparence d’origine ».',
+  ] },
+  { version: '1.3.1', titre: 'Appréciations et lecture des PDF', points: [
+    '✍ <b>Appréciations</b> : moins de mots répétés (« résultats… résultats », « très… très »), surtout en ton exigeant ; quelques formulations nouvelles.',
+    '📄 <b>PDF</b> : les tableaux faits avec Word (ex. programmes officiels) sont lus en entier, sans fins de ligne perdues — utile pour importer un barème.',
+  ] },
+  { version: '1.3.0', discipline: 'pc', titre: 'Outils de labo de physique-chimie', points: [
+    '🔬 <b>ECE</b> de physique-chimie : grille du sujet (3 compétences, coefficients de total 6), interventions comptées à chaque appel, niveaux A à D proposés, note indicative de 5 à 20, vers les notes.',
+    '📊 <b>Mise en commun</b> : incertitude-type de la moyenne, écart normalisé à une valeur de référence, droite de modélisation (linéaire ou affine).',
+    '🧪 <b>Gestes techniques</b> et ⚠️ <b>sécurité</b> : listes propres à la physique-chimie (verrerie jaugée, burette, multimètre, laser, hotte…).',
+  ] },
+  { version: '1.2.1', discipline: 'pc', titre: 'Classes exemples de physique-chimie', points: [
+    '🎓 Deux <b>classes exemples</b> inventées (2nde et 4e) pour découvrir le carnet : séances de TP, évaluations par compétences, socle, appréciations, espace Prof principal. '
+      + 'Supprimables d’un clic, recréées depuis « + Nouvelle classe ».',
+  ] },
+  { version: '1.2.0', titre: 'Nouvelle discipline : physique-chimie', points: [
+    '⚗️ Un carnet peut maintenant être un <b>carnet de physique-chimie</b> (⚙ Réglages › Discipline) : compétences officielles du collège (cycle 4) '
+      + 'et du lycée (S’approprier, Analyser / Raisonner, Réaliser, Valider, Communiquer), séances, appréciations, barèmes et outils de labo adaptés.',
+  ] },
+  { version: '1.1.3', discipline: 'eps', titre: 'Combiné : essais séparés', points: [
+    '🏅 <b>Combiné athlétique</b> : en plus de « meilleur retenu » et « additionnés », les essais peuvent être <b>séparés</b> : '
+      + 'chaque essai (ex. « Tir — Score 1 », « Tir — Score 2 ») compte comme une épreuve à part dans le classement et l’envoi vers une leçon.',
+  ] },
+  { version: '1.1.2', discipline: 'eps', titre: 'Combiné et temps des barèmes', points: [
+    '🏅 <b>Combiné athlétique</b> : une épreuve peut <b>additionner</b> ses essais au lieu de garder le meilleur, et les essais peuvent '
+      + 's’appeler autrement (« 2 scores », « 2 tirs », « 2 manches »…). Réglage dans ⚙ Épreuves et calcul.',
+    '⏱ Barème importé : temps en minutes et secondes (« moins de 2\'50 » → 2:49 ; dernier niveau → 59:59). Dans les notes, '
+      + '« 3,09 » se lit 3 min 09 s et « 3:09:05 » 3 min 09 s 05 quand le barème est en minutes. La colonne filles ou garçons suit l’élève.',
+  ] },
+  { version: '1.1.1', discipline: 'eps', titre: 'Importer un barème : l’appli apprend', points: [
+    '✍️ <b>Remplir manuellement</b> : un barème mal reconnu ? Montre une fois à l’appli le rôle des lignes et des colonnes ; '
+      + 'elle s’entraîne et reconnaîtra seule tes prochains barèmes de la même forme.',
+    '📄 <b>Barème vierge</b> (Excel) à télécharger dans « 📥 Importer un barème » : reconnu à coup sûr, à remplir toi-même '
+      + 'ou par une IA (consigne fournie). Accepte aussi le CSV.',
+    '🎨 <b>Champ d’apprentissage</b> au choix (à côté de l’APSA et du niveau) en créant, en important ou en modifiant un barème : plus de carte grise.',
+    '📑 Mieux lus : les PDF « imprimés » depuis Chrome, et les grilles dont chaque case commence par ses points (« 2,5 pts … »).',
+  ] },
   { version: '1.0.0', titre: 'Version 1.0', points: [
     '🧭 <b>Visite guidée</b> : touche le <b>?</b> en bas à droite, puis « Visite guidée de l’appli ».',
     '🛟 <b>Copie de secours automatique</b> sur cet appareil avant chaque mise à jour de l’appli. En cas de souci : '
@@ -2864,7 +2918,8 @@ const retenirVersionVue = () => { try { localStorage.setItem(CLE_VERSION_VUE, VE
 const nomVersion = v => (/^\d/.test(v) ? `v${v}` : 'version d’avant la 1.0'); // (« ancienne » : rien n'était retenu)
 
 async function afficherNouveautes(depuis) {
-  const liste = NOUVEAUTES.filter(n => (!/^\d/.test(depuis) || Cle.compareVersions(n.version, depuis) > 0)
+  // (Nouveauté propre à une discipline, « discipline: 'eps' » : montrée seulement dans un carnet de cette discipline.)
+  const liste = NOUVEAUTES.filter(n => (!n.discipline || n.discipline === disciplineActive()) && (!/^\d/.test(depuis) || Cle.compareVersions(n.version, depuis) > 0)
     && Cle.compareVersions(n.version, VERSION_APP) <= 0);
   if (!liste.length) return;
   const { resultat } = ouvrirModale(`🎉 Quoi de neuf ? (v${VERSION_APP})`,

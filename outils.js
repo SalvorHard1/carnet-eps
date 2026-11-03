@@ -41,6 +41,7 @@ const etatOutilsDefaut = () => ({
   natation: {}, // classeId → natation : réglages, course en cours, essais (natation.js)
   boxe: {}, // classeId → boxe française : règles, assaut en cours, assauts enregistrés (boxe.js)
   ece: {}, // classeId → ECE de SVT : chrono, candidats, aides, critères (ece.js)
+  ecepc: {}, // classeId → ECE de physique-chimie : grille du sujet, chrono, candidats, interventions (ecepc.js)
   asns: {}, // classeId → ASNS : étape, barèmes, résultats et médailles (asns.js)
   tableau: {}, // classeId → tableau blanc : fond, traits, têtes et pions (tableau.js)
 });
@@ -169,7 +170,7 @@ function minuteursActifs() {
     || Object.values(e.combine || {}).some(x => x.vagues?.course?.depart && !x.vagues.course.fin)
     || Object.values(e.natation || {}).some(x => x.course?.depart && !x.course.fin)
     || Object.values(e.boxe || {}).some(x => (x.assaut?.phase === 'combat' && x.assaut.debut) || x.assaut?.phase === 'repos')
-    || Object.values(e.ece || {}).some(x => !!x.debut)
+    || Object.values(e.ece || {}).some(x => !!x.debut) || Object.values(e.ecepc || {}).some(x => !!x.debut)
     || Object.values(e.asns || {}).some(x => Object.keys(x.enCours || {}).length)
     || (typeof vd === 'object' && !!(vd.flux || vd.pause)); // vidéo-delay : bandeau en direct (videodelay.js)
 }
@@ -250,7 +251,7 @@ function outilEnCours(id) {
     combine: Object.values(e.combine || {}).some(x => x.vagues?.course?.depart && !x.vagues.course.fin),
     natation: Object.values(e.natation || {}).some(x => x.course?.depart && !x.course.fin),
     boxe: Object.values(e.boxe || {}).some(x => x.assaut && x.assaut.phase !== 'fini'),
-    ece: Object.values(e.ece || {}).some(x => !!x.debut),
+    ece: Object.values(e.ece || {}).some(x => !!x.debut), ecepc: Object.values(e.ecepc || {}).some(x => !!x.debut),
     asns: Object.values(e.asns || {}).some(x => Object.keys(x.enCours || {}).length),
   }[id];
 }
@@ -1033,6 +1034,7 @@ function verifierEcheances() {
   if (typeof verifierBoxe === 'function') verifierBoxe();
   // ECE de SVT : bips 10 minutes avant la fin et à la fin (ece.js).
   if (typeof verifierEce === 'function') verifierEce();
+  if (typeof verifierEcePc === 'function') verifierEcePc(); // (ECE de physique-chimie, ecepc.js)
   // Marque : fin du temps de jeu.
   const m = e.marque;
   if (m.debut && m.duree > 0 && ecoule(m) >= m.duree * 60000) {

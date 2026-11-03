@@ -21,7 +21,7 @@ const DISCIPLINES = {
       lecon: 'leçon',
       seance: 'séance',
       aideLecons: 'Crée une séance : les données à relever s’adaptent à l’APSA (temps en CA1, voies et sécurité en escalade, exécution en gym…).',
-      modeleActivite: 'Recharger le modèle de l’APSA',
+      modeleActivite: '+ Depuis le modèle de l’APSA',
       dansCetteActivite: 'dans cette APSA',
       cetteActivite: 'cette APSA',
       deuxActivites: 'Deux APSA en parallèle ? Ne coche que les cours de celle-ci.',
@@ -44,6 +44,12 @@ const DISCIPLINES = {
       evenementExemple: 'Cross du collège, sortie escalade…',
       activiteBareme: 'APSA', // (onglet Barèmes : ce que décrit un barème)
       rechercheBareme: 'Rechercher une APSA…',
+      // (aide « Hugo »)
+      laDiscipline: 'l’EPS', deDiscipline: 'd’EPS', enDiscipline: 'en EPS',
+      outilsVisite: 'Chronos, équipes, tournois… pour le cours.',
+      outilsVersLecon: 'tours, essais, équipes, tirage, tournoi, chrono de natation…',
+      exempleSerie: '3 × 500 m', // (même nom pour les séances qui se suivent)
+      exempleTitreEval: 'Demi-fond',
     },
     champsSequence: true, // les séquences de l'agenda ont un champ d'apprentissage (CA1 à CA5)
     activites: [
@@ -58,7 +64,7 @@ const DISCIPLINES = {
     referentiels: ['cycle3', 'cycle4', 'lycee'],
     referentielParNiveau: { '6e': 'cycle3', '5e': 'cycle4', '4e': 'cycle4', '3e': 'cycle4', '2nde': 'lycee', '1re': 'lycee', 'Tle': 'lycee' },
     referentielDefaut: 'cycle4',
-    familleOutilsMasquees: ['svt'], // familles d'outils cachées dans cette discipline (ici : les outils de SVT, comme l'ECE)
+    familleOutilsMasquees: ['sciences'], // familles d'outils cachées dans cette discipline (ici : les outils de sciences, comme l'ECE)
     codes: ['ABS', 'DISP', 'NE', 'BLE', 'MAL', 'AUT'], // codes de saisie proposés (barre rapide, réglages)
   },
 
@@ -74,7 +80,7 @@ const DISCIPLINES = {
       lecon: 'séance',
       seance: 'séance',
       aideLecons: 'Crée une séance (TP, activité, sortie de terrain…) : pour chaque élève, relève la démarche, la manipulation, la communication, la sécurité, le travail rendu…',
-      modeleActivite: 'Recharger le modèle de séance',
+      modeleActivite: '+ Depuis le modèle de séance',
       dansCetteActivite: 'dans ce thème',
       cetteActivite: 'ce thème',
       deuxActivites: 'Deux thèmes en parallèle ? Ne coche que les cours de celui-ci.',
@@ -96,6 +102,22 @@ const DISCIPLINES = {
       evenementExemple: 'Sortie géologie, visite de laboratoire…',
       activiteBareme: 'Type d’épreuve',
       rechercheBareme: 'Rechercher un type d’épreuve…',
+      laDiscipline: 'la SVT', deDiscipline: 'de SVT', enDiscipline: 'en SVT',
+      outilsVisite: 'ECE, binômes, fiches TP… pour le cours.',
+      outilsVersLecon: 'ECE, schéma, gestes techniques, binômes…',
+      exempleSerie: 'TP microscope',
+      exempleTitreEval: 'TP microscope',
+      donneesSeance: 'démarche, manipulation, communication, sécurité, travail rendu…', // (aide : données proposées pour une séance)
+      aideNoterSeance: 'la démarche, la manipulation, la communication, la sécurité, le travail rendu',
+      aideEvenements: 'sortie de terrain, labo, projet…',
+      themeEnPhrase: 'sur le corps humain et la santé', // (aide : le thème cité dans une appréciation)
+    },
+    // Exemples des champs des outils de sciences, communs à plusieurs disciplines (exempleOutil).
+    exemples: {
+      grandeur: 'ex. Volume de dioxygène produit', unite: 'ex. mL',
+      condition: 'ex. Température — chaque groupe teste une valeur', uniteCondition: 'ex. °C',
+      titreTp: 'ex. Dissection de la souris — appareil digestif',
+      materiel: 'ex. Lame de verre', technicien: 'ex. Solutions à préparer la veille, microscopes réglés au × 10',
     },
     bilans: true, // onglet Notes : 🎯 Compétences, 🧭 Socle (collège), 📄 Travail rendu (bilansvt.js)
     // Types d'événements de l'agenda proposés (tant que l'enseignant n'a pas réglé les siens).
@@ -160,23 +182,24 @@ const DISCIPLINES = {
         },
         moteur: {
           4: { p: ['{S} maîtrise très bien les connaissances{apsa}.', '{S} obtient de très bons résultats{apsa}.', '{S} obtient des résultats remarquables{apsa}.', 'Les connaissances sont solidement maîtrisées{apsa}.'],
-            t: ['Connaissances très bien maîtrisées{apsa}.', 'Très bons résultats{apsa}.', 'Résultats remarquables{apsa}.'] },
+            t: ['Connaissances très bien maîtrisées{apsa}.', 'Très bons résultats{apsa}.', 'Résultats remarquables{apsa}.', 'Excellent niveau{apsa}.'] },
           3: { p: ['{S} obtient de bons résultats{apsa}.', '{S} maîtrise bien les connaissances{apsa}.'], t: ['Bons résultats{apsa}.', 'Connaissances bien maîtrisées{apsa}.'] },
-          2: { p: { b: ['{S} obtient des résultats encore justes{apsa}, qui peuvent progresser.'], n: ['{S} obtient des résultats moyens{apsa}.'],
-            x: ['Les résultats{apsa} sont insuffisants au regard des possibilités de {P}.', '{S} doit viser des résultats plus solides{apsa}.'] },
-          t: { b: ['Connaissances à consolider{apsa}.'], n: ['Résultats moyens{apsa}.'], x: ['Résultats insuffisants{apsa}.'] } },
-          1: { p: { b: ['{S} rencontre des difficultés{apsa}, mais peut progresser avec un travail régulier.'], n: ['{S} rencontre des difficultés{apsa}.'],
-            x: ['Les résultats{apsa} sont très insuffisants.'] },
-          t: { b: ['Connaissances fragiles{apsa}.'], n: ['Difficultés{apsa}.'], x: ['Résultats très insuffisants{apsa}.'] } },
+          2: { p: { b: ['{S} obtient des résultats encore justes{apsa}, qui peuvent progresser.', 'Les connaissances{apsa} sont encore fragiles, mais peuvent progresser.'],
+            n: ['{S} obtient des résultats moyens{apsa}.', 'Les connaissances restent fragiles{apsa}.'],
+            x: ['Les résultats{apsa} sont insuffisants au regard des possibilités de {P}.', '{S} doit viser des résultats plus solides{apsa}.', 'Les connaissances{apsa} sont trop fragiles.'] },
+          t: { b: ['Connaissances à consolider{apsa}.'], n: ['Résultats moyens{apsa}.', 'Connaissances fragiles{apsa}.'], x: ['Résultats insuffisants{apsa}.', 'Connaissances trop fragiles{apsa}.'] } },
+          1: { p: { b: ['{S} rencontre des difficultés{apsa}, mais peut progresser avec un travail régulier.'], n: ['{S} rencontre des difficultés{apsa}.', 'Les connaissances sont lacunaires{apsa}.'],
+            x: ['Les résultats{apsa} sont très insuffisants.', '{S} est en grande difficulté{apsa}.', 'Les connaissances{apsa} sont nettement insuffisantes.'] },
+          t: { b: ['Connaissances fragiles{apsa}.'], n: ['Difficultés{apsa}.', 'Connaissances lacunaires{apsa}.'], x: ['Résultats très insuffisants{apsa}.', 'Grandes difficultés{apsa}.'] } },
         },
         methodo: {
           4: { p: ['{S} fait preuve d’une excellente démarche scientifique.', '{S} travaille avec beaucoup de rigueur lors des activités pratiques.'], t: ['Excellente démarche scientifique.', 'Travaux pratiques très rigoureux.'] },
           3: { p: ['{S} mène correctement les démarches et les manipulations.', '{S} travaille avec méthode.'], t: ['Bonne démarche scientifique.', 'Travail méthodique.'] },
           2: { p: { b: ['{S} doit encore gagner en rigueur dans les démarches et les manipulations.'], n: ['La démarche scientifique et la rigueur des manipulations restent à améliorer.'],
-            x: ['{S} manque de rigueur dans les démarches et les manipulations.'] },
+            x: ['{S} manque de rigueur dans les démarches et les manipulations.', 'La rigueur fait défaut dans les démarches et les manipulations.'] },
           t: { b: ['Rigueur à développer en activité pratique.'], n: ['Démarche à améliorer.'], x: ['Manque de rigueur.'] } },
           1: { p: { b: ['{S} a besoin d’aide pour construire une démarche et mener une manipulation.'], n: ['{S} peine à construire une démarche scientifique.'],
-            x: ['La démarche scientifique n’est pas maîtrisée.'] },
+            x: ['La démarche scientifique n’est pas maîtrisée.', '{S} ne parvient pas à mener une démarche scientifique.'] },
           t: { b: ['Démarche à construire.'], n: ['Démarche peu maîtrisée.'], x: ['Démarche non maîtrisée.'] } },
         },
       },
@@ -189,6 +212,166 @@ const DISCIPLINES = {
         niveauFort: ['Bonnes connaissances', 'maîtrise bien les connaissances'],
         niveauFaible: ['Connaissances fragiles', 'consolider ses connaissances par un travail régulier'],
         methodo: ['Démarche scientifique', 'gagner en rigueur dans les démarches et les manipulations'],
+        assiduite: ['Assiduité', 'est assidu{e} et travaille avec régularité'],
+      },
+    },
+  },
+
+  pc: {
+    id: 'pc', nom: 'PC', nomComplet: 'Physique-chimie', carnet: 'Carnet PC',
+    mots: {
+      activite: 'Thème',
+      activitePlaceholder: 'Choisis ou tape un thème',
+      activiteExemple: 'ex. Ondes et signaux',
+      sequenceExemple: 'Électricité, transformations chimiques…',
+      champ: 'Compétence',
+      lecons: 'Séances',
+      lecon: 'séance',
+      seance: 'séance',
+      aideLecons: 'Crée une séance (TP, activité expérimentale, résolution de problème…) : pour chaque élève, relève les compétences de la démarche scientifique, le travail rendu, une observation…',
+      modeleActivite: '+ Depuis le modèle de séance',
+      dansCetteActivite: 'dans ce thème',
+      cetteActivite: 'ce thème',
+      deuxActivites: 'Deux thèmes en parallèle ? Ne coche que les cours de celui-ci.',
+      titreEvalExemple: 'ex. TP — Dosage par étalonnage',
+      competenceLibreExemple: 'compétence du projet de l’équipe de physique-chimie',
+      titreSeanceExemple: 'ex. TP — dosage par étalonnage',
+      presenceLecons: 'présence aux séances',
+      deTenue: 'de matériel',
+      oubliCourt: 'Oubli matériel',
+      iconeTenue: '🎒',
+      tenueReglage: 'oublient souvent leur matériel (blouse, calculatrice…)',
+      tenuePhrase: 'venir avec son matériel (blouse, calculatrice…)',
+      exercice: 'Séance',
+      aideExercice: 'Choisis une séance pour voir l’évolution de chaque élève d’une séance à l’autre.',
+      aideSaisieTemps: '',
+      tempsManque: 'ces cours manqués',
+      remarquesAide: 'santé, aménagements…',
+      evalSequenceExemple: 'ex. ECE blanche, séance 6',
+      evenementExemple: 'Sortie au planétarium, visite de laboratoire…',
+      activiteBareme: 'Type d’épreuve',
+      rechercheBareme: 'Rechercher un type d’épreuve…',
+      laDiscipline: 'la physique-chimie', deDiscipline: 'de physique-chimie', enDiscipline: 'en physique-chimie',
+      outilsVisite: 'ECE, mise en commun, binômes, fiches TP… pour le cours.',
+      outilsVersLecon: 'ECE, gestes techniques, binômes, équipes…',
+      exempleSerie: 'TP titrage',
+      exempleTitreEval: 'TP titrage',
+      donneesSeance: 'les compétences de la démarche scientifique, le travail rendu…',
+      aideNoterSeance: 'les compétences de la démarche scientifique (s’approprier, analyser, réaliser, valider, communiquer), le travail rendu',
+      aideEvenements: 'sortie, visite, labo, projet…',
+      themeEnPhrase: 'en ondes et signaux',
+    },
+    exemples: {
+      grandeur: 'ex. Intensité du courant', unite: 'ex. mA',
+      condition: 'ex. Tension — chaque groupe teste une valeur', uniteCondition: 'ex. V',
+      titreTp: 'ex. Titrage acido-basique',
+      materiel: 'ex. Bécher 100 mL', technicien: 'ex. Solutions à préparer la veille, multimètres vérifiés',
+      geste: 'ex. Utiliser un spectrophotomètre',
+    },
+    // Mise en commun (labo.js) : incertitude-type, écart normalisé à une référence, droite de modélisation.
+    incertitudes: true,
+    // Outils de labo : gestes techniques et dangers propres à la physique-chimie.
+    labo: {
+      gestesInfo: 'Verrerie jaugée, burette, multimètre… : qui réussit, qui aider',
+      gestes: ['Prélever à la pipette jaugée', 'Préparer une solution (fiole jaugée)', 'Réaliser un titrage à la burette', 'Peser avec une balance',
+        'Mesurer une tension, une intensité (multimètre)', 'Réaliser un circuit électrique', 'Acquisition : capteur, oscilloscope, ExAO', 'Former une image avec une lentille'],
+      dangersMasques: ['coupant', 'biologique'], // (scalpel, matériel biologique : propres à la SVT)
+      dangersTextes: {
+        verre: 'Verrerie : signaler tout bris au professeur, ne rien ramasser à la main',
+        electrique: 'Circuits électriques : monter hors tension, faire vérifier avant de brancher ; mains sèches, pas d’eau à côté',
+      },
+      dangersEnPlus: [
+        ['laser', '🔦', 'Laser : ne jamais regarder le faisceau ni son reflet, rester hors de son trajet'],
+        ['hotte', '💨', 'Vapeurs, gaz : manipuler sous la hotte, flacons rebouchés aussitôt'],
+      ],
+    },
+    bilans: true, // onglet Notes : 🎯 Compétences, 🧭 Socle (collège), 📄 Travail rendu (bilansvt.js)
+    typesEvenements: [
+      { id: 'sortie', nom: 'Sortie, visite', couleur: '#0f6670' },
+      { id: 'labo', nom: 'Labo (préparation, commande)', couleur: '#a3306e' },
+      { id: 'projet', nom: 'Projet / concours', couleur: '#1f5f9e' },
+      { id: 'reunion', nom: 'Réunion', couleur: '#5b3fa0' },
+      { id: 'autre', nom: 'Autre', couleur: '#3d4a52' },
+    ],
+    // Thèmes des programmes (suggestions : on peut taper n'importe quel titre).
+    activites: [
+      // Seconde, première et terminale (spécialité) : BO spécial n°1 du 22/01/2019, BO spécial n°8 du 25/07/2019
+      'Constitution et transformations de la matière', 'Mouvement et interactions', 'L’énergie : conversions et transferts', 'Ondes et signaux',
+      // Enseignement scientifique (1re, Tle)
+      'Une longue histoire de la matière', 'Le Soleil, notre source d’énergie', 'La Terre, un astre singulier',
+      'Science, climat et société', 'Le futur des énergies', 'Projet expérimental et numérique',
+      // Collège (cycle 4, BO n°31 du 30/07/2020)
+      'Organisation et transformations de la matière', 'L’énergie, ses transferts et ses conversions', 'Des signaux pour observer et communiquer',
+      // 6e : Sciences et technologie (cycle 3)
+      'Matière, mouvement, énergie et information', 'Les objets techniques au cœur de la société',
+      // Types de séance
+      'Travaux pratiques', 'Activité expérimentale', 'Résolution de problème', 'Évaluation des compétences expérimentales (ECE)',
+    ],
+    referentiels: ['pcLycee', 'ensSci', 'pcCycle4', 'sciTechCycle3'],
+    referentielParNiveau: { '6e': 'sciTechCycle3', '5e': 'pcCycle4', '4e': 'pcCycle4', '3e': 'pcCycle4', '2nde': 'pcLycee', '1re': 'pcLycee', 'Tle': 'pcLycee' },
+    referentielDefaut: 'pcLycee',
+    familleOutilsMasquees: ['apsa'],
+    outilsMasques: ['tours', 'intervalles', 'marque', 'tournoi', 'essais', 'vma', 'tableau', 'video'],
+    champsSequence: false,
+    codes: ['ABS', 'NR', 'NE', 'MAL', 'AUT'],
+    // Modèle de séance : au lycée, les cinq compétences de la démarche scientifique ; au collège, celles du cycle 4.
+    modeleSeance: niveau => [
+      ...(['6e', '5e', '4e', '3e'].includes(niveau) ? [
+        { nom: 'Pratiquer des démarches scientifiques', type: 'echelle' },
+        { nom: 'Concevoir, réaliser (dispositif, mesure)', type: 'echelle' },
+        { nom: 'Pratiquer des langages (compte rendu, schéma)', type: 'echelle' },
+        { nom: 'Sécurité au laboratoire', type: 'echelle' },
+      ] : [
+        { nom: 'S’approprier', type: 'echelle' },
+        { nom: 'Analyser / Raisonner', type: 'echelle' },
+        { nom: 'Réaliser (manipulation, sécurité)', type: 'echelle' },
+        { nom: 'Valider (résultats, incertitudes)', type: 'echelle' },
+        { nom: 'Communiquer', type: 'echelle' },
+      ]),
+      { nom: 'Travail rendu', type: 'choix', options: ['Rendu', 'En retard', 'Non rendu'] },
+      { nom: 'Observation', type: 'texte' },
+    ],
+    // Appréciations : « motricité » → connaissances et résultats ; « méthodologie » → démarche expérimentale.
+    appreciations: {
+      noms: { moteur: { nom: 'Connaissances', aide: 'résultats, notes' }, methodo: { nom: 'Démarche', aide: 'démarche expérimentale, mesures, calculs, sécurité' } },
+      phrases: {
+        attitude: {
+          4: { p: ['{S} s’investit pleinement dans le travail demandé.', '{S} fait preuve d’un engagement exemplaire en classe.', '{S} montre un investissement remarquable et constant.', 'L’investissement en classe est exemplaire.'],
+            t: ['Investissement exemplaire.', 'Engagement remarquable.'] },
+          3: { p: ['{S} s’investit avec sérieux en classe.', '{S} montre un engagement régulier.', '{S} participe activement en classe.', 'Le travail en classe est sérieux et régulier.'],
+            t: ['Investissement sérieux.', 'Travail sérieux en classe.'] },
+        },
+        moteur: {
+          4: { p: ['{S} maîtrise très bien les notions{apsa}.', '{S} obtient de très bons résultats{apsa}.', '{S} obtient des résultats remarquables{apsa}.', 'Les connaissances sont solidement maîtrisées{apsa}.'],
+            t: ['Notions très bien maîtrisées{apsa}.', 'Très bons résultats{apsa}.', 'Résultats remarquables{apsa}.', 'Excellent niveau{apsa}.'] },
+          3: { p: ['{S} obtient de bons résultats{apsa}.', '{S} maîtrise bien les notions{apsa}.'], t: ['Bons résultats{apsa}.', 'Notions bien maîtrisées{apsa}.'] },
+          2: { p: { b: ['{S} obtient des résultats encore justes{apsa}, qui peuvent progresser.', 'Les connaissances{apsa} sont encore fragiles, mais peuvent progresser.'],
+            n: ['{S} obtient des résultats moyens{apsa}.', 'Les connaissances restent fragiles{apsa}.'],
+            x: ['Les résultats{apsa} sont insuffisants au regard des possibilités de {P}.', '{S} doit viser des résultats plus solides{apsa}.', 'Les connaissances{apsa} sont trop fragiles.'] },
+          t: { b: ['Connaissances à consolider{apsa}.'], n: ['Résultats moyens{apsa}.', 'Connaissances fragiles{apsa}.'], x: ['Résultats insuffisants{apsa}.', 'Connaissances trop fragiles{apsa}.'] } },
+          1: { p: { b: ['{S} rencontre des difficultés{apsa}, mais peut progresser avec un travail régulier.'], n: ['{S} rencontre des difficultés{apsa}.', 'Les connaissances sont lacunaires{apsa}.'],
+            x: ['Les résultats{apsa} sont très insuffisants.', '{S} est en grande difficulté{apsa}.', 'Les connaissances{apsa} sont nettement insuffisantes.'] },
+          t: { b: ['Connaissances fragiles{apsa}.'], n: ['Difficultés{apsa}.', 'Connaissances lacunaires{apsa}.'], x: ['Résultats très insuffisants{apsa}.', 'Grandes difficultés{apsa}.'] } },
+        },
+        methodo: {
+          4: { p: ['{S} mène les démarches expérimentales avec beaucoup de rigueur.', '{S} travaille avec une grande rigueur, en TP comme dans les calculs.'], t: ['Excellente démarche expérimentale.', 'Grande rigueur en TP et dans les calculs.'] },
+          3: { p: ['{S} mène correctement les démarches et les mesures.', '{S} travaille avec méthode.'], t: ['Bonne démarche expérimentale.', 'Travail méthodique.'] },
+          2: { p: { b: ['{S} doit encore gagner en rigueur dans les mesures et les calculs.'], n: ['La démarche expérimentale et la rigueur des calculs restent à améliorer.'],
+            x: ['{S} manque de rigueur dans les manipulations et les calculs.', 'La rigueur fait défaut dans les manipulations et les calculs.'] },
+          t: { b: ['Rigueur à développer en TP et dans les calculs.'], n: ['Démarche à améliorer.'], x: ['Manque de rigueur.'] } },
+          1: { p: { b: ['{S} a besoin d’aide pour construire une démarche et mener une mesure.'], n: ['{S} peine à construire une démarche expérimentale.'],
+            x: ['La démarche expérimentale n’est pas maîtrisée.', '{S} ne parvient pas à mener une démarche expérimentale.'] },
+          t: { b: ['Démarche à construire.'], n: ['Démarche peu maîtrisée.'], x: ['Démarche non maîtrisée.'] } },
+        },
+      },
+      objectifs: {
+        moteur: ['apprendre régulièrement ses leçons et refaire les exercices', 'consolider les connaissances'],
+        methodo: ['gagner en rigueur dans les mesures et les calculs', 'mieux justifier ses raisonnements'],
+      },
+      fiche: {
+        niveauFort: ['Bonnes connaissances', 'maîtrise bien les notions'],
+        niveauFaible: ['Connaissances fragiles', 'consolider ses connaissances par un travail régulier'],
+        methodo: ['Démarche expérimentale', 'gagner en rigueur dans les mesures, les calculs et les manipulations'],
         assiduite: ['Assiduité', 'est assidu{e} et travaille avec régularité'],
       },
     },
@@ -227,4 +410,9 @@ const motifsAbsence = () => (codeDeLaDiscipline('BLE') ? 'absent, blessé ou mal
 const motifsSante = () => (codeDeLaDiscipline('BLE') ? 'blessé / malade' : 'malade');
 // « oubli de tenue » / « oublis de matériel »…
 const oubliTenue = (n = 1) => `oubli${n > 1 ? 's' : ''} ${mot('deTenue')}`;
-const outilDeLaDiscipline = o => !profil().familleOutilsMasquees.includes(o.famille) && !(profil().outilsMasques || []).includes(o.id);
+// Outil proposé : sa famille n'est pas masquée, ni lui ; un outil réservé à certaines disciplines (o.disciplines,
+// ex. l'ECE de SVT dans la famille Sciences) n'apparaît que dans celles-ci.
+const outilDeLaDiscipline = o => !profil().familleOutilsMasquees.includes(o.famille) && !(profil().outilsMasques || []).includes(o.id)
+  && (!o.disciplines || o.disciplines.includes(disciplineActive()));
+// Exemple d'un champ d'outil de sciences (profil().exemples), sinon un exemple neutre.
+const exempleOutil = (cle, defaut) => profil().exemples?.[cle] ?? defaut;

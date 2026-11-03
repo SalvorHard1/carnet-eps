@@ -53,16 +53,17 @@ une fonction de même nom dans deux fichiers écrase silencieusement l'autre. Ch
 | Fichier | Rôle |
 |---|---|
 | `donnees.js` | Stockage IndexedDB (`Donnees`) et fusion entre appareils (horodatage `maj` par élément / par champ, pierres tombales pour les suppressions). Collections : classes, eleves, evals, notes, seances, reglages, documents, suivis, agenda, baremes, modeles. |
-| `discipline.js` | Profils de discipline (EPS, SVT) : vocabulaire `mot()`, activités, référentiels, outils masqués. |
+| `discipline.js` | Profils de discipline (EPS, SVT, physique-chimie `pc`) : vocabulaire `mot()`, activités, référentiels, outils masqués, modèle de séance `modeleSeance(niveau)`, appréciations. |
 | `cle.js` | Carnet chiffré sur la clé (AES-GCM 256, PBKDF2, gzip). |
-| `referentiel.js` | Référentiels officiels (attendus, compétences, cycles 3/4, lycée, SVT…). |
+| `referentiel.js` | Référentiels officiels (attendus, compétences, cycles 3/4, lycée, SVT, physique-chimie…). |
 | `tableur.js` | Lecture / écriture `.xlsx` maison. |
 | `entrainement.js` | Onglet « Leçons » (id interne `entrainement`) : séances, données relevées, statuts, Excel. |
 | `notesexcel.js` | Notes et degrés ⇄ Excel ; import des relevés de notes de Pronote (.xlsx, .csv, .txt) et d’École Directe. |
 | `listeclasse.js` | Import de listes École Directe / Pronote. |
 | `reglages.js` | ⚙ Réglages, premier lancement (choix de la discipline, classe exemple). |
-| `outils.js` + `combine.js`, `natation.js`, `asns.js`, `videodelay.js`, `tableau.js`, `boxe.js`, `ece.js`, `labo.js` | Onglet « Outils » et ses outils. Les noms d'élèves s'y affichent via `nomEleveOutil()` (mode élève). `ece.js`, `labo.js` (schéma, gestes techniques, mise en commun, sécurité, binômes) et `tp.js` (fiches TP rangées dans la séance `s.tp`, commande au labo, banque de séances = collection `modeles`) = famille SVT, cachée en EPS. |
-| `bilansvt.js` | Onglet Notes, carnet de SVT seulement (`profil().bilans`) : 🎯 couverture des compétences, 🧭 socle (domaines d'après `ref.socle`, collège), 📄 travail rendu. |
+| `perso.js` | ⚙ Réglages › 🎨 Apparence et personnalisation (partie poussée) : ambiances (`--fond`, `--surface`, `--surface2`, `--texte`, `--texte2`, `--bord`, en clair et en sombre ; fiche `perso` ; plus de couleurs une à une depuis la v1.4.2), coins (`--arrondi`), police (`--police`), taille des boutons (`--boutons`, propre à l'appareil : `ui.boutons`), ordre des onglets (`reglage('onglets').ordre`, `ordreOnglets()`). Tout nouveau `border-radius` en px s'écrit `calc(Npx * var(--arrondi, 1))`. |
+| `outils.js` + `combine.js`, `natation.js`, `asns.js`, `videodelay.js`, `tableau.js`, `boxe.js`, `ece.js`, `ecepc.js`, `labo.js` | Onglet « Outils » et ses outils. Les noms d'élèves s'y affichent via `nomEleveOutil()` (mode élève). `ece.js`, `labo.js` (schéma, gestes techniques, mise en commun, sécurité, binômes) et `tp.js` (fiches TP rangées dans la séance `s.tp`, commande au labo, banque de séances = collection `modeles`) = famille « Sciences » (titrée du nom de la discipline), cachée en EPS ; un outil propre à une discipline porte `disciplines: ['svt']` (ECE, schéma, gestes). Texte ou exemple propre à une discipline : passer par `mot()` / `exempleOutil()`, jamais `disciplineActive() === 'svt'`. |
+| `bilansvt.js` | Onglet Notes, carnets de SVT et de physique-chimie (`profil().bilans`) : 🎯 couverture des compétences, 🧭 socle (domaines d'après `ref.socle`, collège), 📄 travail rendu. |
 | `edtpdf.js` | Lecteur PDF maison (`PdfTexte`) + lecture d'emploi du temps. |
 | `trombi.js` | Trombinoscope PDF → photos rattachées aux élèves (par l'appli). |
 | `trombiimage.js` | Trombinoscope en image (PNG, JPEG, PDF scanné) : repère la grille de photos, découpe le nom dessous et le compare aux noms de la classe que l'appli écrit elle-même dans plusieurs polices (police et présentation NOM Prénom / Prénom NOM apprises sur l'image). |

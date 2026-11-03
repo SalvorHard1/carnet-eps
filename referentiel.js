@@ -299,6 +299,87 @@ const REFERENTIEL = (() => {
       },
       socle: { C1: ['D2', 'D4'], C2: ['D4'], C3: ['D1'], C4: ['D2'], C5: ['D3', 'D5'], C6: ['D5'], C7: ['D2', 'D4'] },
     },
+
+    // ---------- Physique-chimie ----------
+    // Lycée : « Les compétences travaillées dans le cadre de la démarche scientifique », tableau identique en seconde,
+    // première et terminale (BO spécial n°1 du 22/01/2019 ; BO spécial n°8 du 25/07/2019) : un seul référentiel.
+    // Codes APP, ANA, RÉA, VAL, COM comme dans les grilles d'ECE. (Communiquer : « À l’écrit comme à l’oral » ajouté à chaque item.)
+    pcLycee: {
+      nom: 'Physique-chimie — lycée (2nde, 1re, Tle)', code: '', toutes: true,
+      champs: {
+        APP: ['S’approprier', num('APP', [
+          'Énoncer une problématique.',
+          'Rechercher et organiser l’information en lien avec la problématique étudiée.',
+          'Représenter la situation par un schéma.',
+        ])],
+        ANA: ['Analyser / Raisonner', num('ANA', [
+          'Formuler des hypothèses.',
+          'Proposer une stratégie de résolution.',
+          'Planifier des tâches.',
+          'Évaluer des ordres de grandeur.',
+          'Choisir un modèle ou des lois pertinentes.',
+          'Choisir, élaborer, justifier un protocole.',
+          'Faire des prévisions à l’aide d’un modèle.',
+          'Procéder à des analogies.',
+        ])],
+        REA: ['Réaliser', num('REA', [
+          'Mettre en œuvre les étapes d’une démarche.',
+          'Utiliser un modèle.',
+          'Effectuer des procédures courantes (calculs, représentations, collectes de données, etc.).',
+          'Mettre en œuvre un protocole expérimental en respectant les règles de sécurité.',
+        ])],
+        VAL: ['Valider', num('VAL', [
+          'Faire preuve d’esprit critique, procéder à des tests de vraisemblance.',
+          'Identifier des sources d’erreur, estimer une incertitude, comparer à une valeur de référence.',
+          'Confronter un modèle à des résultats expérimentaux.',
+          'Proposer d’éventuelles améliorations de la démarche ou du modèle.',
+        ])],
+        COM: ['Communiquer', num('COM', [
+          'À l’écrit comme à l’oral : présenter une démarche de manière argumentée, synthétique et cohérente.',
+          'À l’écrit comme à l’oral : utiliser un vocabulaire adapté et choisir des modes de représentation appropriés.',
+          'À l’écrit comme à l’oral : échanger entre pairs.',
+        ])],
+      },
+    },
+    // Collège : compétences travaillées du programme du cycle 4 (BO n°31 du 30/07/2020), avec les domaines du socle.
+    pcCycle4: {
+      nom: 'Physique-chimie — collège, cycle 4 (5e, 4e, 3e)', code: '', toutes: true,
+      champs: {
+        C1: ['Pratiquer des démarches scientifiques', num('C1', [
+          'Identifier des questions de nature scientifique.',
+          'Proposer une ou des hypothèses pour répondre à une question scientifique. Concevoir une expérience pour la ou les tester.',
+          'Mesurer des grandeurs physiques de manière directe ou indirecte.',
+          'Interpréter des résultats expérimentaux, en tirer des conclusions et les communiquer en argumentant.',
+          'Développer des modèles simples pour expliquer des faits d’observations et mettre en œuvre des démarches propres aux sciences.',
+        ])],
+        C2: ['Concevoir, créer, réaliser', num('C2', ['Concevoir et réaliser un dispositif de mesure ou d’observation.'])],
+        C3: ['S’approprier des outils et des méthodes', num('C3', [
+          'Effectuer des recherches bibliographiques.',
+          'Utiliser des outils numériques pour mutualiser des informations sur un sujet scientifique.',
+          'Planifier une tâche expérimentale, organiser son espace de travail, garder des traces des étapes suivies et des résultats obtenus.',
+        ])],
+        C4: ['Pratiquer des langages', num('C4', [
+          'Lire et comprendre des documents scientifiques.',
+          'Utiliser la langue française, à l’écrit comme à l’oral, en cultivant précision, richesse de vocabulaire et syntaxe pour rendre compte des observations, expériences, hypothèses et conclusions.',
+          'S’exprimer à l’oral lors d’un débat scientifique.',
+          'Passer d’une forme de langage scientifique à une autre.',
+        ])],
+        C5: ['Mobiliser des outils numériques', num('C5', [
+          'Utiliser des outils d’acquisition et de traitement de données, de simulations et de modèles numériques.',
+          'Produire des documents scientifiques grâce à des outils numériques, en utilisant l’argumentation et le vocabulaire spécifique à la physique et à la chimie.',
+        ])],
+        C6: ['Adopter un comportement éthique et responsable', num('C6', [
+          'Expliquer les fondements des règles de sécurité en chimie, électricité, optique et acoustique.',
+          'Réinvestir ses connaissances, notamment celles sur les ressources et l’énergie, pour agir de façon responsable et respectueuse de l’environnement.',
+          'S’impliquer dans un projet ayant une dimension citoyenne.',
+        ])],
+        C7: ['Se situer dans l’espace et dans le temps', num('C7', [
+          'Expliquer, par l’histoire des sciences et des techniques, comment les sciences évoluent et influencent la société et l’environnement.',
+          'Identifier les différentes échelles de structuration de l’Univers.',
+        ])],
+      },
+      socle: { C1: ['D4'], C2: ['D4', 'D5'], C3: ['D2'], C4: ['D1'], C5: ['D2'], C6: ['D3', 'D5'], C7: ['D5'] },
+    },
   };
 
   // Mise en forme : chaque attendu reçoit un identifiant stable (ex. « cycle4.CA1.2 ») et un code (AFC2, AFL1…).

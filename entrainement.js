@@ -144,11 +144,24 @@ function caBrut(apsa) {
   return Object.entries(CA_PAR_APSA).find(([, liste]) => liste.some(x => x.toLocaleLowerCase('fr') === a))?.[0] || '';
 }
 
-function modeleIndicateurs(apsa) {
-  // Discipline avec son propre modèle de séance (SVT…) ; sinon les modèles de l'EPS (par APSA, puis par champ).
-  const modele = profil().modeleSeance?.() || MODELES_APSA[(apsa || '').trim().toLocaleLowerCase('fr')] || MODELES_CA[caBrut(apsa)]
+function modeleIndicateurs(apsa, niveau = classeActive()?.niveau) {
+  // Discipline avec son propre modèle de séance (SVT, physique-chimie : selon le niveau de la classe) ;
+  // sinon les modèles de l'EPS (par APSA, puis par champ).
+  const modele = profil().modeleSeance?.(niveau) || MODELES_APSA[(apsa || '').trim().toLocaleLowerCase('fr')] || MODELES_CA[caBrut(apsa)]
     || [I('Performance', 'temps'), OBS];
   return modele.map((ind, k) => ({ ...structuredClone(ind), id: 'i' + (k + 1) }));
+}
+
+// Compétences proposées pour une séance (échelle 1 à 4, une colonne chacune) : AFC / AFL du champ de l'activité
+// dans le référentiel du niveau de la classe ; toutes celles du référentiel s'il n'a pas de champs (SVT, PC).
+function competencesSeance(apsa, niveau) {
+  const ref = REFERENTIEL.refs[referentielDuNiveau(niveau)];
+  if (!ref) return [];
+  const champs = ref.toutes ? Object.entries(ref.champs) : Object.entries(ref.champs).filter(([ca]) => ca === caBrut(apsa));
+  return champs.map(([ca, ch]) => ({
+    titre: ref.toutes ? ch.titre : `${(ch.attendus[0]?.code || '').replace(/\d+$/, '') || 'Compétences'} du champ ${ca} — ${ch.titre}`,
+    inds: ch.attendus.filter(a => !a.masque).map(a => ({ nom: a.code, type: 'echelle', texte: a.texte })),
+  })).filter(g => g.inds.length);
 }
 
 /* ---------- Lecture / affichage des valeurs ---------- */
@@ -720,6 +733,7 @@ function ligneIndic(ind) {
   return `<div class="ligne-indic">
     <input type="hidden" name="ind-id" value="${esc(ind.id || '')}">
     <input type="hidden" name="ind-suivi" value="${ind.suivi ? '1' : ''}">
+    <input type="hidden" name="ind-texte" value="${esc(ind.etape ? '' : ind.texte || '')}">
     <input name="ind-nom" required value="${esc(ind.nom || '')}" placeholder="Nom de la donnée" aria-label="Nom de la donnée">
     <select name="ind-type" aria-label="Type">${Object.entries(TYPES_INDIC).map(([k, n]) => `<option value="${k}" ${typeAffiche(ind) === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
     <input name="ind-param" value="${esc(param)}" aria-label="Unité ou options">
@@ -775,6 +789,7 @@ async function editerSeance(id, preset = null) {
         <button type="button" data-ajout-indic>+ Ajouter une donnée</button>
         <button type="button" data-modele-indic>${esc(mot('modeleActivite'))}</button>
       </div>
+      <div class="choix-modele" data-choix-modele hidden></div>
       <p class="aide">Temps : 3:45 · Distance / nombre : avec unité (m, kg, bpm…) · Échelle 1 à 4 : couleurs des degrés ·
         Médailles : un toucher = 🥉 → 🥈 → 🥇 (ou touches 1, 2, 3) ·
         Choix : options séparées par « / » · Texte : observation libre.</p>
@@ -806,6 +821,36 @@ async function editerSeance(id, preset = null) {
     liste.innerHTML = modeleIndicateurs(champApsa.value).map(ligneIndic).join('');
     majParams();
   };
+  // Bouton du modèle : on coche ce qu'on ajoute (données de l'activité, compétences du champ) ; rien n'est effacé,
+  // sauf avec « Tout remplacer ».
+  const choixModele = $('[data-choix-modele]', d);
+  let propositions = [];
+  const ouvrirChoixModele = () => {
+    const presents = new Set([...liste.querySelectorAll('[name="ind-nom"]')].map(i => i.value.trim().toLocaleLowerCase('fr')));
+    const deja = ind => presents.has(ind.nom.toLocaleLowerCase('fr'));
+    const groupes = [{ titre: 'Données proposées', inds: modeleIndicateurs(champApsa.value), cocher: true },
+      ...competencesSeance(champApsa.value, c.niveau).map(g => ({ ...g, cocher: false }))];
+    propositions = [];
+    choixModele.innerHTML = groupes.map(g => `<p class="aide"><b>${esc(g.titre)}</b></p>` + g.inds.map(ind => {
+      const k = propositions.push(ind) - 1;
+      return `<label class="case competence"><input type="checkbox" data-proposition="${k}" ${g.cocher && !deja(ind) ? 'checked' : ''}>
+        <span><b>${esc(ind.nom)}</b> ${esc(ind.texte || TYPES_INDIC[typeAffiche(ind)])}${deja(ind) ? ' <i>(déjà dans la liste)</i>' : ''}</span></label>`;
+    }).join('')).join('') + `<div class="ligne">
+        <button type="button" class="primaire" data-ajouter-modele>Ajouter ce qui est coché</button>
+        <button type="button" data-remplacer-modele title="Efface les données de la liste et remet celles du modèle">Tout remplacer par le modèle</button>
+        <button type="button" data-fermer-modele>Annuler</button>
+      </div>`;
+    choixModele.hidden = false;
+    choixModele.scrollIntoView({ block: 'nearest' });
+  };
+  const ajouterPropositions = () => {
+    const cochees = [...choixModele.querySelectorAll('[data-proposition]:checked')].map(x => propositions[+x.dataset.proposition]);
+    if (!cochees.length) return toast('Coche au moins une donnée à ajouter.');
+    liste.insertAdjacentHTML('beforeend', cochees.map(ind => ligneIndic({ ...structuredClone(ind), id: '' })).join(''));
+    majParams();
+    retouche = true;
+    choixModele.hidden = true;
+  };
   let ancienneApsa = champApsa.value;
   const zoneEtapes = $('[data-zone-etapes]', d);
   champApsa.addEventListener('change', () => {
@@ -825,7 +870,10 @@ async function editerSeance(id, preset = null) {
       liste.lastElementChild.querySelector('[name="ind-nom"]').focus();
       retouche = true;
     }
-    if (e.target.closest('[data-modele-indic]')) chargerModele();
+    if (e.target.closest('[data-modele-indic]')) ouvrirChoixModele();
+    if (e.target.closest('[data-ajouter-modele]')) ajouterPropositions();
+    if (e.target.closest('[data-remplacer-modele]')) { chargerModele(); retouche = true; choixModele.hidden = true; }
+    if (e.target.closest('[data-fermer-modele]')) choixModele.hidden = true;
     const choix = e.target.closest('[data-etapes]')?.dataset.etapes;
     if (choix) zoneEtapes.querySelectorAll('[name="etape"]').forEach(c => { c.checked = choix === 'parcours' && c.value.startsWith('sn-P'); });
   });
@@ -873,7 +921,7 @@ async function editerSeance(id, preset = null) {
     }
   } else if (r.action === 'ok') {
     const ids = r.fd.getAll('ind-id'), noms = r.fd.getAll('ind-nom'), types = r.fd.getAll('ind-type'), params = r.fd.getAll('ind-param');
-    const suivis = r.fd.getAll('ind-suivi');
+    const suivis = r.fd.getAll('ind-suivi'), textes = r.fd.getAll('ind-texte');
     const pris = new Set();
     let indicateurs = noms.map((nom, k) => {
       const type = types[k], param = (params[k] || '').trim();
@@ -881,6 +929,7 @@ async function editerSeance(id, preset = null) {
       pris.add(idInd);
       if (type === 'medaille') return indMedaille({ id: idInd, nom: nom.trim() });
       const ind = { id: idInd, nom: nom.trim(), type };
+      if (textes[k]) ind.texte = textes[k]; // (compétence ajoutée depuis le modèle : son énoncé)
       if (type === 'choix') {
         ind.options = param.split('/').map(o => o.trim()).filter(Boolean);
         if (suivis[k] === '1') ind.suivi = true;

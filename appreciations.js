@@ -418,18 +418,18 @@ const PHRASES_APPR = {
     2: { p: { b: ['Les compétences sont en cours d’acquisition, à consolider.', '{S} est en bonne voie dans l’acquisition des compétences.'],
       n: ['La maîtrise des compétences reste fragile.', 'Les compétences sont partiellement acquises.'], x: ['La maîtrise des compétences est encore trop fragile.', 'La maîtrise des compétences doit être nettement renforcée.', 'Les compétences visées sont loin d’être acquises.'] },
     t: { b: ['Compétences en cours d’acquisition.'], n: ['Compétences fragiles.', 'Compétences partiellement acquises.'], x: ['Compétences insuffisamment maîtrisées.', 'Maîtrise des compétences à renforcer.'] } },
-    1: { p: { b: ['Les compétences visées ne sont pas encore acquises : il faut persévérer.'], n: ['La maîtrise des compétences est insuffisante.'],
-      x: ['Les compétences visées ne sont pas maîtrisées.'] },
+    1: { p: { b: ['Les compétences visées ne sont pas encore acquises : il faut persévérer.'], n: ['La maîtrise des compétences est insuffisante.', 'Les compétences visées ne sont pas encore acquises.'],
+      x: ['Les compétences visées ne sont pas maîtrisées.', '{S} ne maîtrise pas les compétences visées.', 'Les compétences visées ne sont pas acquises.'] },
     t: { b: ['Compétences pas encore acquises.'], n: ['Compétences non acquises.'], x: ['Compétences non maîtrisées.', 'Compétences à acquérir.'] } },
   },
   moteur: {
     4: { p: ['{S} réalise de très bonnes performances{apsa}.', '{S} dispose de très bonnes qualités motrices{apsa}.', 'Les performances sont d’un très bon niveau{apsa}.', '{S} obtient des performances remarquables{apsa}.', 'Les résultats sont d’un niveau élevé{apsa}.'],
-      t: ['Très bonnes qualités motrices{apsa}.', 'Très bons résultats{apsa}.', 'Performances remarquables{apsa}.'] },
+      t: ['Très bonnes qualités motrices{apsa}.', 'Très bons résultats{apsa}.', 'Performances remarquables{apsa}.', 'Excellent niveau{apsa}.'] },
     3: { p: ['{S} obtient de bons résultats{apsa}.', '{S} montre de bonnes capacités motrices{apsa}.', 'Les résultats sont d’un bon niveau{apsa}.'], t: ['Bons résultats{apsa}.', 'Bonnes capacités motrices{apsa}.'] },
-    2: { p: { b: ['{S} obtient des résultats encore justes{apsa}, qui peuvent progresser.', 'Les résultats restent encore justes{apsa}, mais peuvent progresser.', '{S} obtient des résultats corrects{apsa}, qui peuvent s’améliorer.', 'Les résultats{apsa} sont corrects et peuvent s’améliorer.'], n: ['{S} obtient des résultats moyens{apsa}.', 'Les résultats sont moyens{apsa}.'],
-      x: ['Les résultats{apsa} sont insuffisants au regard des possibilités de {P}.', '{S} doit viser des résultats plus solides{apsa}.'] },
-    t: { b: ['Résultats à consolider{apsa}.', 'Résultats perfectibles{apsa}.'], n: ['Résultats moyens{apsa}.', 'Performances moyennes{apsa}.'], x: ['Résultats insuffisants{apsa}.', 'Résultats en deçà des attentes{apsa}.'] } },
-    1: { p: { b: ['{S} rencontre des difficultés{apsa}, mais peut progresser avec de la persévérance.', 'Les difficultés sont réelles{apsa}, mais la persévérance permettra de progresser.', '{S} rencontre des difficultés{apsa} ; un travail régulier l’aidera à les surmonter.', 'Les résultats{apsa} restent difficiles : il faut garder confiance.'], n: ['{S} rencontre des difficultés{apsa}.', 'Les résultats restent difficiles{apsa}.'],
+    2: { p: { b: ['{S} obtient des résultats encore justes{apsa}, qui peuvent progresser.', 'Les résultats restent encore justes{apsa}, mais peuvent progresser.', '{S} obtient des résultats corrects{apsa}, qui peuvent s’améliorer.', 'Les résultats{apsa} sont corrects et peuvent s’améliorer.'], n: ['{S} obtient des résultats moyens{apsa}.', 'Les résultats sont moyens{apsa}.', 'Les performances sont moyennes{apsa}.'],
+      x: ['Les résultats{apsa} sont insuffisants au regard des possibilités de {P}.', '{S} doit viser des résultats plus solides{apsa}.', 'Les performances{apsa} restent en deçà des possibilités de {P}.'] },
+    t: { b: ['Résultats à consolider{apsa}.', 'Résultats perfectibles{apsa}.'], n: ['Résultats moyens{apsa}.', 'Performances moyennes{apsa}.'], x: ['Résultats insuffisants{apsa}.', 'Résultats en deçà des attentes{apsa}.', 'Performances insuffisantes{apsa}.'] } },
+    1: { p: { b: ['{S} rencontre des difficultés{apsa}, mais peut progresser avec de la persévérance.', 'Les difficultés sont réelles{apsa}, mais la persévérance permettra de progresser.', '{S} rencontre des difficultés{apsa} ; un travail régulier l’aidera à les surmonter.', 'Les résultats{apsa} restent difficiles : il faut garder confiance.'], n: ['{S} rencontre des difficultés{apsa}.', 'Les résultats restent difficiles{apsa}.', 'Les performances restent modestes{apsa}.'],
       x: ['Les résultats{apsa} sont très insuffisants.', '{S} est en grande difficulté{apsa}.', 'Les résultats{apsa} sont nettement en deçà des attentes.'] },
     t: { b: ['Difficultés motrices à surmonter{apsa}.'], n: ['Difficultés motrices{apsa}.'], x: ['Résultats très insuffisants{apsa}.', 'Grandes difficultés{apsa}.'] } },
   },
@@ -438,10 +438,10 @@ const PHRASES_APPR = {
       t: ['Rôles très bien assumés.', 'Excellente méthode de travail.'] },
     3: { p: ['{S} tient correctement les rôles confiés et s’organise bien.', '{S} travaille avec méthode.', 'Les rôles confiés sont bien tenus et le travail est méthodique.', 'Le travail dans les rôles confiés est d’un bon niveau.'], t: ['Rôles bien assumés.', 'Travail méthodique.'] },
     2: { p: { b: ['{S} doit encore gagner en rigueur dans les rôles et l’organisation.'], n: ['La méthode de travail et la tenue des rôles restent à améliorer.', 'La méthode de travail et la tenue des rôles sont à revoir.', 'L’organisation et la tenue des rôles restent à améliorer.'],
-      x: ['{S} manque de rigueur dans les rôles et l’organisation.'] },
+      x: ['{S} manque de rigueur dans les rôles et l’organisation.', 'La rigueur fait défaut dans les rôles et l’organisation.'] },
     t: { b: ['Rigueur à développer dans les rôles.'], n: ['Méthode à améliorer.'], x: ['Manque de rigueur.'] } },
     1: { p: { b: ['{S} a besoin d’aide pour s’organiser et tenir les rôles confiés.'], n: ['{S} peine à s’organiser et à tenir les rôles confiés.'],
-      x: ['Les rôles confiés ne sont pas assumés.'] },
+      x: ['Les rôles confiés ne sont pas assumés.', '{S} n’assume pas les rôles confiés.'] },
     t: { b: ['Organisation à construire.'], n: ['Rôles peu assumés.'], x: ['Rôles non assumés.'] } },
   },
   comportement: {
@@ -450,16 +450,18 @@ const PHRASES_APPR = {
     2: { p: { b: ['{S} doit veiller à mieux respecter les consignes.'], n: ['Le comportement est parfois à reprendre.'], x: ['{S} doit impérativement mieux respecter les consignes.'] },
       t: { b: ['Respect des consignes à améliorer.'], n: ['Comportement parfois à reprendre.'], x: ['Comportement à corriger.'] } },
     1: { p: { b: ['Le comportement doit s’améliorer pour progresser sereinement.', 'Le respect des règles et des camarades doit devenir une priorité.'], n: ['Le comportement pose problème en cours.'],
-      x: ['Le comportement est inacceptable et nuit au travail de la classe.', 'Le comportement est inacceptable et nuit au travail de tous.'] },
+      x: ['Le comportement est inacceptable et nuit au travail de la classe.', 'Le comportement est inacceptable et nuit au travail de tous.', 'Le comportement est inacceptable et perturbe la classe.'] },
     t: { b: ['Comportement à améliorer nettement.'], n: ['Comportement problématique.'], x: ['Comportement inacceptable.'] } },
   },
   progression: {
-    4: { p: ['{S} a nettement progressé {ce}.', 'Les progrès de {P} sont remarquables {ce}.'], t: ['Très nets progrès.', 'Progrès remarquables.'] },
+    4: { p: ['{S} a nettement progressé {ce}.', 'Les progrès de {P} sont remarquables {ce}.'], t: ['Très nets progrès.', 'Progrès remarquables.', 'Nets progrès.'] },
     3: { p: ['{S} est en progrès {ce}.', 'Les progrès sont réguliers et encourageants.'], t: ['En progrès.', 'Progrès encourageants.'] },
-    2: { p: { b: ['Les résultats sont stables : {s} peut encore progresser.'], n: ['Les résultats sont stables.'], x: ['Les résultats stagnent.'] },
+    2: { p: { b: ['Les résultats sont stables : {s} peut encore progresser.', 'Le niveau est stable : {s} peut encore progresser.'], n: ['Les résultats sont stables.', 'Le niveau reste stable.'],
+      x: ['Les résultats stagnent.', 'Le niveau stagne.', '{S} ne progresse plus.'] },
       t: { b: ['Résultats stables.', 'Niveau stable.'], n: ['Résultats stables.', 'Niveau stable.'], x: ['Résultats qui stagnent.', 'Niveau qui stagne.'] } },
-    1: { p: { b: ['Les résultats sont en baisse {ce} : il faut se ressaisir.'], n: ['Les résultats sont en baisse {ce}.'], x: ['Les résultats sont en net recul {ce}.'] },
-      t: { b: ['Résultats en baisse : se ressaisir.'], n: ['Résultats en baisse.'], x: ['Net recul des résultats.'] } },
+    1: { p: { b: ['Les résultats sont en baisse {ce} : il faut se ressaisir.', 'Le niveau baisse {ce} : il faut se ressaisir.'], n: ['Les résultats sont en baisse {ce}.', 'Le niveau est en baisse {ce}.'],
+      x: ['Les résultats sont en net recul {ce}.', 'Le niveau est en net recul {ce}.', '{S} est en net recul {ce}.'] },
+      t: { b: ['Résultats en baisse : se ressaisir.', 'Niveau en baisse : se ressaisir.'], n: ['Résultats en baisse.', 'Niveau en baisse.'], x: ['Net recul des résultats.', 'Niveau en net recul.'] } },
   },
 };
 // Progression « stable » d'un élève qui a déjà un bon niveau : on le dit autrement.
@@ -469,10 +471,10 @@ const STABLE_BON_APPR = { p: ['{S} maintient son bon niveau.', 'Les résultats r
 const BILANS_APPR = {
   periode: { 4: ['{S} réalise un excellent {per}.', '{S} réalise un très bon {per}.'], 3: ['{S} réalise un bon {per}.', '{S} réalise un {per} satisfaisant.', '{S} réalise un {per} d’un bon niveau.'],
     2: { b: ['{S} réalise un {per} encourageant, mais encore inégal.', '{S} réalise un {per} encourageant, à confirmer.', '{S} réalise un {per} en demi-teinte, avec des points encourageants.'], n: ['{S} réalise un {per} inégal.', '{S} réalise un {per} moyen.'], x: ['{S} réalise un {per} trop juste.', '{S} réalise un {per} en dessous de ses possibilités.'] },
-    1: { b: ['{S} traverse un {per} difficile.'], n: ['{S} traverse un {per} difficile.', '{S} réalise un {per} décevant.'], x: ['{S} réalise un {per} très insuffisant.', '{S} réalise un {per} nettement insuffisant.'] } },
+    1: { b: ['{S} traverse un {per} difficile.'], n: ['{S} traverse un {per} difficile.', '{S} réalise un {per} décevant.'], x: ['{S} réalise un {per} très insuffisant.', '{S} réalise un {per} nettement insuffisant.', '{S} réalise un {per} préoccupant.'] } },
   annee: { 4: ['{S} réalise une excellente année.', '{S} réalise une très bonne année.'], 3: ['{S} réalise une bonne année.', '{S} réalise une année satisfaisante.', '{S} réalise une année d’un bon niveau.'],
     2: { b: ['{S} réalise une année encourageante, mais inégale.', '{S} réalise une année encourageante, qui reste à confirmer.', '{S} réalise une année en demi-teinte, avec des points encourageants.'], n: ['{S} réalise une année mitigée.'], x: ['{S} réalise une année trop juste.', '{S} réalise une année en dessous de ses possibilités.'] },
-    1: { b: ['{S} traverse une année difficile.'], n: ['{S} traverse une année difficile.'], x: ['{S} réalise une année très insuffisante.', '{S} réalise une année nettement insuffisante.'] } },
+    1: { b: ['{S} traverse une année difficile.'], n: ['{S} traverse une année difficile.'], x: ['{S} réalise une année très insuffisante.', '{S} réalise une année nettement insuffisante.', '{S} réalise une année préoccupante.'] } },
 };
 // Bilan d'ensemble correct d'un élève en retrait par rapport à sa classe (jamais « satisfaisant » sans nuance),
 // ou bon bilan d'un élève parmi les meilleurs de la classe (voir positionClasse).
@@ -634,7 +636,17 @@ const contientAppr = (texteNorm, expr) => new RegExp(`(^|[^\\p{L}\\p{M}])${expr.
 const RE_LIAISONS_APPR = Object.entries(LIAISONS_APPR).flatMap(([fam, exprs]) => exprs.map(e =>
   ({ fam, e, re: new RegExp(`(^|[^\\p{L}\\p{M}])${e.replace(/[’']/g, '[’\']')}(?![\\p{L}\\p{M}])`, 'gu') })));
 // Ce que le texte contient : adverbes, familles de liaison, racines des mots pleins (avec leur nombre).
+// (Gardé en mémoire : les mêmes phrases candidates sont inventoriées des centaines de fois pour une classe.)
+const memoInventaireAppr = new Map();
 function inventaireAppr(texte, ignorer = []) {
+  const cle = texte + '\u0000' + ignorer.join('|');
+  if (memoInventaireAppr.has(cle)) return memoInventaireAppr.get(cle);
+  if (memoInventaireAppr.size > 5000) memoInventaireAppr.clear();
+  const inv = inventaireCalculeAppr(texte, ignorer);
+  memoInventaireAppr.set(cle, inv);
+  return inv;
+}
+function inventaireCalculeAppr(texte, ignorer) {
   const n = normAppr(texte), mots = motsAppr(texte), ign = new Set(ignorer.map(normAppr));
   const compte = liste => { const m = new Map(); liste.forEach(x => m.set(x, (m.get(x) || 0) + 1)); return m; };
   const adverbes = compte(mots.filter(m => ADVERBES_APPR.includes(m)).concat(contientAppr(n, 'sans cesse') ? ['sans cesse'] : []));
@@ -659,6 +671,11 @@ function conflitsAppr(avant, ajout, ignorer = []) {
   for (const [m, k] of b.pleins) n += (a.pleins.has(m) ? k : k - 1);
   return n;
 }
+
+// Ce qui compte comme répétition dans un inventaire : adverbes, familles de liaison, racines de mots pleins.
+const clesInventaireAppr = inv => [...[...inv.adverbes.keys()].map(m => 'a' + m), ...[...inv.liaisons.keys()].map(f => 'l' + f), ...[...inv.pleins.keys()].map(m => 'p' + m)];
+// Répétitions que causera au mieux une rubrique à venir (sa phrase la moins gênante), si `deja` (ensemble de clés) est écrit.
+const coutSuiteAppr = (options, deja) => (options.length ? Math.min(...options.map(o => o.filter(c => deja.has(c)).length)) : 0);
 
 // Corrections sûres (sans changer le sens) : espaces, élisions, mots doublés, majuscules, adverbe répété retiré.
 function corrigerAppr(texte, { retirerAdverbes = false } = {}) {
@@ -803,19 +820,40 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
     return c;
   };
 
+  // Phrases possibles pour une rubrique (au niveau retenu, selon le ton et le style).
+  const banqueRubrique = (k, retraitDit) => {
+    const n = niv[k];
+    let banque = phrasesAppr()[k][n];
+    if (k === 'progression' && n === 2 && (niv.moteur || 0) >= 3) banque = STABLE_BON_APPR;
+    // (Résultats corrects mais sous la moyenne de la classe : nuancés, une seule fois dans l'appréciation.)
+    const retrait = k === 'moteur' && n === 3 && a.details.position?.cle === 'retrait';
+    if (retrait) banque = retraitDit ? RETRAIT_DIT_APPR : RETRAIT_APPR;
+    return { banque, retrait, liste: selonTon(tele ? banque.t : banque.p, ton) };
+  };
+
   // court = true : la phrase la plus courte de chaque liste (essayé avant de laisser des rubriques de côté).
   const construire = (court, exclues = []) => {
     dejaNomme = false; dernierPronom = false; rappelPrenom = false;
     let retraitDit = false; // (« en retrait par rapport à la classe » : dit une seule fois)
     let ecrit = ''; // (texte déjà choisi : pour ne pas répéter un adverbe, une liaison ou un mot)
     // Les phrases qui répètent le moins ce qui est déjà écrit (aucune répétition si possible).
-    const moinsDeRepetitions = (liste, voir = x => x) => {
-      const n = liste.map(x => conflitsAppr(ecrit, voir(x), ignores)), min = Math.min(...n);
+    // suite : phrases possibles des rubriques suivantes ; une phrase qui les obligera à se répéter compte aussi
+    // (sinon « Les résultats stagnent », seule phrase possible, viendrait forcément répéter « résultats »).
+    const moinsDeRepetitions = (liste, voir = x => x, suite = []) => {
+      const deja = suite.length ? clesInventaireAppr(inventaireAppr(ecrit, ignores)) : [];
+      const n = liste.map(x => {
+        let c = conflitsAppr(ecrit, voir(x), ignores);
+        if (suite.length) {
+          const avec = new Set([...deja, ...clesInventaireAppr(inventaireAppr(voir(x), ignores))]);
+          for (const options of suite) c += coutSuiteAppr(options, avec);
+        }
+        return c;
+      }), min = Math.min(...n);
       return liste.filter((x, i) => n[i] === min);
     };
     // marge (mode court) : choisir au hasard parmi les phrases à peine plus longues que la plus courte (variété).
-    const choisir = (tout, graine, marge = 0) => {
-      tout = moinsDeRepetitions(tout, brut);
+    const choisir = (tout, graine, marge = 0, suite = []) => {
+      tout = moinsDeRepetitions(tout, brut, suite);
       // L'appréciation commence par le prénom : la 1re phrase est prise parmi celles qui commencent par lui.
       const premiere = !dejaNomme && !tele ? tout.filter(x => x.startsWith('{S}')) : [];
       // Sans il / elle (sexe non renseigné), le prénom se répéterait : on préfère alors les phrases sans sujet.
@@ -832,6 +870,10 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
     };
     const morceaux = []; // { cle, texte }
     const ajouter = m => { morceaux.push(m); ecrit += ' ' + m.texte; };
+    // Phrases possibles des rubriques à venir (clés de leurs mots) : le bilan et les rubriques d'avant les ménagent.
+    const ordre = actives.filter(k => k !== 'objectif' && !exclues.includes(k) && niv[k]);
+    const options = ordre.map(k => banqueRubrique(k, true).liste.map(x => clesInventaireAppr(inventaireAppr(brut(x), ignores))));
+    const suiteApres = k => options.slice(ordre.indexOf(k) + 1);
     if (r.bilan && !exclues.includes('bilan')) {
       const base = ['moteur', 'competences', 'attitude'].map(k => niv[k]).filter(Boolean);
       if (base.length) {
@@ -841,24 +883,21 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
         if (!classe && k >= 3 && a.details.position?.ecart < 0 && niv.moteur && niv.moteur <= 2) k = 2;
         const banque = classe ? BILANS_CLASSE_APPR[classe][cote] : selonTon(BILANS_APPR[cote][k], ton);
         if (classe === 'retrait') retraitDit = true;
-        ajouter({ cle: 'bilan', pol: classe === 'retrait' ? -1 : k >= 3 ? 1 : -1, texte: remplir(choisir(banque, g('bilan')), classe === 'retrait' ? 2 : k) });
+        ajouter({ cle: 'bilan', pol: classe === 'retrait' ? -1 : k >= 3 ? 1 : -1, texte: remplir(choisir(banque, g('bilan'), 0, options), classe === 'retrait' ? 2 : k) });
       }
     }
     for (const k of actives) {
       if (k === 'objectif' || exclues.includes(k)) continue;
       const n = niv[k];
       if (!n) continue;
-      let banque = phrasesAppr()[k][n];
-      if (k === 'progression' && n === 2 && (niv.moteur || 0) >= 3) banque = STABLE_BON_APPR;
-      // (Résultats corrects mais sous la moyenne de la classe : nuancés, une seule fois dans l'appréciation.)
-      const retrait = k === 'moteur' && n === 3 && a.details.position?.cle === 'retrait';
-      if (retrait) { banque = retraitDit ? RETRAIT_DIT_APPR : RETRAIT_APPR; retraitDit = true; }
+      const { banque, retrait, liste } = banqueRubrique(k, retraitDit);
+      if (retrait) retraitDit = true;
       // Importance (pour le manque de place) : niveau par défaut < « stable » < satisfaisant < fragile < extrêmes (1 et 4).
       // Point de vigilance (difficulté signalée par ce que l'enseignant a rempli) : gardé en priorité.
       const importance = vigilance.has(k) ? 5 : a.defaut[k] && !(k in (niveauxPerso || {})) ? 0 : k === 'progression' && n === 2 ? 1 : n === 3 && !retrait ? 2 : n === 2 || n === 3 ? 3 : 4;
       // pol : sens de la phrase (+1 point fort, −1 difficulté, 0 neutre), pour les liaisons (voir lier).
       const pol = k === 'progression' && n === 2 ? (banque === STABLE_BON_APPR ? 1 : 0) : n >= 3 && !retrait ? 1 : -1;
-      ajouter({ cle: k, importance, pol, texte: remplir(choisir(selonTon(tele ? banque.t : banque.p, ton), g(k)), retrait ? 2 : n) });
+      ajouter({ cle: k, importance, pol, texte: remplir(choisir(liste, g(k), 0, suiteApres(k)), retrait ? 2 : n) });
     }
     if (actives.includes('objectif') && niv.objectif !== null) {
       // (À faiblesse égale, l'objectif vise d'abord un point de vigilance rempli par l'enseignant.)

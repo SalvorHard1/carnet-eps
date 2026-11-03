@@ -63,8 +63,11 @@ async function lireXlsx(fichier) {
   const elements = [];
   for (const f of await Tableur.lire(fichier)) {
     let table = null;
-    for (const l of f.lignes.map(x => (x || []).map(c => String(c ?? '').trim()))) {
+    const ls = f.lignes.map(x => Array.from(x || [], c => String(c ?? '').trim()));
+    for (const [i, l] of ls.entries()) {
       const pleines = l.filter(Boolean);
+      // (Rubrique sur une ligne seule au milieu d'une grille, « PARTIE A — figures » : elle reste dans le tableau.)
+      if (pleines.length === 1 && table && (ls[i + 1] || []).filter(Boolean).length >= 2) { table.lignes.push(l); continue; }
       if (pleines.length <= 1) { table = null; if (pleines.length) elements.push({ type: 'p', t: pleines[0] }); continue; }
       if (!table) elements.push(table = { type: 'table', lignes: [] });
       table.lignes.push(l);
@@ -802,7 +805,7 @@ const PTS_NOM = /\(\s*(\d+(?:[.,]\d+)?)\s*(?:pts?|points?)\s*\)|(\d+(?:[.,]\d+)?
 // Nom d'une rubrique ou d'un critère : sans ses points, sur une ligne ; MOTS EN CAPITALES → Mots en capitales.
 const nomPropre = t => String(t).replace(PTS_NOM, ' ').replace(/\(\s*\)/g, '').replace(/(\p{L})-\s*\n\s*(?=\p{Ll})/gu, '$1-')
   .replace(/(\d)\s+(ème|eme|e|è|er|re)\b/g, '$1$2').replace(/\s*\n\s*/g, ' ').replace(/(^|[\s(])([LDJNSCMTldjnscmt]|[Qq]u)[’']\s+/g, '$1$2’').replace(/\s+\/\s*$/, '')
-  .replace(/\s+/g, ' ').trim().replace(CAPITALES, (_, avant, m) => avant + sansCapitales(m)).replace(/^[\s/:–-]+|[\s/:–-]+$/g, '')
+  .replace(/\s+/g, ' ').trim().replace(CAPITALES, (_, avant, m) => avant + sansCapitales(m)).replace(/\s*·\s*·\s*/g, ' · ').replace(/^[\s/:–·-]+|[\s/:–·-]+$/g, '')
   .replace(/^\(([A-Z]\d[^)]{0,20})\)\s*(.{3,})$/, '$2 ($1)');
 // Suite de MOTS EN CAPITALES → « Mots en capitales » (pas les sigles : APSA, AFC4, NPD ; un nom d'APSA seul : « STEP » → « Step »).
 // (Pas de « (?<! » : iPad avant iPadOS 16.4 refuserait tout le fichier. Le caractère d'avant est capturé puis remis.)
@@ -817,6 +820,51 @@ function sansCapitales(m) {
   return bas[0].toUpperCase() + bas.slice(1);
 }
 const ptsAnnonces = t => { const m = [...String(t).matchAll(PTS_NOM)].at(-1); return m ? nbImp(m[1] || m[2]) : null; };
+// Case « 2,5 pts » suivie de son descriptif sur les lignes du dessous (« 2,5 pts\nJe garde une allure régulière… ») :
+// { pts, desc }. (Grille faite sur ordinateur, ex. par une IA : points du degré en tête de chaque case.)
+function ptsEnTeteCase(t) {
+  const [l1, ...reste] = String(t || '').split('\n');
+  if (!reste.length || !/\d\s*(pts?|points?)\.?\s*$/i.test(l1.trim())) return null;
+  const pts = ptsCase(l1);
+  return pts === null ? null : { pts, desc: reste.join('\n').trim() };
+}
+
+// Deux critères « Chrono garçons » / « Chrono filles » aux mêmes points, dont les cases donnent des temps ou des distances
+// (« 4 pts | 2'40  2'59 », « moins de 2'40 », « 3'25 et plus ») : un seul bloc ⏱ Performance filles / garçons.
+// Repère de chaque degré = la perf la moins bonne qui donne encore ses points (le plus long temps, la plus courte distance).
+function perfsFillesGarcons(criteres, apsa) {
+  const sexe = c => (/\b(garcons?|gars)\b/.test(saImp(c.nom)) ? 'g' : /\bfilles?\b/.test(saImp(c.nom)) ? 'f' : null);
+  const base = c => saImp(c.nom).replace(/\b(garcons?|gars|filles?)\b/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const perfs = [], pris = new Set();
+  for (const a of criteres) {
+    if (pris.has(a) || !sexe(a) || !a.ptsDegres) continue;
+    const b = criteres.find(c => c !== a && !pris.has(c) && sexe(c) && sexe(c) !== sexe(a) && base(c) === base(a) && c.ptsDegres?.join() === a.ptsDegres.join());
+    if (!b) continue;
+    const unite = uniteColonne(a.nom, [...a.cases, ...b.cases], apsa);
+    if (unite === 'nombre') continue;
+    const valeurs = t => (String(t).match(unite === 'temps' ? /\d+\s*(?:['’′:]\s*\d{1,2}(?:\s*(?:''|"|″|’’)\s*\d+)?|\s*(?:min|mn)\s*\d*|\s*(?:s|sec|''|"|″)\s*\d*)/gi : /\d+(?:[.,]\d+)?\s*(?:m\s*\d{0,2}|cm)?/gi) || [])
+      .map(x => perfLue(unite, x)).filter(v => v !== null);
+    const repere = t => {
+      const v = valeurs(t), s = saImp(t);
+      if (!v.length) return null;
+      if (unite === 'temps') {
+        if (v.length === 1 && /moins de|<|inferieur/.test(s)) return Math.max(0, v[0] - 1); // (« moins de 2'50 » → 2:49, en minutes et secondes)
+        if (v.length === 1 && /et plus|plus de|>|\+|superieur/.test(s)) return 3599; // (pire niveau : tout temps jusqu'à 59:59 donne ses points)
+        return Math.max(...v);
+      }
+      if (v.length === 1 && /moins de|<|inferieur/.test(s)) return 0;
+      return Math.min(...v);
+    };
+    const parSexe = { [sexe(a)]: a, [sexe(b)]: b };
+    const lignes = a.ptsDegres.map((pts, j) => ({ pts, brut: {} }));
+    for (const [cle, c] of Object.entries(parSexe)) c.cases.forEach((t, j) => { const v = repere(t); if (v !== null) lignes[j].brut[cle] = unite === 'temps' ? formatTemps(v) : String(v); });
+    if (lignes.filter(l => l.brut.f && l.brut.g).length < 3) continue;
+    pris.add(a); pris.add(b);
+    const titre = nomPropre(a.nom.replace(/\b(gar[çc]ons?|gars|filles?)\b/i, ' ')).replace(/\s*·\s*·\s*/g, ' · ');
+    perfs.push({ type: 'perf', unite, cles: ['f', 'g'], supposes: false, titre: titre || 'Performance', lignes: lignes.sort((x, y) => y.pts - x.pts), total: Math.max(...a.ptsDegres) });
+  }
+  return { perfs, criteres: criteres.filter(c => !pris.has(c)) };
+}
 
 function grilleChiffree(l) {
   const h = l.findIndex(r => r.filter(c => c && estDegre(c)).length >= 4);
@@ -829,7 +877,8 @@ function grilleChiffree(l) {
     if (!pleines.length) continue;
     const t = pleines.join(' ');
     if (/^(note\s+finale|total)\b/.test(saImp(t).trim())) { const m = /(\d+(?:[.,]\d+)?)\s*$/.exec(t); if (m) total = nbImp(m[1]); continue; }
-    const pts = pleines.map(ptsCase), k = pts.findIndex(v => v !== null);
+    const enTete = pleines.map(ptsEnTeteCase);
+    const pts = pleines.map((c, j) => ptsCase(c) ?? enTete[j]?.pts ?? null), k = pts.findIndex(v => v !== null);
     // Critère : un nom, puis (au moins) 4 cases de points croissants. (Une 5e case égarée est ignorée.)
     // Ou bien ligne de points seule, sous une ligne « Gain des matchs (1 pt) | Classement dans la poule… » (nom + explication).
     if ((k > 0 || (k === 0 && attente)) && pts.length - k >= 4 && pts.slice(k, k + 4).every(v => v !== null)) {
@@ -845,7 +894,9 @@ function grilleChiffree(l) {
         nomC = saImp(e).startsWith(saImp(nomC)) ? e : `${nomC} : ${e}`;
         if (nomC.length > 140) nomC = nomPropre(nom);
       }
-      rubriques.at(-1).criteres.push({ nom: nomC, base: nomPropre(nom), points: d[3], ptsDegres: d, annonce: ptsAnnonces(nom), cases: ['', '', '', ''], explique: !k });
+      // (Descriptifs écrits sous les points dans les cases : gardés, la grille n'a alors pas besoin d'une autre grille.)
+      const descs = enTete.slice(k, k + 4).map(x => (x?.desc || '').replace(/\s*\n\s*/g, ' '));
+      rubriques.at(-1).criteres.push({ nom: nomC, base: nomPropre(nom), points: d[3], ptsDegres: d, annonce: ptsAnnonces(nom), cases: descs, explique: !k, decrit: descs.some(Boolean) });
       attente = null;
       n++;
     } else if (k < 0 && pleines.length === 2 && ptsAnnonces(pleines[0]) !== null && pleines[0].length <= 100) attente = { nom: pleines[0], expl: pleines[1] };
@@ -1058,6 +1109,11 @@ function analyserBareme(elements, nomFichier) {
   let titre = (titreBrut && nomPropre(titreBrut.replace(/^\s*([ée]valuation|bar[èe]me)s?(\s+(par\s+comp[ée]tences|chiffr[ée]e|de\s+l.?apsa))?\s*[:–—-]\s*/i, '')
     .replace(/^\s*(grille|fiche)\s+d.?\s*[ée]valuation\s+(de\s+(l.\s*|la\s+|mon\s+|ma\s+|mes\s+)?|du\s+|des\s+)?/i, '')))
     || nomFichier.replace(/\.[^.]+$/, '');
+  // (Titre sans contenu, « Grille d'évaluation » : la ligne d'en dessous, jusqu'au premier « · », « Combiné 4ème C · M. X · … ».)
+  if (titreBrut && /^\s*(grille|fiche|bar[eè]me)s?(\s+d.?\s*[ée]valuation)?\s*$/i.test(titreBrut)) {
+    const i = paras.findIndex(p => p.t.trim() === titreBrut), suite = paras[i + 1]?.t.split(/\s+[·•|–—]\s+/)[0].trim();
+    if (suite && suite.length >= 4 && suite.length <= 60 && !/:\s*$/.test(suite)) titre = nomPropre(suite);
+  }
   // Niveau : la classe écrite dans le titre ou le nom du fichier (« 6ème », « 4EME »), sinon ce qui revient le plus dans
   // le texte (« cycle 3 », « 3e », « DNB »…) ; « Lycée » seulement pour le bac, ou si rien d'autre n'est dit.
   // (« secondes » d'un temps n'est pas la classe de seconde.)
@@ -1100,8 +1156,8 @@ function analyserBareme(elements, nomFichier) {
     const t = titreBloc(brut, afl);
     return t || titreBloc(secours, afl) || secours;
   };
-  let nTable = 0, totalAnnonce = null;
-  const alertes = [];
+  let nTable = 0, totalAnnonce = null, suiteApprise = null;
+  const alertes = [], appris = new Set();
   const traiterElement = (e, k) => {
     if (e.type === 'p') {
       const t = e.t.trim();
@@ -1117,12 +1173,29 @@ function analyserBareme(elements, nomFichier) {
       return candidats.push({ type: 'texte', titre: 'Texte', texte: t, garder: false });
     }
     nTable++;
+    // 00. Forme apprise par l'appli (grille remplie à la main une fois par l'enseignant : voir apprendrebareme.js).
+    const ap = typeof grilleApprise === 'function' ? grilleApprise(l, apsa, suiteApprise) : null;
+    suiteApprise = ap?.suite || null;
+    if (ap) {
+      appris.add(ap.nom);
+      const prec = candidats.filter(x => x.type === 'degres').at(-1);
+      // (Suite d'une grille coupée par un saut de page : ses premiers critères vont dans le dernier bloc.)
+      if (ap.continue && prec && ap.candidats[0]?.type === 'degres') prec.criteres.push(...ap.candidats.shift().criteres);
+      candidats.push(...ap.candidats);
+      return;
+    }
     // 0. Grille chiffrée (collège) : un bloc par rubrique, points exacts de chaque degré.
     // (Pas pour un référentiel du bac : ses tableaux degrés → points sont des correspondances, gérées plus bas.)
     const gc = bac ? null : grilleChiffree(l);
     if (gc) {
       totalAnnonce ??= gc.total;
-      for (const r of gc.rubriques) candidats.push({ type: 'degres', titre: r.nom || `Grille chiffrée (tableau ${nTable})`, afl: null, garder: true, chiffree: true, annonce: r.annonce, criteres: r.criteres });
+      for (const r of gc.rubriques) {
+        const nomR = r.nom || `Grille chiffrée (tableau ${nTable})`, { perfs: pf, criteres } = perfsFillesGarcons(r.criteres, apsa);
+        for (const p of pf) candidats.push({ ...p, titre: p.titre, afl: null, garder: true });
+        const ptsPerf = pf.reduce((s, p) => s + p.total, 0);
+        if (criteres.length) candidats.push({ type: 'degres', titre: !pf.length ? nomR : criteres.length === 1 ? `${nomR} · ${criteres[0].nom}`.slice(0, 120) : `${nomR} (suite)`, afl: null, garder: true, chiffree: true,
+          annonce: r.annonce === null ? null : Math.round((r.annonce - ptsPerf) * 100) / 100, criteres });
+      }
       return;
     }
     // Fiche de notation de la classe : ses colonnes notées deviennent les critères (sans descriptifs, à compléter).
@@ -1283,8 +1356,8 @@ function analyserBareme(elements, nomFichier) {
     // explication, pas des niveaux ; elle est déjà dans le nom des critères chiffrés correspondants.)
     const pris = new Set(descs.flatMap(x => x.criteres).filter(s => s.cases.filter(Boolean).length <= 1));
     const sources = descs.flatMap(x => x.criteres).filter(s => !pris.has(s));
-    if (sources.length === cibles.filter(c => !c.explique).length) cibles.filter(c => !c.explique).forEach((c, i) => { c.cases = [...sources[i].cases]; pris.add(sources[i]); });
-    else for (const c of cibles.filter(x => !x.explique)) {
+    if (sources.length === cibles.filter(c => !c.explique && !c.decrit).length) cibles.filter(c => !c.explique && !c.decrit).forEach((c, i) => { c.cases = [...sources[i].cases]; pris.add(sources[i]); });
+    else for (const c of cibles.filter(x => !x.explique && !x.decrit)) {
       const m = motsCritere(c.base || c.nom);
       let mieux = null, score = 0;
       for (const s of sources.filter(x => !pris.has(x))) {
@@ -1465,7 +1538,7 @@ function analyserBareme(elements, nomFichier) {
     else if (fichierParlant) titre = nomPropre(titreFichier).replace(/^[-–\s]+|[-–\s]+$/g, '');
     else if (!titreBrut && groupes[0]) titre = groupes[0].titre;
   }
-  return { titre: titre.slice(0, 120), apsa, niveau, candidats, alertes, groupes: groupes.length > 1 ? groupes : [], texteLu: tout.slice(0, 6000) };
+  return { titre: titre.slice(0, 120), apsa, niveau, candidats, alertes, groupes: groupes.length > 1 ? groupes : [], texteLu: tout.slice(0, 6000), elements, appris: [...appris] };
 }
 
 /* ---------- 4. Candidat → bloc du barème ---------- */
@@ -1504,8 +1577,12 @@ async function verifierImport(fichier, a) {
   const { d, resultat } = ouvrirModale(`📥 ${fichier.name}`, `
     <p class="aide">${reconnus ? `L’appli a reconnu <b>${reconnus} bloc${reconnus > 1 ? 's' : ''}</b> de barème. Vérifie-les, décoche ce qui ne convient pas :
       tout reste modifiable ensuite dans le barème (onglet Barèmes › Mes barèmes).`
-    : 'L’appli n’a pas reconnu de tableau de barème dans ce document. Tu peux quand même créer le barème avec son texte, puis ajouter les blocs à la main.'}</p>
+    : 'L’appli n’a pas reconnu de tableau de barème dans ce document. Touche « ✍️ Remplir manuellement » : tu lui montres une fois, elle reconnaîtra seule les barèmes de la même forme.'}</p>
+    ${a.vierge ? '<p class="aide">📄 Barème vierge du Carnet EPS reconnu.</p>' : ''}
+    ${(a.appris || []).length ? `<p class="aide">🎓 Reconnu grâce à ce que l’appli a appris de « ${esc(a.appris.join(' », « '))} ».</p>` : ''}
     ${(a.alertes || []).map(t => `<p class="aide alerte-import">⚠ ${esc(t)}</p>`).join('')}
+    ${a.vierge ? '' : `<p class="aide">Mal reconnu ? <button type="button" data-imp-apprendre>✍️ Remplir manuellement</button>
+      — l’appli s’entraîne à reconnaître les spécificités de tes barèmes.</p>`}
     ${plusieurs ? `<label class="case separer-import"><input type="checkbox" data-imp-separer checked>
       <span>Ce document contient <b>${a.groupes.length} évaluations</b> (${esc(a.groupes.map(g => g.titre).join(', '))}) : créer un barème pour chacune</span></label>` : ''}
     <div class="ligne ligne-unique">
@@ -1514,6 +1591,7 @@ async function verifierImport(fichier, a) {
     <div class="ligne ligne-unique">
       <label>${esc(mot('activiteBareme'))}<input name="apsa" list="liste-apsa-import" value="${esc(baremesDiscipline() && APSA_BAREMES.includes(a.apsa) ? '' : a.apsa)}" maxlength="60"></label>
       <datalist id="liste-apsa-import">${apsaBaremes().map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+      ${choixCaBareme('name="ca"', caApsaBareme(a.apsa))}
       <label>Niveau<select name="niveau">${Object.entries(niveauxBareme()).map(([k, n]) => `<option value="${k}" ${k === a.niveau ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
     </div>
     <div class="blocs-import"></div>
@@ -1556,8 +1634,12 @@ async function verifierImport(fichier, a) {
       ? 'Total de chaque barème : ' + a.groupes.map(g => `${esc(g.titre)} <b>${totalDe(cand.filter(x => x.groupe?.cle === g.cle))} pts</b>`).join(' · ')
       : `Total des blocs gardés : <b>${totalDe(cand)} points</b>`;
   };
+  // (Champ proposé d'après l'APSA tant que l'enseignant ne l'a pas choisi lui-même.)
+  let caChoisi = false;
   d.addEventListener('change', e => {
     const t = e.target;
+    if (t.name === 'ca') caChoisi = true;
+    else if (t.name === 'apsa' && !caChoisi && caApsaBareme(t.value.trim())) $('[name="ca"]', d).value = caApsaBareme(t.value.trim());
     if (t.dataset.impSeparer !== undefined) {
       // (Un barème par évaluation : le titre, l'APSA et le niveau viennent de chaque évaluation.)
       separer = t.checked;
@@ -1574,11 +1656,14 @@ async function verifierImport(fichier, a) {
   });
   montrerChampsUniques();
   dessiner();
+  let apprendre = false;
+  $('[data-imp-apprendre]', d)?.addEventListener('click', () => { apprendre = true; d.fermer(); });
   const r = await resultat;
+  if (apprendre) return apprendreGrille(fichier, a);
   if (r.action !== 'ok') return;
   relireTitres();
-  const creer = (gardes, titre, apsa, niveau) => {
-    const br = preparerBareme({ titre, apsa, niveau, pas: 0.5,
+  const creer = (gardes, titre, apsa, niveau, ca = '') => {
+    const br = preparerBareme({ titre, apsa, niveau, ca, pas: 0.5,
       blocs: (gardes.length ? gardes : cand.filter(x => x.type === 'texte').slice(0, 1)).map(x => blocDuCandidat(x, 0.5)) });
     // (Tableau de performance en points entiers, et aucun demi-point ailleurs : le barème compte de point en point.)
     const valeurs = br.blocs.flatMap(b => [...(b.lignes || []).map(l => l.pts), ...(b.criteres || []).map(c => c.points)]);
@@ -1595,7 +1680,7 @@ async function verifierImport(fichier, a) {
     baremeOuvert = crees[0]?.id ?? null;
     toast(`${crees.length} barème${crees.length > 1 ? 's' : ''} ajouté${crees.length > 1 ? 's' : ''} à Mes barèmes ✔`, 'ok');
   } else {
-    const enreg = creer(cand.filter(x => x.garder), r.data.titre.trim() || a.titre, r.data.apsa.trim(), r.data.niveau);
+    const enreg = creer(cand.filter(x => x.garder), r.data.titre.trim() || a.titre, r.data.apsa.trim(), r.data.niveau, r.data.ca || '');
     baremeOuvert = enreg.id;
     toast(`Barème « ${enreg.titre} » ajouté à Mes barèmes ✔`, 'ok');
   }
@@ -1606,12 +1691,16 @@ async function verifierImport(fichier, a) {
 async function importerDocumentBareme(fichier) {
   if (fichier.size > 15e6) throw new Error('Fichier trop gros (15 Mo au plus).');
   if (/\.json$/i.test(fichier.name)) return recevoirFichierBareme(fichier);
+  // (Barème vierge du Carnet EPS, rempli à la main ou par une IA : lu tel quel.)
+  const vierge = await essaiBaremeVierge(fichier);
+  if (vierge) return verifierImport(fichier, vierge);
+  if (/\.(csv|txt)$/i.test(fichier.name)) throw new Error('Ce fichier CSV n’est pas un barème vierge du Carnet EPS (case A1 « BARÈME CARNET EPS »).');
   const elements = await lireDocumentBareme(fichier);
   return verifierImport(fichier, analyserBareme(elements, fichier.name));
 }
 
 function choisirDocumentBareme() {
-  const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.pdf,.docx,.odt,.xlsx,.doc,.xls,.json,application/pdf,application/json' });
+  const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.pdf,.docx,.odt,.xlsx,.doc,.xls,.json,.csv,application/pdf,application/json,text/csv' });
   input.addEventListener('change', () => { const f = input.files[0]; if (f) lancer(() => importerDocumentBareme(f)); });
   input.click();
 }

@@ -1,7 +1,7 @@
 'use strict';
 // Classe exemple : une classe entièrement inventée (élèves, appels, leçons, évaluations, observations, agenda),
 // pour voir à quoi ressemble un carnet rempli. Proposée au premier lancement, et dans « + Nouvelle classe ».
-// Son contenu suit la discipline du carnet : une 3e en EPS, une 2nde en SVT (EXEMPLES ci-dessous).
+// Son contenu suit la discipline du carnet : une 3e en EPS, une 2nde (et une 4e) en SVT et en physique-chimie (EXEMPLES ci-dessous).
 // Identifiants fixes (« exemple-… ») : recréée sur un autre appareil, elle ne se dédouble pas lors de la fusion par la clé.
 // Les appréciations ne sont pas écrites ici : c'est l'appli qui les propose, à partir de ces données.
 // (Fichier chargé avant app.js : il n'utilise les outils d'app.js qu'au moment des appels.)
@@ -120,8 +120,67 @@ const EXEMPLES = {
       [1, 'Géosciences et dynamique des paysages', 'Bonnes idées mais protocole mal suivi : relire les étapes avant de manipuler.'],
     ],
   },
+
+  pc: {
+    nom: '2nde Exemple', niveau: '2nde', referentiel: 'pcLycee',
+    creneaux: [{ jour: 2, debut: '10:00', fin: '11:30', lieu: 'Labo de physique' }, { jour: 4, debut: '14:00', fin: '15:00', lieu: 'Salle C08' }],
+    eleves: [
+      ['ARNAUD', 'Chloé', 'F', 16], ['BARON', 'Lucas', 'G', 11], ['BLANC', 'Inès', 'F', 13],
+      ['CARON', 'Nathan', 'G', 10, { bavard: true }], ['CHEVALIER', 'Manon', 'F', 17], ['COLIN', 'Théo', 'G', 14],
+      ['DUMAS', 'Jade', 'F', 12, { pai: true, paiInfo: 'Allergie au latex : gants en nitrile uniquement au laboratoire. Trousse d’urgence à l’infirmerie.' }],
+      ['FAURE', 'Enzo', 'G', 15], ['FONTAINE', 'Louise', 'F', 10],
+      ['GAUTHIER', 'Maël', 'G', 13, { bep: true, bepInfo: 'Dyslexie (PAP). Documents agrandis, consignes lues à voix haute ; tiers-temps aux évaluations.' }],
+      ['GIRARD', 'Emma', 'F', 18], ['GUERIN', 'Noah', 'G', 9, { nonRendu: true }], ['HENRY', 'Lina', 'F', 14],
+      ['LACROIX', 'Tom', 'G', 16], ['LEMAIRE', 'Zoé', 'F', 11], ['MARCHAND', 'Sacha', 'G', 12],
+      ['MEUNIER', 'Rose', 'F', 15], ['MOREL', 'Adam', 'G', 13], ['NICOLAS', 'Alice', 'F', 9, { passive: true }],
+      ['PERRIN', 'Gabin', 'G', 17], ['ROCHE', 'Camille', 'F', 13], ['ROUSSEL', 'Jules', 'G', 11],
+      ['VIDAL', 'Anna', 'F', 14], ['MOULIN', 'Léo', 'G', 12],
+    ],
+    statutsSante: ['MAL'],
+    sequences: [
+      { apsa: 'Constitution et transformations de la matière', ca: '', eval: 'Compte rendu de TP — solutions', rendu: true,
+        competences: ['pcLycee.REA.4', 'pcLycee.VAL.2'],
+        seances: ['TP — préparer une solution par dissolution', 'Activité — la concentration en masse',
+          'TP — dilution et gamme d’étalonnage', 'TP — compte rendu noté'],
+        objectifs: 'Préparer une solution de concentration donnée par dissolution puis par dilution ; doser par étalonnage.',
+        evaluation: 'Compte rendu de TP : protocole, mesures, exploitation de la gamme d’étalonnage, conclusion.' },
+      { apsa: 'Mouvement et interactions', ca: '', eval: 'Évaluation expérimentale — mouvement d’une balle',
+        competences: ['pcLycee.APP.3', 'pcLycee.REA.3', 'pcLycee.REA.4', 'pcLycee.VAL.3'],
+        seances: ['Activité — décrire un mouvement', 'TP — chronophotographie et vitesse', 'Activité — forces et principe d’inertie', 'Évaluation expérimentale'],
+        objectifs: 'Décrire un mouvement (référentiel, trajectoire, vitesse) ; relier les forces au mouvement.',
+        evaluation: 'Évaluation expérimentale d’1 h, sur le modèle de l’ECE : une note par compétence.',
+        parties: [['S’approprier', 3], ['Analyser / Raisonner', 5], ['Réaliser', 6], ['Valider', 4], ['Communiquer', 2]],
+        degreMain: 'pcLycee.REA.4' }, // sécurité au labo : degré choisi à la main pour les élèves bavards
+      { apsa: 'Ondes et signaux', ca: '', eval: 'Évaluation écrite — son et lumière',
+        competences: ['pcLycee.ANA.4', 'pcLycee.REA.3', 'pcLycee.COM.1'],
+        seances: ['TP — mesurer la vitesse du son', 'Activité — fréquence et hauteur d’un son', 'TP — lentille convergente et image', 'Évaluation écrite'],
+        objectifs: 'Caractériser un son (fréquence, niveau sonore) ; former l’image d’un objet par une lentille mince convergente.',
+        evaluation: 'Évaluation écrite : exercices et résolution de problème.' },
+    ],
+    suivante: { apsa: 'Ondes et signaux', ca: '', objectifs: 'Signaux électriques : loi d’Ohm, caractéristique d’un dipôle, capteurs.',
+      evaluation: 'TP noté : caractéristique d’un dipôle.' },
+    obs: {
+      bon: ['Mesures soignées, résultats donnés avec leur unité.', 'Montage réalisé rapidement et en sécurité.', 'Raisonnement rigoureux, calculs bien posés.',
+        'Aide volontiers son binôme.', 'Participe beaucoup à l’oral.'],
+      moyen: ['Compte rendu incomplet : conclusion à rédiger.', 'Oublie les unités dans les résultats.', 'Utilisation de la pipette jaugée encore hésitante.'],
+      bavard: ['Bavarde pendant les consignes, distrait son binôme.', 'Lunettes non portées, consignes de sécurité non respectées.', 'Perturbe la paillasse voisine, remarque faite.'],
+      passive: ['Laisse son binôme faire la manipulation.', 'Peu investie, compte rendu à peine commencé.'],
+    },
+    bilan: {
+      bavard: 'Bavarde beaucoup et distrait son binôme. Capable de bien mieux quand il est concentré.',
+      passive: 'Manque d’engagement, a besoin d’être relancée sans cesse.',
+      fort: 'Élève moteur dans la classe, aide volontiers ses camarades.',
+      nonRendu: 'Plusieurs comptes rendus non rendus : à signaler à la famille.',
+    },
+    suivis: [
+      [10, 'Constitution et transformations de la matière', 'Manipulations très précises, maîtrise la verrerie jaugée. Peut aider les binômes en difficulté.'],
+      [1, 'Mouvement et interactions', 'Bonnes idées mais calculs sans unités : vérifier la cohérence des résultats.'],
+    ],
+  },
 };
 const jeuExemple = () => EXEMPLES[disciplineActive()] || EXEMPLES.eps;
+// Discipline qui a sa classe exemple (une discipline nouvelle n'en a pas encore : pas de classe d'EPS à sa place).
+const aClasseExemple = () => !!EXEMPLES[disciplineActive()];
 
 // Classes exemples en plus (même discipline, autre niveau) : leurs identifiants ont leur propre préfixe
 // (« exemple-4e-… » : toujours « exemple-… », donc antidatées et reconnues comme les autres).
@@ -165,6 +224,45 @@ const EXEMPLES_EN_PLUS = {
     suivis: [
       [10, 'Le corps humain et la santé', 'Dissection très soignée, sait nommer chaque organe. Peut aider un binôme en difficulté.'],
       [1, 'La planète Terre, l’environnement et l’action humaine', 'Modélisation réussie mais compte rendu trop court : développer l’interprétation.'],
+    ],
+  }],
+  pc: [{
+    ...EXEMPLES.pc, prefixe: 'exemple-4e-', nom: '4e Exemple', niveau: '4e', referentiel: 'pcCycle4',
+    creneaux: [{ jour: 1, debut: '14:00', fin: '15:00', lieu: 'Labo de physique' }, { jour: 4, debut: '09:00', fin: '09:30', lieu: 'Labo de physique' }],
+    eleves: [
+      ['AUBERT', 'Léna', 'F', 15], ['BERNARD', 'Hugo', 'G', 12], ['BONNET', 'Jeanne', 'F', 14],
+      ['BRUN', 'Malo', 'G', 10, { bavard: true }], ['CLÉMENT', 'Mila', 'F', 17], ['DAVID', 'Nolan', 'G', 13],
+      ['DUPUIS', 'Ambre', 'F', 12, { pai: true, paiInfo: 'Allergie à l’arachide : trousse d’urgence (stylo d’adrénaline) dans son sac.' }],
+      ['FERNANDEZ', 'Yanis', 'G', 16], ['FOURNIER', 'Lou', 'F', 10],
+      ['GARNIER', 'Timéo', 'G', 12, { bep: true, bepInfo: 'Trouble de l’attention (PAP) : placé devant, consignes découpées étape par étape.' }],
+      ['LAMBERT', 'Eva', 'F', 18], ['LEFÈVRE', 'Paul', 'G', 9, { nonRendu: true }], ['MERCIER', 'Nina', 'F', 14],
+      ['MULLER', 'Ethan', 'G', 15], ['NOËL', 'Clara', 'F', 11], ['PICARD', 'Raphaël', 'G', 13], ['RENAUD', 'Agathe', 'F', 16],
+      ['ROBIN', 'Kylian', 'G', 12], ['SCHMITT', 'Romane', 'F', 9, { passive: true }], ['VINCENT', 'Aaron', 'G', 14],
+      ['FABRE', 'Léonie', 'F', 13], ['ROY', 'Mathis', 'G', 11],
+    ],
+    sequences: [
+      { apsa: 'Organisation et transformations de la matière', ca: '', eval: 'Évaluation — transformations chimiques',
+        competences: ['pcCycle4.C1.4', 'pcCycle4.C4.2'],
+        seances: ['Activité — atomes et molécules', 'TP — la combustion du carbone', 'TP — tests d’identification', 'Évaluation — transformations chimiques'],
+        objectifs: 'Distinguer transformation physique et transformation chimique ; interpréter une combustion avec les atomes et les molécules.',
+        evaluation: 'Évaluation écrite : interprétation d’une expérience et équation de réaction.' },
+      { apsa: 'L’énergie, ses transferts et ses conversions', ca: '', eval: 'Compte rendu — lois de l’électricité', rendu: true,
+        competences: ['pcCycle4.C1.3', 'pcCycle4.C2.1', 'pcCycle4.C3.3', 'pcCycle4.C6.1'],
+        seances: ['Activité — circuits en série et en dérivation', 'TP — mesurer une intensité', 'TP — mesurer une tension', 'Compte rendu — lois de l’électricité'],
+        objectifs: 'Réaliser des circuits simples ; mesurer intensités et tensions ; établir les lois des circuits en série et en dérivation.',
+        evaluation: 'Compte rendu des mesures : protocole, tableau de mesures, lois trouvées.',
+        parties: [['Démarche', 8], ['Résultats', 6], ['Communication', 6]],
+        degreMain: 'pcCycle4.C6.1' }, // sécurité électrique : degré choisi à la main pour les élèves bavards
+      { apsa: 'Des signaux pour observer et communiquer', ca: '', eval: 'Évaluation — lumière et son',
+        competences: ['pcCycle4.C4.1', 'pcCycle4.C7.2', 'pcCycle4.C1.5'],
+        seances: ['Activité — la propagation de la lumière', 'TP — vitesse du son et écho', 'Activité — l’année-lumière et les distances dans l’Univers', 'Évaluation — lumière et son'],
+        objectifs: 'Décrire la propagation de la lumière et du son ; utiliser l’année-lumière pour situer les objets de l’Univers.',
+        evaluation: 'Évaluation écrite : exploitation de documents et calculs de distances.' },
+    ],
+    suivante: { apsa: 'Mouvement et interactions', ca: '', objectifs: 'Vitesse d’un objet ; actions mécaniques et forces.', evaluation: 'Tâche complexe sur documents.' },
+    suivis: [
+      [10, 'Organisation et transformations de la matière', 'Explique très clairement les transformations avec les modèles moléculaires. Peut aider un binôme en difficulté.'],
+      [1, 'L’énergie, ses transferts et ses conversions', 'Circuits bien réalisés mais compte rendu trop court : développer l’interprétation.'],
     ],
   }],
 };
@@ -270,7 +368,7 @@ function creerClasseExemple(jeu = jeuExemple()) {
     const seq = jeu.sequences[Math.floor(k / 4)], rang = (k % 4) + 1;
     return Donnees.ecrire('seances', {
       id: P + 's' + (k + 1), classeId: c.id, cree: cree + k, titre: seq.seances?.[k % 4] || `${seq.apsa} — leçon ${rang}`, apsa: seq.apsa, ca: seq.ca, date,
-      indicateurs: [{ id: ID_PRESENCE, nom: 'Présence', type: 'choix', options: ['Présent', 'Retard'] }, ...modeleIndicateurs(seq.apsa)], documents: [],
+      indicateurs: [{ id: ID_PRESENCE, nom: 'Présence', type: 'choix', options: ['Présent', 'Retard'] }, ...modeleIndicateurs(seq.apsa, jeu.niveau)], documents: [],
     });
   });
   const statuts = new Map(); // « séance|élève » → statut de la leçon
@@ -501,7 +599,8 @@ function remplirPPExemple(jeu, c, bulletinsSeuls = false) {
 // seuls les bulletins sont refaits. Suivis PP d'élèves exemples supprimés : retirés.
 function completerExemplesPP() {
   for (const c of Donnees.liste('classes', x => x.exemple && x.ppExemple !== VERSION_PP_EXEMPLE && x.id.startsWith('exemple-'))) {
-    const jeu = [EXEMPLES.eps, EXEMPLES.svt, ...Object.values(EXEMPLES_EN_PLUS).flat()].find(j => idClasseExemple(j) === c.id && j.nom === c.nom)
+    // (Celle de la discipline du carnet d'abord : la SVT et la physique-chimie ont toutes deux une « 2nde Exemple ».)
+    const jeu = [jeuExemple(), ...exemplesEnPlus(), ...Object.values(EXEMPLES), ...Object.values(EXEMPLES_EN_PLUS).flat()].find(j => idClasseExemple(j) === c.id && j.nom === c.nom)
       || [jeuExemple(), ...exemplesEnPlus()].find(j => idClasseExemple(j) === c.id);
     if (jeu) remplirPPExemple(jeu, c, !!c.ppExemple);
   }

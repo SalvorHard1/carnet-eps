@@ -262,7 +262,7 @@ function etapesVisite() {
       etapeZonePage('#vue [data-action="appreciations"]', `« ✍ Appréciations » : l’appli en propose une par élève, d’après ses notes et les ${motMin('lecons')}. Tu ajustes comme tu veux.`,
         'Reviens dans l’onglet « Notes » pour voir le bouton « ✍ Appréciations ».')]),
     ...si('entrainement', [onglet('entrainement', 'suivi', `Ce que tu relèves à chaque ${motMin('lecon')}.`)]),
-    ...si('outils', [onglet('outils', null, eps ? 'Chronos, équipes, tournois… pour le cours.' : 'ECE, binômes, fiches TP… pour le cours.')]),
+    ...si('outils', [onglet('outils', null, mot('outilsVisite'))]),
     ...si('agenda', [onglet('agenda', null, 'Ton année : emploi du temps, séquences, vacances, conseils.')]),
     ...si('baremes', [onglet('baremes', 'suivi', 'Tes barèmes : modèles fournis, les tiens, ou importés (PDF, Word, Excel).')]),
     ...si('pp', [onglet('pp', null, 'Professeur principal : bulletins, appréciation générale, conseil de classe.')]),
@@ -285,6 +285,10 @@ function rubriquesAide() {
   const eps = disciplineActive() === 'eps';
   const Lecons = mot('lecons'), lecons = motMin('lecons'), lecon = motMin('lecon');
   const activite = eps ? 'activité' : 'thème';
+  // Exemples et outils de la discipline (« de SVT », « TP microscope »… ; questions d'outils seulement si l'outil existe).
+  const deDiscipline = mot('deDiscipline'), exTheme = mot('activiteExemple').replace(/^ex\.\s*/, '');
+  const aOutil = id => outilsDuCarnet().some(o => o.id === id);
+  const versLesNotes = [(aOutil('ece') || aOutil('ecepc')) && 'l’ECE', aOutil('schema') && 'la grille de schéma'].filter(Boolean).join(' et ');
   // Codes de saisie de la discipline (Notes ; séances : sans « non noté », avec l'oubli de tenue / de matériel).
   const codes = aideCodes(), codesSeance = `${aideCodes(true)} · <b>T</b> ${oubliTenue()}`;
   // Ce que décrit un barème : l'APSA (EPS), le type d'épreuve (SVT).
@@ -539,7 +543,7 @@ function rubriquesAide() {
             id: 'edt', titre: 'L’emploi du temps (import ou saisie)',
             reponse: ['Onglet Agenda, bouton <b>« 🕒 Emploi du temps »</b>.',
               'Le plus simple : <b>« Choisir le PDF… »</b> avec l’emploi du temps d’École Directe ou de Pronote (une semaine normale, sans vacances).',
-              `L’appli te montre les cours trouvés : vérifie la classe de chacun, <b>décoche</b> ce qui n’est pas un cours ${eps ? 'd’EPS' : 'de SVT'} de tes classes, puis valide.`,
+              `L’appli te montre les cours trouvés : vérifie la classe de chacun, <b>décoche</b> ce qui n’est pas un cours ${deDiscipline} de tes classes, puis valide.`,
               'Ou, pour chaque classe, <b>« + Créneau »</b> : jour, début, fin, lieu.',
               'Un cours <b>une semaine sur deux</b> : choisis « semaine paire » ou « impaire » (ou A / B, à régler dans ⚙ Année et vacances).'],
             guide: [ETAPES_AGENDA.onglet, ETAPES_AGENDA.pret,
@@ -568,7 +572,7 @@ function rubriquesAide() {
             reponse: ['Touche <b>« + Séquence »</b> (ou touche la ligne d’une classe dans la frise, à la bonne date).',
               'Coche la ou les <b>classes</b> : une séquence est créée pour chacune.',
               eps ? 'Écris l’<b>APSA</b> : le <b>champ d’apprentissage</b> (CA1 à CA5) se met tout seul, il donne la couleur de la séquence.'
-                : 'Écris le <b>thème</b> (ex. Génétique).',
+                : `Écris le <b>thème</b> (ex. ${exTheme}).`,
               `Le début est proposé <b>juste après la séquence précédente</b>. Pour la fin : une date, ou un nombre de <b>${lecons}</b> (la fin se calcule d’après l’emploi du temps, vacances sautées).`,
               `${eps ? 'Deux APSA en parallèle' : 'Deux thèmes en parallèle'} ? Coche seulement les <b>cours</b> de celle-ci (si la classe a plusieurs cours par semaine).`,
               'Ajoute si tu veux les objectifs, l’évaluation prévue et des notes, puis <b>« Enregistrer »</b>.'],
@@ -585,7 +589,7 @@ function rubriquesAide() {
               'Le compte suit la <b>date du jour</b> et l’emploi du temps (vacances déduites), pas ce que tu as rempli dans l’onglet ' + Lecons + '.',
               'Sans emploi du temps, l’appli ne peut pas compter les ' + lecons + ' : elle dit seulement à venir / en cours / terminée.',
               'Deux séquences en même temps pour une classe : elles se mettent l’une sous l’autre sur la frise.',
-              ...(eps ? ['La couleur d’une séquence est celle de son <b>champ d’apprentissage</b> (légende sous la frise).'] : ['Toutes les séquences ont la même couleur (il n’y a pas de champ d’apprentissage en SVT).'])],
+              ...(eps ? ['La couleur d’une séquence est celle de son <b>champ d’apprentissage</b> (légende sous la frise).'] : ['Toutes les séquences ont la même couleur (il n’y a pas de champ d’apprentissage ' + mot('enDiscipline') + ').'])],
           },
           {
             id: 'modifier', titre: 'Modifier, copier ou supprimer une séquence',
@@ -611,7 +615,7 @@ function rubriquesAide() {
               etapeValider(fenetreConseils, 'pour les ajouter')],
           },
           {
-            id: 'evenement', titre: eps ? 'Un événement (cross, UNSS, sortie…)' : 'Un événement (sortie de terrain, labo, projet…)',
+            id: 'evenement', titre: eps ? 'Un événement (cross, UNSS, sortie…)' : `Un événement (${mot('aideEvenements')})`,
             reponse: ['Touche <b>« + Événement »</b> (ou, dans la vue Mois, le <b>numéro du jour</b>).',
               `Donne un <b>titre</b> (ex. ${esc(mot('evenementExemple').split(',')[0])}), un <b>type</b> et pour qui : <b>tout le collège</b> ou une classe.`,
               'La date (ou du… au…), l’heure si besoin, des notes.',
@@ -641,7 +645,7 @@ function rubriquesAide() {
               : 'Le carnet de bord de tes séances (TP, activités, sorties) : ce que chaque élève a fait, séance après séance.',
             reponse: ['Une <b>séance</b> = une colonne de la grille (ou plusieurs : une par donnée relevée). Une ligne par élève.',
               eps ? 'Tu y notes la présence, les performances (temps, distances…), les degrés de maîtrise, les médailles, des observations.'
-                : 'Tu y notes la présence, la démarche, la manipulation, la communication, la sécurité, le travail rendu, des observations.',
+                : `Tu y notes la présence, ${mot('aideNoterSeance')}, des observations.`,
               '<b>Rien ici ne compte dans les moyennes</b> : les notes se mettent dans l’onglet Notes.',
               `Mais tout sert ailleurs : fiche de l’élève, fiche bilan des Notes (présence, santé), appréciations proposées${eps ? ', équipes des Outils' : ', binômes des Outils'}.`],
           },
@@ -650,12 +654,12 @@ function rubriquesAide() {
             reponse: [`Touche l’onglet <b>${Lecons}</b> en haut (choisis ta classe à gauche).`,
               'Touche <b>« + Séance »</b>.',
               eps ? 'Écris l’<b>APSA</b> (ex. Demi-fond) : les <b>données à relever</b> se remplissent toutes seules selon l’activité.'
-                : 'Écris le <b>thème</b> (ex. Génétique) : les <b>données à relever</b> d’une séance de SVT sont déjà proposées (démarche, manipulation, communication, sécurité, travail rendu…).',
+                : `Écris le <b>thème</b> (ex. ${exTheme}) : les <b>données à relever</b> d’une séance ${deDiscipline} sont déjà proposées${profil().mots.donneesSeance ? ` (${profil().mots.donneesSeance})` : ''}.`,
               'Vérifie le <b>nom de la séance</b> et la <b>date</b>. Garde le <b>même nom</b> d’une séance à l’autre pour suivre les progrès.',
               'Touche <b>« Créer »</b> : la séance apparaît dans la grille.',
-              ...(eps ? [] : ['Une séance déjà préparée ? Outils › <b>🧾 Préparation des TP</b> › <b>Banque de séances</b> › « Utiliser » la crée dans la classe.'])],
+              ...(eps || !aOutil('tp') ? [] : ['Une séance déjà préparée ? Outils › <b>🧾 Préparation des TP</b> › <b>Banque de séances</b> › « Utiliser » la crée dans la classe.'])],
             guide: [ETAPES_LECONS.onglet, ETAPES_LECONS.classe, ETAPES_LECONS.nouvelle,
-              zoneSeance('[name="apsa"]', eps ? 'Écris l’APSA : les données à relever se remplissent selon elle.' : 'Écris le thème de la séance (ex. Génétique).'),
+              zoneSeance('[name="apsa"]', eps ? 'Écris l’APSA : les données à relever se remplissent selon elle.' : `Écris le thème de la séance (ex. ${exTheme}).`),
               zoneSeance('[name="titre"]', 'Le nom de la séance : garde le même d’une fois sur l’autre pour suivre les progrès.'),
               zoneSeance('.liste-indic', 'Les données relevées : tu peux les changer, en ajouter ou en retirer.'),
               etapeValider(fenetreSeance, 'pour créer la séance')],
@@ -666,13 +670,13 @@ function rubriquesAide() {
             reponse: ['Touche le <b>titre de la séance</b> (en haut de sa colonne) ; pour une nouvelle : « + Séance ».',
               `Dans <b>« Données relevées »</b>, une ligne = un <b>nom</b> et un <b>type</b> : ${eps ? 'Temps, Distance, Nombre, Échelle 1 à 4, Médailles, ' : 'Échelle 1 à 4 (degrés), Nombre, '}Choix (options séparées par « / »), Texte.`,
               '<b>« + Ajouter une donnée »</b> en ajoute une ; <b>✕</b> la retire.',
-              `<b>« ${esc(mot('modeleActivite'))} »</b> remet les données proposées ${eps ? 'pour l’activité' : 'pour une séance de SVT'}.`,
+              `<b>« ${esc(mot('modeleActivite'))} »</b> : coche ce que tu ajoutes (données proposées ${eps ? 'pour l’activité, AFC / AFL de son champ' : `pour une séance ${deDiscipline}, compétences`}) ; tes données déjà là restent. « Tout remplacer par le modèle » efface la liste et remet seulement le modèle.`,
               ...(eps ? ['Savoir-nager : écris l’activité <b>« Savoir nager »</b>, puis coche les étapes de l’ASNS : une colonne par étape.'] : []),
               'Touche <b>« Enregistrer »</b>.'],
             guide: [ETAPES_LECONS.onglet, ETAPES_LECONS.classe, ETAPES_LECONS.ouvrir,
               zoneSeance('.liste-indic', `Une ligne = un nom et un type (${eps ? 'temps, distance, échelle 1 à 4, médailles' : 'échelle 1 à 4, nombre'}, choix, texte…). ✕ la retire.`),
               zoneSeance('[data-ajout-indic]', '« + Ajouter une donnée » ajoute une colonne à la séance.'),
-              zoneSeance('[data-modele-indic]', `Ici, tu remets les données proposées ${eps ? 'pour l’activité' : 'pour une séance de SVT'}.`),
+              zoneSeance('[data-modele-indic]', `Ici, tu ajoutes des données proposées ${eps ? 'pour l’activité ou des AFC / AFL' : `pour une séance ${deDiscipline} ou des compétences`}, sans effacer les tiennes.`),
               ETAPES_LECONS.valider],
           },
           {
@@ -718,7 +722,7 @@ function rubriquesAide() {
           },
           {
             id: 'progres', titre: eps ? 'Suivre les progrès d’un exercice' : 'Suivre l’évolution d’une séance à l’autre',
-            reponse: [`Donne le <b>même nom</b> aux séances qui se suivent (ex. « ${eps ? '3 × 500 m' : 'TP microscope'} »).`,
+            reponse: [`Donne le <b>même nom</b> aux séances qui se suivent (ex. « ${mot('exempleSerie')} »).`,
               `En haut de l’onglet ${Lecons}, choisis-le dans la liste <b>« ${esc(mot('exercice'))} »</b>.`,
               eps ? 'Seules ses séances restent affichées, avec deux colonnes en plus : la <b>meilleure</b> performance et l’<b>évolution</b> (de la 1re à la dernière).'
                 : 'Seules ces séances restent affichées : tu vois d’un coup d’œil l’<b>évolution</b> de chaque élève (degrés, travail rendu…).',
@@ -760,7 +764,7 @@ function rubriquesAide() {
           }]),
           {
             id: 'outils', titre: `Envoyer le résultat d’un outil dans une ${lecon}`, puces: true,
-            reponse: [`Dans l’onglet <b>Outils</b>, plusieurs outils (${eps ? 'tours, essais, équipes, tirage, tournoi, chrono de natation…' : 'ECE, schéma, gestes techniques, binômes…'}) ont un bouton <b>« 📤 Vers une ${lecon} »</b>.`,
+            reponse: [`Dans l’onglet <b>Outils</b>, plusieurs outils (${mot('outilsVersLecon')}) ont un bouton <b>« 📤 Vers une ${lecon} »</b>.`,
               'Il crée une <b>nouvelle séance</b> déjà remplie, ou ajoute des colonnes à une séance existante, au choix.',
               'Les élèves absents de l’outil deviennent <b>ABS</b> dans la séance.',
               `Pas en mode élève : seul le professeur peut envoyer vers une ${lecon}.`],
@@ -783,7 +787,7 @@ function rubriquesAide() {
         id: 'outils', icone: '🧰', titre: 'Les outils',
         enfants: [
           {
-            id: 'liste', titre: eps ? 'Quels outils pour l’EPS ?' : 'Quels outils pour la SVT ?', puces: true,
+            id: 'liste', titre: `Quels outils pour ${mot('laDiscipline')} ?`, puces: true,
             intro: 'Les outils proposés dépendent de la discipline du carnet (⚙ Réglages › Discipline).',
             reponse: FAMILLES_OUTILS.map(f => [f, outilsDuCarnet().filter(o => o.famille === f.id)]).filter(([, l]) => l.length)
               .map(([f, l]) => `<b>${esc(f.nom)}</b> : ${l.map(o => `${o.icone} ${esc(o.nom)} <small>(${esc(o.info)})</small>`).join(' · ')}`),
@@ -847,7 +851,8 @@ function rubriquesAide() {
                 '<b>🥊 Boxe française</b> : assauts, reprises, touches, arbitre et juge, rotation des rôles.'],
             },
           ] : [
-            {
+            // (Outils de la famille Sciences : chaque question seulement si l'outil existe dans cette discipline.)
+            aOutil('ece') && {
               id: 'ece', titre: 'L’ECE (compétences expérimentales)', puces: true,
               reponse: ['Outil <b>🔬 ECE</b>, pour les ECE blanches : d’après le guide officiel (1 h, note sur 20 puis sur 5).',
                 'Compte les <b>aides</b> (mineures, majeures) au toucher : l’appli propose le niveau A, B, C ou D, que tu peux changer.',
@@ -855,33 +860,43 @@ function rubriquesAide() {
                 'Le chrono bipe 10 minutes avant la fin, puis à la fin.',
                 '<b>📝 Vers les notes</b> crée l’évaluation sur 20 dans l’onglet Notes.'],
             },
-            {
-              id: 'labo', titre: 'Au labo : schéma, gestes, mise en commun, sécurité', puces: true,
-              reponse: ['<b>✏️ Grille de schéma</b> : coche les critères en passant dans les rangs ; la note se calcule (📝 Vers les notes).',
-                '<b>🧪 Gestes techniques</b> : microscope, préparation, dissection… qui réussit, qui aider en priorité.',
-                '<b>📊 Mise en commun</b> : les mesures des groupes, moyenne, valeurs à vérifier, graphique à projeter.',
-                '<b>⚠️ Sécurité au labo</b> : les consignes du TP à projeter. Les PAI et oublis de matériel du jour sont dans un cadre « 🔒 Pour le professeur », caché en plein écran.'],
+            aOutil('ecepc') && {
+              id: 'ecepc', titre: 'L’ECE (compétences expérimentales)', puces: true,
+              reponse: ['Outil <b>🔬 ECE</b>, pour les ECE blanches : 1 h, trois compétences par sujet (« Réaliser » toujours), coefficients de total 6.',
+                '<b>⚙ Grille du sujet</b> : choisis les trois compétences et leurs coefficients (ceux du document de l’évaluateur).',
+                'À chaque appel, compte les interventions : aide demandée, question ouverte, solution partielle, solution complète fournie. L’appli propose le niveau A, B, C ou D, que tu peux changer.',
+                'Communiquer : coche « cohérente », « complète », « vocabulaire adapté ».',
+                'Note indicative de 5 à 20 (la note officielle est celle de Santorin) ; une case permet de mettre de 0 à 5 si l’engagement est très insuffisant.',
+                'Le chrono bipe 10 minutes avant la fin, puis à la fin. <b>📝 Vers les notes</b> crée l’évaluation sur 20 dans l’onglet Notes.'],
             },
             {
+              id: 'labo', titre: `Au labo : ${[aOutil('schema') && 'schéma', aOutil('gestes') && 'gestes', 'mise en commun', 'sécurité'].filter(Boolean).join(', ')}`, puces: true,
+              reponse: [aOutil('schema') && '<b>✏️ Grille de schéma</b> : coche les critères en passant dans les rangs ; la note se calcule (📝 Vers les notes).',
+                aOutil('gestes') && `<b>🧪 Gestes techniques</b> : ${esc((profil().labo?.gestesInfo || 'microscope, préparation, dissection… : qui réussit, qui aider').replace(/ : .*/, '').replace(/^./, m => m.toLocaleLowerCase('fr')))} qui réussit, qui aider en priorité.`,
+                '<b>📊 Mise en commun</b> : les mesures des groupes, moyenne, valeurs à vérifier, graphique à projeter.',
+                profil().incertitudes && 'Avec une <b>valeur de référence</b> : incertitude-type de la moyenne (s / √n) et écart normalisé z (compatible si z ≤ 2). Avec une condition chiffrée (« Selon ») : <b>droite de modélisation</b>, linéaire ou affine.',
+                '<b>⚠️ Sécurité au labo</b> : les consignes du TP à projeter. Les PAI et oublis de matériel du jour sont dans un cadre « 🔒 Pour le professeur », caché en plein écran.'].filter(Boolean),
+            },
+            aOutil('binomes') && {
               id: 'binomes', titre: 'Faire des binômes ou des groupes', puces: true,
               reponse: ['<b>👫 Binômes de TP</b> : une paillasse par binôme, en évitant de refaire les mêmes binômes (l’appli retient les derniers TP) ; touche deux noms pour les échanger.',
                 '<b>👥 Équipes</b> : des groupes plus grands, au hasard ou équilibrés d’après ton carnet (moyenne, degrés).',
                 '<b>🎲 Tirage au sort</b> : un élève au hasard, ou les rôles (rapporteur, secrétaire…).'],
             },
-            {
+            aOutil('tp') && {
               id: 'tp', titre: 'Préparer un TP (matériel, commande au labo)', puces: true,
               reponse: ['Outil <b>🧾 Préparation des TP</b>, onglet <b>Fiches TP</b> : le matériel de chaque séance (par binôme, par élève…), les dangers, un mot pour le technicien.',
                 '<b>Commande au labo</b> : toutes tes classes sur une période, quantités calculées d’après les effectifs, à imprimer.',
                 '<b>Banque de séances</b> : tes séances réutilisables d’une année sur l’autre, à échanger avec un collègue (aucune donnée d’élève).'],
             },
-          ]),
+          ].filter(Boolean)),
           {
             id: 'garder', titre: 'Garder les résultats d’un outil', puces: true,
             reponse: ['Ce que tu fais dans un outil reste <b>sur cet appareil</b> : il ne part pas sur la clé.',
-              `Pour le garder dans le carnet : <b>« 📤 Vers une ${lecon} »</b> (nouvelle séance remplie, ou colonnes ajoutées${eps ? '' : ' ; « 📝 Vers les notes » pour l’ECE et la grille de schéma'}).`,
+              `Pour le garder dans le carnet : <b>« 📤 Vers une ${lecon} »</b> (nouvelle séance remplie, ou colonnes ajoutées${versLesNotes ? ` ; « 📝 Vers les notes » pour ${versLesNotes}` : ''}).`,
               eps ? 'Exception : la <b>VMA</b> est rangée dans la fiche de l’élève, elle suit sur la clé.'
-                : 'Exceptions : les <b>fiches TP</b> et la <b>banque de séances</b> sont dans le carnet, elles suivent sur la clé.',
-              '« 🗑 Tout effacer » remet l’outil à zéro (ce qui a été envoyé dans le carnet reste).'],
+                : aOutil('tp') && 'Exceptions : les <b>fiches TP</b> et la <b>banque de séances</b> sont dans le carnet, elles suivent sur la clé.',
+              '« 🗑 Tout effacer » remet l’outil à zéro (ce qui a été envoyé dans le carnet reste).'].filter(Boolean),
           },
           {
             id: 'eleve', titre: '🎓 Prêter la tablette aux élèves (mode élève)',
@@ -983,12 +998,12 @@ function rubriquesAide() {
                 id: 'importer', titre: 'Importer mon barème (PDF, Word, Excel)',
                 intro: 'Ton barème existe déjà dans un document ? L’appli le lit elle-même, sur ton appareil (rien n’est envoyé sur Internet).',
                 reponse: ['Touche l’onglet <b>Barèmes</b>, puis <b>« 📥 Importer un barème »</b>.',
-                  'Choisis ton fichier : <b>PDF</b>, <b>Word</b> (.docx), <b>LibreOffice</b> (.odt) ou <b>Excel</b>.',
+                  'Touche <b>« 📂 Choisir le fichier du barème »</b> : <b>PDF</b>, <b>Word</b> (.docx), <b>LibreOffice</b> (.odt), <b>Excel</b> ou CSV.',
                   `L’appli te montre les <b>blocs trouvés</b> (${eps ? 'tableau de perfs, grille par degrés, paliers' : 'grille par degrés, critères, paliers'}…) : vérifie leur nom, leur sorte et leurs points, <b>décoche</b> ce qui ne convient pas.`,
                   'Lis les ⚠ éventuels (ex. total différent de 20).',
                   'Touche <b>« Ajouter à mes barèmes »</b> : il apparaît dans « Mes barèmes », tout se retouche ensuite.'],
                 guide: [ETAPES_HUGO.ongletBaremes, ETAPES_HUGO.bibliotheque,
-                  etapeBouton('#vue [data-bar="recevoir"]', 'Touche « 📥 Importer un barème », puis choisis ton fichier.',
+                  etapeBouton('#vue [data-bar="recevoir"]', 'Touche « 📥 Importer un barème », puis « 📂 Choisir le fichier du barème ».',
                     () => !!fenetreImportBareme() || !!document.querySelector('#vue [data-bar="bibliotheque"]')),
                   etapeZone(fenetreImportBareme, '.blocs-import', 'Voici ce que l’appli a lu : vérifie chaque bloc (nom, sorte, points) et décoche ce qui ne convient pas.'),
                   etapeValider(fenetreImportBareme, 'pour le ranger dans tes barèmes')],
@@ -1006,7 +1021,9 @@ function rubriquesAide() {
                 reponse: ['Un <b>PDF scanné</b> (photo de la feuille) ne se lit pas : prends plutôt le fichier Word ou Excel d’origine.',
                   'Un PDF <b>protégé par un mot de passe</b> est refusé.',
                   'Un bloc mal lu ? <b>Décoche-le</b>, puis ajoute-le à la main dans le barème.',
-                  'Rien de reconnu ? Crée quand même le barème avec son texte, puis ajoute les blocs (voir « Créer un barème »).'],
+                  'Mal reconnu ? Touche <b>« ✍️ Remplir manuellement »</b> dans la fenêtre de vérification : indique le rôle des lignes (noms des niveaux, titre de bloc, critère) et des colonnes (nom, points, niveaux 1 à 4). L’appli s’entraîne : elle retient la forme de ta grille et reconnaîtra seule tes prochains barèmes du même modèle.',
+                  'Autre solution : dans « 📥 Importer un barème », <b>télécharge le barème vierge</b> (Excel), remplis-le — ou demande à une IA de le remplir avec la consigne fournie — puis importe-le : il est reconnu à coup sûr.',
+                  'Ce que l’appli a appris se retrouve (et s’oublie) dans « 📥 Importer un barème » › 🎓 Ce que l’appli a appris.'],
               },
               {
                 id: 'collegue', titre: 'Recevoir le barème d’un collègue',
@@ -1057,7 +1074,7 @@ function rubriquesAide() {
               'Touche <b>« Créer »</b> : une colonne apparaît dans la grille.'],
             guide: [ETAPES_HUGO.ongletNotes, ETAPES_HUGO.classe,
               { cible: () => premierVisible('#vue [data-action="ajout-eval"]'), texte: 'Touche « + Évaluation ».', fait: () => !!fenetreEval() },
-              { cible: dansFenetreEval('[name="titre"]'), texte: `Écris le titre (ex. « ${eps ? 'Demi-fond' : 'TP microscope'} »).`, suivant: true, fait: () => !fenetreEval() },
+              { cible: dansFenetreEval('[name="titre"]'), texte: `Écris le titre (ex. « ${mot('exempleTitreEval')} »).`, suivant: true, fait: () => !fenetreEval() },
               { cible: dansFenetreEval('[name="max"]'), texte: 'Vérifie la date et « Noté sur » (20 par défaut).', suivant: true, fait: () => !fenetreEval() },
               ETAPES_HUGO.valider],
           },
@@ -1177,7 +1194,7 @@ function rubriquesAide() {
               reponse: ['Une <b>banque de phrases</b> par rubrique et par niveau ; pour les niveaux 1 et 2, une version par <b>ton</b> (bienveillant, neutre, exigeant).',
                 'Si tu l’as coché, un <b>bilan général</b> ouvre le texte (d’après résultats, compétences et attitude, nuancé par la place dans la classe).',
                 'Puis les rubriques cochées, <b>dans ton ordre</b> ; les points de vigilance ⚠ passent en premier. L’objectif termine le texte.',
-                `${eps ? 'L’APSA' : 'Le thème'} est citée quand c’est possible (« ${eps ? 'notamment en badminton' : 'sur le corps humain et la santé'} ») : la meilleure pour un point fort, la plus fragile pour une difficulté.`,
+                `${eps ? 'L’APSA' : 'Le thème'} est citée quand c’est possible (« ${eps ? 'notamment en badminton' : mot('themeEnPhrase')} ») : la meilleure pour un point fort, la plus fragile pour une difficulté.`,
                 'Le prénom vient en premier, puis il / elle (d’après le sexe de la fiche) ; l’appli évite de répéter un mot ou une tournure.',
                 '<b>Trop long ?</b> Elle prend d’abord les phrases les plus courtes, puis laisse de côté les rubriques les moins utiles (niveau par défaut, progression stable, « satisfaisant »…) ; les ⚠ et l’objectif restent. La carte dit ce qui a été laissé de côté.',
                 '<b>🎲 Autre formulation</b> : mêmes niveaux, autres phrases.'],

@@ -25,7 +25,7 @@ const nomOnglet = v => (reglage('onglets').noms[v] || '').trim() || NOMS_ONGLETS
 // Barre du haut : « Prof principal » devient « PP » sur téléphone (sauf si l'onglet a été renommé).
 const libelleBarre = v => (v === 'pp' && !(reglage('onglets').noms.pp || '').trim()
   ? `<span class="libelle-long">${esc(NOMS_ONGLETS.pp)}</span><span class="libelle-court">PP</span>` : esc(nomOnglet(v)));
-const favorisOnglets = visibles => reglage('onglets').favoris.filter(v => visibles.includes(v)).slice(0, FAVORIS_MAX);
+const favorisOnglets = visibles => visibles.filter(v => reglage('onglets').favoris.includes(v)).slice(0, FAVORIS_MAX);
 const boutonOnglet = (v, contenu, etiquette = '') =>
   `<button type="button" data-vue="${v}" class="${v === ui.vue ? 'actif' : ''}" ${v === ui.vue ? 'aria-current="page"' : ''} ${etiquette ? `aria-label="${esc(etiquette)}"` : ''}>${contenu}</button>`;
 const boutonRideau = (id, actif, contenu, etiquette = '') =>
@@ -70,8 +70,10 @@ function marquerSuiteOnglets(nav) {
 }
 
 function htmlRideaux(visibles) {
-  return GROUPES_ONGLETS.map(g => {
-    const vues = g.vues.filter(v => visibles.includes(v));
+  // (Groupes et pages dans l'ordre des onglets choisi dans les réglages : `visibles` est déjà rangé.)
+  const rang = g => Math.min(...g.vues.map(v => (visibles.includes(v) ? visibles.indexOf(v) : 99)));
+  return [...GROUPES_ONGLETS].sort((x, y) => rang(x) - rang(y)).map(g => {
+    const vues = visibles.filter(v => g.vues.includes(v));
     if (vues.length < 2) return vues.map(v => boutonOnglet(v, libelleBarre(v), nomOnglet(v))).join('');
     // Groupe en cours : un toucher déplie le rideau. Sinon : la dernière page du groupe, et ▾ pour les autres.
     if (vues.includes(ui.vue)) return `<span class="groupe-onglets actif">${boutonRideau(g.id, true, `${esc(nomOnglet(ui.vue))} <span class="chevron">▾</span>`)}</span>`;
@@ -94,7 +96,7 @@ function ouvrirRideau(bouton) {
   fermerRideau();
   if (dejaOuvert) return; // 2e toucher : on referme
   const visibles = ongletsVisibles(), g = GROUPES_ONGLETS.find(x => x.id === id);
-  const vues = g ? g.vues.filter(v => visibles.includes(v)) : visibles.filter(v => !favorisOnglets(visibles).includes(v));
+  const vues = g ? visibles.filter(v => g.vues.includes(v)) : visibles.filter(v => !favorisOnglets(visibles).includes(v));
   const r = document.createElement('div');
   r.id = 'rideau-onglets';
   r.className = 'rideau-onglets';
@@ -142,6 +144,5 @@ function htmlReglageDisposition(o) {
       Sur un ordinateur à grand écran, tous les onglets restent affichés en haut.</p>
     <h4>Onglets favoris <span class="appareil">— disposition Favoris, ${FAVORIS_MAX} au plus</span></h4>
     <div class="favoris-onglets">${Object.keys(NOMS_ONGLETS).map(v => `<label class="case"><input type="checkbox" name="favori-${v}"
-      ${o.favoris.includes(v) ? 'checked' : ''}> ${ICONES_ONGLETS[v]} ${esc((o.noms[v] || '').trim() || NOMS_ONGLETS[v])}</label>`).join('')}</div>
-    <h4>Onglets affichés</h4>`;
+      ${o.favoris.includes(v) ? 'checked' : ''}> ${ICONES_ONGLETS[v]} ${esc((o.noms[v] || '').trim() || NOMS_ONGLETS[v])}</label>`).join('')}</div>`;
 }

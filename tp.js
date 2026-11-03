@@ -1,5 +1,5 @@
 'use strict';
-// Outil « 🧾 Préparation des TP » (Outils › SVT ; caché en EPS) :
+// Outil « 🧾 Préparation des TP » (Outils › Sciences ; caché en EPS) :
 //   Fiches TP   : pour chaque séance de la classe, le matériel et les produits (quantité par binôme, par élève, par groupe
 //                 ou pour la classe), les dangers / équipements (listes de labo.js) et un mot pour le technicien de labo.
 //                 Rangé dans la séance (s.tp) : suit sur la clé avec le carnet. « + Séance de TP » crée la séance.
@@ -8,9 +8,9 @@
 //   Banque      : modèles de séance réutilisables d'une année sur l'autre (collection `modeles` : titre, thème, niveau,
 //                 données relevées, fiche TP, déroulé) ; « Utiliser » crée la séance dans la classe ; échange entre collègues
 //                 par fichier .json (aucune donnée d'élève).
-// (Chargé après labo.js : utilise EPI_LABO / DANGERS_LABO.)
+// (Chargé après labo.js : utilise EPI_LABO / dangersLabo().)
 
-OUTILS.push({ id: 'tp', famille: 'svt', icone: '🧾', nom: 'Préparation des TP', info: 'Matériel par séance, commande au labo, banque de séances', classe: true, eleve: false });
+OUTILS.push({ id: 'tp', famille: 'sciences', icone: '🧾', nom: 'Préparation des TP', info: 'Matériel par séance, commande au labo, banque de séances', classe: true, eleve: false });
 
 const PAR_TP = { binome: 'par binôme', eleve: 'par élève', groupe: 'par groupe de 4', classe: 'pour la classe' };
 const nbPourTp = (par, n) => (par === 'eleve' ? n : par === 'binome' ? Math.ceil(n / 2) : par === 'groupe' ? Math.ceil(n / 4) : 1);
@@ -100,7 +100,7 @@ function htmlCommandeTp(cfg) {
 }
 
 // Consignes de sécurité cochées dans la fiche, en une ligne
-const securiteTp = s => (s.tp?.securite || []).map(id => [...EPI_LABO, ...DANGERS_LABO].find(d => d[0] === id)?.[2].split(' :')[0] || id).join(' · ');
+const securiteTp = s => (s.tp?.securite || []).map(id => [...EPI_LABO, ...dangersLabo()].find(d => d[0] === id)?.[2].split(' :')[0] || id).join(' · ');
 
 function texteCommandeTp(cfg) {
   const k = commandeTp(cfg), q = x => fmt(Math.round(x * 100) / 100);
@@ -158,7 +158,7 @@ function htmlListeBanqueTp(c, cfg) {
 /* ---------- Fenêtres ---------- */
 
 const ligneMaterielTp = (m = {}) => `<div class="ligne ligne-dyn ligne-materiel">
-  <input name="m-nom" value="${esc(m.nom || '')}" maxlength="80" placeholder="ex. Lame de verre" aria-label="Article">
+  <input name="m-nom" value="${esc(m.nom || '')}" maxlength="80" placeholder="${esc(exempleOutil('materiel', 'ex. Matériel'))}" aria-label="Article">
   <input name="m-qte" value="${esc(m.qte ?? 1)}" inputmode="decimal" maxlength="8" aria-label="Quantité" class="etroit-tp">
   <input name="m-unite" value="${esc(m.unite || '')}" maxlength="15" placeholder="unité" aria-label="Unité" class="etroit-tp">
   <select name="m-par" aria-label="Pour qui">${Object.entries(PAR_TP).map(([v, nom]) => `<option value="${v}" ${(m.par || 'binome') === v ? 'selected' : ''}>${nom}</option>`).join('')}</select>
@@ -173,9 +173,9 @@ async function editerFicheTp(titre, tp, effectif) {
     <div data-lignes-tp>${(tp.materiel.length ? tp.materiel : [{}, {}, {}]).map(ligneMaterielTp).join('')}</div>
     <button type="button" data-ajout-ligne-tp>+ Article</button>
     <h3>Sécurité</h3>
-    <div class="colonnes-labo">${[['Équipement', EPI_LABO], ['Dangers', DANGERS_LABO]].map(([leg, l]) => `<fieldset><legend>${leg}</legend>
+    <div class="colonnes-labo">${[['Équipement', EPI_LABO], ['Dangers', dangersLabo()]].map(([leg, l]) => `<fieldset><legend>${leg}</legend>
       ${l.map(([id, icone, texte]) => `<label class="case"><input type="checkbox" name="secu" value="${id}" ${tp.securite.includes(id) ? 'checked' : ''}> ${icone} ${esc(texte.split(' :')[0])}</label>`).join('')}</fieldset>`).join('')}</div>
-    <label>Pour le technicien de labo<textarea name="technicien" rows="2" maxlength="600" placeholder="ex. Solutions à préparer la veille, microscopes réglés au × 10">${esc(tp.technicien)}</textarea></label>`,
+    <label>Pour le technicien de labo<textarea name="technicien" rows="2" maxlength="600" placeholder="${esc(exempleOutil('technicien', 'ex. Solutions à préparer la veille'))}">${esc(tp.technicien)}</textarea></label>`,
   boutonsModale('Enregistrer'), 'modale-large');
   d.addEventListener('click', e => {
     if (e.target.closest('[data-ajout-ligne-tp]')) { $('[data-lignes-tp]', d).insertAdjacentHTML('beforeend', ligneMaterielTp()); $('[data-lignes-tp] .ligne-materiel:last-child input', d).focus(); }
@@ -229,7 +229,7 @@ function nettoyerModeleTp(x) {
   return {
     titre: txt(x?.titre, 120) || 'Séance reçue', apsa: txt(x?.apsa, 120), niveau: txt(x?.niveau, 10), deroule: txt(x?.deroule, 4000), indicateurs,
     tp: { materiel: (Array.isArray(tp.materiel) ? tp.materiel : []).slice(0, 80).map(m => ({ nom: txt(m?.nom, 80), qte: nombreOutil(m?.qte) ?? 1, unite: txt(m?.unite, 15), par: PAR_TP[m?.par] ? m.par : 'binome' })).filter(m => m.nom),
-      securite: (Array.isArray(tp.securite) ? tp.securite : []).filter(id => [...EPI_LABO, ...DANGERS_LABO].some(d => d[0] === id)), technicien: txt(tp.technicien, 600) },
+      securite: (Array.isArray(tp.securite) ? tp.securite : []).filter(id => [...EPI_LABO, ...dangersLabo()].some(d => d[0] === id)), technicien: txt(tp.technicien, 600) },
   };
 }
 
