@@ -33,6 +33,11 @@ const ListeClasse = (() => {
   // « 6ème A » → nom « 6A », niveau « 6e ».
   function nomEtNiveau(classe) {
     const t = String(classe || '').trim();
+    // École : « CE2 A », « CE1 CE2 », « CE1-CE2 » → niveau de la liste de l'école.
+    if (avecEcole()) {
+      const vus = sansAccent(t).toUpperCase().match(/\b(CP|CE1|CE2|CM1|CM2)\b/g) || [], cle = vus.join('-');
+      return { nom: t, niveau: niveauxProposes().includes(cle) ? cle : '' };
+    }
     const m = t.match(/^(\d)\s*(?:(?:ième|ieme|ème|eme|è|e)(?![a-zà-ÿ]))?\s*(.*)$/i);
     if (m && '3456'.includes(m[1])) return { nom: (m[1] + m[2].replace(/\s+/g, '')).toUpperCase(), niveau: m[1] + 'e' };
     const s = sansAccent(t);
@@ -53,20 +58,21 @@ const ListeClasse = (() => {
       if (resp && /^(e-?mail|courriel|mail)/.test(t)) { if (resp.email === undefined) resp.email = k; return; }
       if (resp && /^adresse/.test(t)) { if (resp.adresse === undefined) resp.adresse = k; return; }
       if (estColNom(t)) res.nom ??= k;
-      else if (t === 'prenom' || t === 'prenoms') res.prenom ??= k;
+      else if (t === 'prenom' || t === 'prenoms' || t === 'prenom eleve') res.prenom ??= k; // (ONDE : « Prénom élève »)
       else if (t.includes('naissance') || /^ne(\s*\(e\)|e)?\s+le/.test(t)) res.naissance ??= k; // (Pronote : « Né(e) le »)
       else if (t === 'sexe' || t === 'genre') res.sexe ??= k;
       else if (t.startsWith('regime')) res.regime ??= k;
       else if (t.startsWith('dispositif') || t.startsWith('projet')) res.dispositifs ??= k; // (Pronote : « Projets d'accompagnement »)
       else if (t === 'classe') res.classe ??= k;
+      else if (t === 'niveau' || t.startsWith('niveau ')) res.niveau ??= k; // (école : CP, CE1…)
     });
     return res;
   }
 
-  const estColNom = t => ['nom', 'noms', 'eleve', 'eleves', 'nom prenom', 'nom et prenom', 'nom - prenom', 'nom, prenom', 'nom prenom eleve'].includes(t);
+  const estColNom = t => ['nom', 'noms', 'eleve', 'eleves', 'nom eleve', 'nom prenom', 'nom et prenom', 'nom - prenom', 'nom, prenom', 'nom prenom eleve'].includes(t);
   // Ligne de titres : une colonne « Nom » (ou « Élève ») et au moins une autre colonne connue.
   const estTitres = l => l?.some(c => estColNom(sansAccent(c)))
-    && l.some(c => /naissance|^ne(\s*\(e\)|e)?\s+le|^sexe$|^genre$|^prenoms?$|^classe$|^regime/.test(sansAccent(c)));
+    && l.some(c => /naissance|^ne(\s*\(e\)|e)?\s+le|^sexe$|^genre$|^prenoms?( eleve)?$|^classe$|^regime/.test(sansAccent(c)));
 
   // Texte CSV (Pronote) → lignes de cases. Séparateur deviné (; tabulation ,), guillemets gérés.
   function lireCsv(texte) {
@@ -121,7 +127,7 @@ const ListeClasse = (() => {
         return {
           nom: majuscules(nom), prenom, sexe: normSexe(val(l, col.sexe)),
           naissance: lireDateExcel(val(l, col.naissance)), regime: val(l, col.regime), dispositifs: val(l, col.dispositifs),
-          classe: val(l, col.classe),
+          classe: val(l, col.classe), niveau: val(l, col.niveau),
           responsables: col.responsables.map(r => ({
             nom: val(l, r.nom), tel: telephone(val(l, r.tel)), email: val(l, r.email), adresse: val(l, r.adresse).replace(/\s*\n\s*/g, ', '),
           })).filter(r => r.nom || r.tel || r.email || r.adresse),
@@ -171,6 +177,7 @@ const ListeClasse = (() => {
     const lu = await lire(fichier);
     if (!lu.eleves.length) throw new Error('Aucun élève trouvé sous la ligne de titres du fichier.');
     const proposee = nomEtNiveau(lu.classe);
+    if (avecEcole()) proposee.niveau = niveauDeLaListe(lu.eleves) || proposee.niveau;
     const existants = c ? elevesDe(c.id) : [];
     const parCle = new Map(existants.map(el => [cle(el), el]));
     const parNaissance = el => existants.find(e => e.naissance && e.naissance === el.naissance && simple(e.nom) === simple(el.nom));
@@ -196,7 +203,7 @@ const ListeClasse = (() => {
       ${autreClasse ? `<p class="alerte-import">⚠ Ce fichier concerne la classe « ${esc(lu.classe)} », pas ${esc(c.nom)}.</p>` : ''}
       ${c ? '' : `<div class="ligne">
         <label>Nom de la classe<input name="nom" required value="${esc(proposee.nom)}" placeholder="ex. 6A"></label>
-        <label>Niveau<select name="niveau"><option value="">—</option>${NIVEAUX.map(n => `<option ${proposee.niveau === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label>Niveau<select name="niveau"><option value="">—</option>${niveauxProposes().map(n => `<option ${proposee.niveau === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       </div>`}
       <fieldset class="choix-import"><legend>Reprendre aussi (en plus du nom et du sexe)</legend>
         ${CHOIX.map(([k, titre, aide]) => `<label class="case"><input type="checkbox" name="${k}" ${memo[k] ? 'checked' : ''}>
@@ -219,6 +226,7 @@ const ListeClasse = (() => {
     for (const { x, fiche } of paires) {
       const base = fiche || { id: Donnees.nouvelId(), classeId: c.id, nom: x.nom, prenom: x.prenom, sexe: x.sexe, remarque: '', ordre: ordre++ };
       const res = completer(base, x, choix);
+      if (avecEcole() && niveauEcoleLu(x.niveau)) res.niveau = niveauEcoleLu(x.niveau);
       if (!fiche || JSON.stringify(res) !== JSON.stringify(fiche)) Donnees.ecrire('eleves', res);
     }
     rendre();

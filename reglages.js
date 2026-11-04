@@ -86,7 +86,7 @@ const seuilsDefaut = () => reglage('notes').seuils;
 const codeVisible = (n, code) => (codesDiscipline().includes(code) ? !n.codesMasques.includes(code) : (n.codesAjoutes || []).includes(code));
 // (L'onglet « Prof principal » n'existe que si une classe est marquée « Je suis PP » : pp.js.)
 const ongletsVisibles = () => (typeof ordreOnglets === 'function' ? ordreOnglets() : Object.keys(NOMS_ONGLETS)).filter(v => !reglage('onglets').masques.includes(v)
-  && (v !== 'pp' || (typeof classesPP === 'function' && classesPP().length > 0)));
+  && !(profil().ongletsMasques || []).includes(v) && (v !== 'pp' || (typeof classesPP === 'function' && classesPP().length > 0)));
 
 /* ---------- Couleurs ---------- */
 
@@ -206,7 +206,7 @@ const radio = (name, valeur, actuel, contenu, classe = 'segment') =>
 
 // Choix de la discipline du carnet (premier lancement et ⚙ Réglages).
 const htmlChoixDiscipline = actuel => `<div class="segments choix-discipline">${Object.values(DISCIPLINES)
-  .map(x => radio('discipline', x.id, actuel, `<b>${esc(x.nom)}</b> <small>${esc(x.nomComplet)}</small>`)).join('')}</div>`;
+  .map(x => radio('discipline', x.id, actuel, `<b>${esc(x.nomChoix || x.nom)}</b> <small>${esc(x.nomComplet)}</small>`)).join('')}</div>`;
 const AIDE_DISCIPLINE = 'Elle adapte le vocabulaire (APSA ou thèmes, leçons ou séances), les compétences officielles proposées, '
   + 'les modèles de séance, les appréciations et les outils. Changer de discipline n’efface rien.';
 

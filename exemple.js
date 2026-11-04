@@ -343,6 +343,7 @@ function completerPortraitsExemple() {
 
 // jeu : la classe exemple de la discipline (par défaut), ou une de EXEMPLES_EN_PLUS (préfixe d'identifiants à elle).
 function creerClasseExemple(jeu = jeuExemple()) {
+  if (jeu.creer) return jeu.creer(jeu); // (école : classe exemple construite par ecole.js)
   const P = jeu.prefixe || 'exemple-', idC = idClasseExemple(jeu);
   if (Donnees.get('classes', idC)) return Donnees.get('classes', idC);
   const alea = hasardExemple(2024), au = liste => liste[Math.floor(alea() * liste.length)];

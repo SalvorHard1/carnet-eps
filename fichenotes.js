@@ -73,7 +73,7 @@ function htmlLeconsFiche(el, periode, moy) {
   if (!b.total && !santeNotes.length) return '';
   const nomStatut = c => (CODES[c] || STATUTS_ENT[c] || c).toLowerCase();
   const liste = o => Object.entries(o).map(([c, n]) => `${n} ${nomStatut(c)}`).join(' · ');
-  let html = `<h3>${esc(mot('lecons'))} <span class="aide">présence et santé</span></h3>`;
+  let html = `<h3>${avecEcole() ? 'Présence' : esc(mot('lecons'))} <span class="aide">présence et santé</span></h3>`;
   if (b.total) {
     const lecon = motMin('lecon');
     html += `<p class="fiche-presence">Présent à <b>${b.presences} ${lecon}${b.presences > 1 ? 's' : ''} sur ${b.total}</b>${
@@ -286,7 +286,7 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
     if (opts.anonyme && el.prenom) texte = texte.split(el.prenom).join('L’élève'); // (PDF anonyme : pas de prénom)
     html += `<h3>Appréciation</h3><p class="texte-appr-fiche texte-bilan">${esc(texte)}</p>`;
   } else {
-    html += `<h3>Appréciation <span class="aide">la même que dans ✍ Appréciations (onglet Notes) : touche une rubrique pour changer son niveau</span></h3>
+    html += `<h3>Appréciation <span class="aide">${avecEcole() ? 'proposée par l’appli' : 'la même que dans ✍ Appréciations (onglet Notes)'} : touche une rubrique pour changer son niveau</span></h3>
       ${htmlCarteAppr(el, periode, eleves, reglageAppr(), htmlReglagesFiche(opts.reglagesOuverts))}`;
   }
 
@@ -312,10 +312,17 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
     }).join('')}</tbody></table></details>`;
   }
   if (lignes.length) {
-    html += `<details class="depli-fiche"${deplie}><summary>📝 Notes <span class="aide">moyenne ${fmt1(moy)}/20 · classe ${fmt1(moyClasse)}</span></summary>
+    // École : une évaluation sans note montre ses degrés ; la rubrique s'appelle alors « Évaluations », avec la moyenne seulement s'il y a des notes.
+    const avecDegres = lignes.some(l => sansNoteEval(l.e));
+    const degresLigne = l => competencesEval(l.e).map(a => [a, +Donnees.note(l.e.id, el.id, a.id)]).filter(([, d]) => d >= 1 && d <= 4)
+      .map(([a, d]) => `<span class="degre-eval-fiche"><span class="aide">${esc(a.code)}</span> ${pastilleDegre(String(d))}</span>`).join(' ') || '<span class="aide">non évaluée</span>';
+    const sommeNotes = avecDegres
+      ? `📝 Évaluations${moy !== null ? ` <span class="aide">moyenne des notes ${fmt1(moy)}/20${moyClasse !== null ? ` · classe ${fmt1(moyClasse)}` : ''}</span>` : ''}`
+      : `📝 Notes <span class="aide">moyenne ${fmt1(moy)}/20 · classe ${fmt1(moyClasse)}</span>`;
+    html += `<details class="depli-fiche"${deplie}><summary>${sommeNotes}</summary>
       <table class="tableau-fiche notes-fiche"><tbody>${lignes.map(l => `<tr>
       <th>${l.e.ca ? `<span class="chip-ca ca-${l.e.ca}">${l.e.ca}</span> ` : ''}<b>${esc(l.e.titre)}</b> <span class="aide">${dateCourte(l.e.date)}${l.e.apsa ? ' · ' + esc(l.e.apsa) : ''}${l.e.coef !== 1 ? ' · coef ' + fmt(l.e.coef) : ''}${l.e.nonSignificative ? ' · non significative' : ''}</span></th>
-      <td>${CODES[l.v] ? `<span class="code-fiche code-${l.v}">${esc(CODES[l.v])}</span>` : l.v === '' ? '<span class="aide">non saisie</span>'
+      <td>${CODES[l.v] ? `<span class="code-fiche code-${l.v}">${esc(CODES[l.v])}</span>` : sansNoteEval(l.e) ? degresLigne(l) : l.v === '' ? '<span class="aide">non saisie</span>'
       : `${l.e.nonSignificative ? '(' : ''}<b>${esc(affichage(l.v))}</b>/${fmt(l.e.max)}${l.e.nonSignificative ? ')' : ''}${l.e.max !== 20 ? ` <span class="aide">(${fmt1(l.n)}/20)</span>` : ''}`}
         ${l.n !== null && l.classe !== null ? `<span class="aide"> · classe ${fmt1(l.classe)}/20</span>` : ''}</td></tr>`).join('')}</tbody></table></details>`;
   }
@@ -372,7 +379,7 @@ async function ficheNotes(eleveId) {
   const aLecons = seancesDe(c.id).length > 0;
   const { d, resultat } = ouvrirModale('Fiche bilan', '<div class="fiche-onglets" data-fiche-onglets></div><div class="fiche" data-fiche></div>',
     '<button type="button" data-fiche-nav="-1">◀ Précédent</button><button type="button" data-fiche-nav="1">Suivant ▶</button>'
-    + (aLecons ? `<button type="button" data-fiche-lecons title="Ouvrir sa fiche de l’onglet ${esc(mot('lecons'))}">Fiche ${esc(mot('lecons'))}</button>` : '')
+    + (aLecons && !avecEcole() ? `<button type="button" data-fiche-lecons title="Ouvrir sa fiche de l’onglet ${esc(mot('lecons'))}">Fiche ${esc(mot('lecons'))}</button>` : '')
     + '<span class="espace"></span><label class="case anonyme-fiche" title="Sans nom, prénom, photo ni présence / santé"><input type="checkbox" data-fiche-anonyme> anonyme</label>'
     + '<button type="button" data-fiche-pdf title="Imprimer ou enregistrer la fiche en PDF">📄 PDF</button>'
     + '<button type="button" data-fermer class="primaire">Fermer</button>', 'modale-large modale-fiche');

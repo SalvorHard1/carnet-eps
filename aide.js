@@ -259,9 +259,11 @@ function etapesVisite() {
     ...si('eleves', [onglet('eleves', 'classe', (eps ? 'Fiches, dispenses, PAI…' : 'Fiches, PAI et BEP…')
       + (visibles.includes('appel') ? ' Juste à côté, « Appel » : l’appel du jour en un toucher par élève.' : ''))]),
     ...si('notes', [onglet('notes', 'suivi', 'Évaluations, notes et compétences.'),
-      etapeZonePage('#vue [data-action="appreciations"]', `« ✍ Appréciations » : l’appli en propose une par élève, d’après ses notes et les ${motMin('lecons')}. Tu ajustes comme tu veux.`,
-        'Reviens dans l’onglet « Notes » pour voir le bouton « ✍ Appréciations ».')]),
-    ...si('entrainement', [onglet('entrainement', 'suivi', `Ce que tu relèves à chaque ${motMin('lecon')}.`)]),
+      avecEcole() ? etapeZonePage('#vue [data-ecole="livret"]', '« 📘 Livret » : l’appli propose les positionnements et les appréciations de la période. Tu ajustes comme tu veux.',
+        'Reviens dans l’onglet « Notes » pour voir le bouton « 📘 Livret ».')
+        : etapeZonePage('#vue [data-action="appreciations"]', `« ✍ Appréciations » : l’appli en propose une par élève, d’après ses notes et les ${motMin('lecons')}. Tu ajustes comme tu veux.`,
+          'Reviens dans l’onglet « Notes » pour voir le bouton « ✍ Appréciations ».')]),
+    ...si('entrainement', [onglet('entrainement', 'suivi', avecEcole() ? 'Le déroulé de ta journée, séance par séance.' : `Ce que tu relèves à chaque ${motMin('lecon')}.`)]),
     ...si('outils', [onglet('outils', null, mot('outilsVisite'))]),
     ...si('agenda', [onglet('agenda', null, 'Ton année : emploi du temps, séquences, vacances, conseils.')]),
     ...si('baremes', [onglet('baremes', 'suivi', 'Tes barèmes : modèles fournis, les tiens, ou importés (PDF, Word, Excel).')]),
@@ -282,6 +284,9 @@ function visiteGuidee() {
 // (EPS : Leçons, APSA, tenue… ; SVT : Séances, Thème, matériel, non rendu…). Une question propre à une discipline
 // s'y ajoute avec ...(eps ? [question] : []).
 function rubriquesAide() {
+  return avecEcole() ? arbreAideEcole(rubriquesAideBase()) : rubriquesAideBase(); // (école : ecole.js)
+}
+function rubriquesAideBase() {
   const eps = disciplineActive() === 'eps';
   const Lecons = mot('lecons'), lecons = motMin('lecons'), lecon = motMin('lecon');
   const activite = eps ? 'activité' : 'thème';
@@ -850,7 +855,7 @@ function rubriquesAide() {
                 '<b>🥇 ASNS</b> : une étape du savoir-nager, un barème bronze / argent / or, les élèves passent tour à tour.',
                 '<b>🥊 Boxe française</b> : assauts, reprises, touches, arbitre et juge, rotation des rôles.',
                 '<b>🏐 Volley-ball</b> : touche un joueur puis le geste réussi ou raté ; % de réussite par joueur et par geste, progression par séance. Un élève observateur peut tenir la tablette.',
-                '<b>🧩 Ateliers et 🎯 fiche élève</b> (dans l’outil Volley-ball) : à partir de 5 essais, l’appli réunit les élèves par geste à travailler et propose une situation avec son schéma. Tu peux déplacer un élève, changer le niveau et corriger les fiches (✎). « Un seul atelier » prépare une séance pour toute la classe sur le point le plus fragile.'],
+                '<b>🧩 Ateliers et 🎯 fiche élève</b> (dans l’outil Volley-ball) : à partir de 5 essais, l’appli réunit les élèves par geste à travailler et propose une situation avec son schéma. « Match par équipe » donne une règle de jeu à chaque équipe ; le bilan d’un atelier propose le niveau suivant ; « ➕ Ma fiche » ajoute tes situations. Tu peux déplacer un élève, changer le niveau et corriger les fiches (✎). « Un seul atelier » prépare une séance pour toute la classe sur le point le plus fragile.'],
             },
           ] : [
             // (Outils de la famille Sciences : chaque question seulement si l'outil existe dans cette discipline.)

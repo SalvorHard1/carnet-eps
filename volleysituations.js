@@ -4,7 +4,8 @@
 // Niveau d'un geste (à partir de 5 essais) : 1 = moins de 40 %, 2 = de 40 à 70 %, 3 = 70 % et plus.
 // Deux façons de travailler : plusieurs ateliers selon les besoins, ou un seul atelier pour toute la classe sur le point
 // le plus fragile (jeu, situation, retour au jeu ; même situation en 3 versions selon les groupes).
-// Élève : son geste le plus fragile et « son défi ».
+// Élève : son geste le plus fragile et « son défi ». Match par équipe : une règle de jeu selon le geste le plus fragile de chaque équipe.
+// Bilan d'atelier : qui a réussi → niveau suivant ou plus facile (cfg.reussites). Mes fiches : reglage « fichesVolley ».
 // En mode élève et à l'écran projeté, ni niveaux ni pourcentages : seulement la situation et les noms.
 
 // Fiches rédigées pour l'appli ; `source` = le document académique dont l'idée est reprise et adaptée.
@@ -227,8 +228,12 @@ const CONSEILS_VOLLEY = {
 };
 
 const niveauVolley = p => (p < 40 ? 1 : p < 70 ? 2 : 3);
+// Fiches écrites par l'enseignant (sans schéma) : gardées dans le carnet, elles suivent sur la clé ; sans donnée d'élève.
+const fichesPersoVolley = () => Donnees.get('reglages', 'fichesVolley')?.fiches || [];
+const ecrireFichesPersoVolley = fiches => Donnees.ecrire('reglages', { id: 'fichesVolley', fiches });
+const listeSituationsVolley = (geste, niveau) => [...(SITUATIONS_VOLLEY[geste]?.[niveau - 1] || []), ...fichesPersoVolley().filter(f => f.geste === geste && f.niveau === niveau)];
 const situationVolley = (geste, niveau, rang = 0) => {
-  const l = SITUATIONS_VOLLEY[geste]?.[niveau - 1], s = l?.[rang % l.length];
+  const l = listeSituationsVolley(geste, niveau), s = l[rang % l.length];
   return s && { ...s, ...etatOutils.volleyFiches?.[s.id] }; // (le texte corrigé par l'enseignant passe devant)
 };
 const teinteVolley = (cfg, geste) => cfg.gestes.find(g => g.id === geste)?.teinte ?? 0;
@@ -236,9 +241,10 @@ const teinteVolley = (cfg, geste) => cfg.gestes.find(g => g.id === geste)?.teint
 const milieuVolley = l => [...l].sort()[Math.floor((l.length - 1) / 2)];
 
 // Les gestes de la banque où l'élève a au moins 5 essais, du plus fragile au plus solide.
-function diagnosticVolley(s) {
+// (valides : le dernier niveau d'atelier réussi par geste ; on propose alors au moins le niveau suivant.)
+function diagnosticVolley(s, valides = {}) {
   return Object.keys(SITUATIONS_VOLLEY).filter(g => s?.g[g]?.e >= MIN_ESSAIS_VOLLEY)
-    .map(g => { const p = pctVolley(s.g[g].r, s.g[g].e); return { geste: g, pct: p, essais: s.g[g].e, niveau: niveauVolley(p) }; })
+    .map(g => { const p = pctVolley(s.g[g].r, s.g[g].e); return { geste: g, pct: p, essais: s.g[g].e, niveau: Math.min(3, Math.max(niveauVolley(p), (valides[g] || 0) + 1)) }; })
     .sort((x, y) => x.pct - y.pct);
 }
 
@@ -246,7 +252,7 @@ function diagnosticVolley(s) {
 
 function proposerAteliersVolley(c, cfg) {
   const st = statsVolley(actionsVolley(cfg)), nb = cfg.nbAteliers ?? 3, presents = presentsOutil(c).map(el => el.id);
-  const diags = Object.fromEntries(presents.map(id => [id, diagnosticVolley(st[id])]));
+  const diags = Object.fromEntries(presents.map(id => [id, diagnosticVolley(st[id], cfg.reussites?.[id])]));
   const connus = presents.filter(id => diags[id].length), inconnus = presents.filter(id => !diags[id].length);
   if (!connus.length) return toast(`Pas encore assez de résultats : il faut au moins ${MIN_ESSAIS_VOLLEY} essais sur un geste.`, 'erreur');
   // 1. Un groupe par besoin : le geste le plus fragile de chacun, et son niveau.
@@ -317,7 +323,7 @@ function preparerClasseVolley(c, cfg, geste) {
   // (Mélangés : distribution une à une. De niveau : tranches successives de taille égale.)
   tries.forEach((id, i) => groupes[melanges ? i % nb : Math.floor(i * nb / tries.length)].membres.push(id));
   if (!melanges) for (const g of groupes) {
-    const l = g.membres.map(taux).filter(p => p !== null).map(niveauVolley);
+    const l = g.membres.filter(id => taux(id) !== null).map(id => Math.min(3, Math.max(niveauVolley(taux(id)), (cfg.reussites?.[id]?.[geste] || 0) + 1)));
     g.version = l.length ? milieuVolley(l) : 2;
   }
   const niveaux = ids.map(taux).filter(p => p !== null).map(niveauVolley);
@@ -361,12 +367,12 @@ function schemaVolley(sit) {
 function htmlFicheVolley(cfg, geste, niveau, rang = 0, versions = false) {
   const sit = situationVolley(geste, niveau, rang);
   if (!sit) return '';
-  const ligne = (nom, t) => `<p><b>${nom} :</b> ${esc(t)}</p>`;
-  return `<div class="fiche-volley teinte-volley-${teinteVolley(cfg, geste)}">
-    <div class="dessin-volley">${schemaVolley(sit)}
-      <p class="legende-volley">${Object.entries(sit.legende).map(([l, n]) => `<b>${esc(l)}</b> ${esc(n)}`).join(' · ')}<br>Trait plein : le ballon · Pointillés : le joueur</p></div>
+  const ligne = (nom, t) => (t ? `<p><b>${nom} :</b> ${esc(t)}</p>` : '');
+  return `<div class="fiche-volley teinte-volley-${teinteVolley(cfg, geste)}${sit.perso ? ' fiche-sans-schema' : ''}">
+    ${sit.perso ? '' : `<div class="dessin-volley">${schemaVolley(sit)}
+      <p class="legende-volley">${Object.entries(sit.legende).map(([l, n]) => `<b>${esc(l)}</b> ${esc(n)}`).join(' · ')}<br>Trait plein : le ballon · Pointillés : le joueur</p></div>`}
     <div class="texte-volley">
-      <h3>${esc(nomGesteVolley(cfg, geste))} · ${esc(sit.titre)}</h3>
+      <h3>${esc(nomGesteVolley(cfg, geste))} · ${esc(sit.titre)}${sit.perso ? ' <small class="prive-volley">· ma fiche</small>' : ''}</h3>
       ${ligne('Dispositif', sit.dispositif)}${ligne(versions ? 'But (version 2)' : 'But', sit.but)}${ligne('Réussite', sit.reussite)}
       ${ligne(versions ? 'Version 1' : 'Plus facile', sit.facile)}${ligne(versions ? 'Version 3' : 'Plus difficile', sit.dur)}
       ${sit.source ? `<p class="source-volley prive-volley">Idée reprise et adaptée d’un document de : ${esc(sit.source)}</p>` : ''}
@@ -380,14 +386,15 @@ const boutonsFicheVolley = (geste, niveau, rang, selectGeste = '') => `<div clas
     <button data-ovs="niveau" data-arg="1" ${niveau < 3 ? '' : 'disabled'}>Plus difficile ▶</button>
     <button data-ovs="autre">🔄 Autre situation</button>
     <button data-ovs="modifier" data-arg="${geste}|${niveau}|${rang}">✎ Modifier la fiche</button>
+    <button data-ovs="ma-fiche" data-arg="${geste}|${niveau}" title="Écrire ta propre situation pour ce geste et ce niveau">➕ Ma fiche</button>
     <button data-o="plein-ecran" title="Projeter cette fiche : niveaux et pourcentages sont cachés">📽 Projeter</button>
   </div>`;
 
 function htmlAteliersVolley(c, cfg) {
   const type = enModeEleve() && !cfg.plan && cfg.classe ? 'classe' : cfg.typeAteliers ?? 'besoins';
-  const choix = enModeEleve() ? '' : `<div class="types-ateliers-volley" role="group" aria-label="Façon de travailler">${[['besoins', '🧩', 'Plusieurs ateliers', 'Chacun travaille son besoin'], ['classe', '🎯', 'Un seul atelier', 'Toute la classe sur le point important']].map(([id, icone, nom, info]) =>
+  const choix = enModeEleve() ? '' : `<div class="types-ateliers-volley" role="group" aria-label="Façon de travailler">${[['besoins', '🧩', 'Plusieurs ateliers', 'Chacun travaille son besoin'], ['classe', '🎯', 'Un seul atelier', 'Toute la classe sur le point important'], ['equipes', '🏐', 'Match par équipe', 'Une règle de jeu pour chaque équipe']].map(([id, icone, nom, info]) =>
     `<button data-ovs="type" data-arg="${id}" class="type-atelier-volley${type === id ? ' choisi' : ''}" aria-pressed="${type === id}"><b>${icone} ${nom}</b><small>${info}</small></button>`).join('')}</div>`;
-  return choix + (type === 'classe' ? htmlClasseVolley(c, cfg) : htmlPlusieursVolley(c, cfg));
+  return choix + (type === 'classe' ? htmlClasseVolley(c, cfg) : type === 'equipes' ? htmlMatchEquipesVolley(c, cfg) : htmlPlusieursVolley(c, cfg));
 }
 
 function htmlPlusieursVolley(c, cfg) {
@@ -416,7 +423,8 @@ function htmlPlusieursVolley(c, cfg) {
     <div class="carte actions-fiche-volley">
       ${prof ? boutonsFicheVolley(a.geste, a.niveau, a.rang ?? 0, selectGeste) : ''}
       ${htmlFicheVolley(cfg, a.geste, a.niveau, a.rang ?? 0)}
-    </div>`;
+    </div>
+    ${prof ? htmlBilanAtelierVolley(cfg, a) : ''}`;
 }
 
 function htmlClasseVolley(c, cfg) {
@@ -437,7 +445,8 @@ function htmlClasseVolley(c, cfg) {
     <div class="tete-atelier-volley">Groupe ${i + 1} · version ${g.version}</div>
     <div class="membres-atelier-volley">${g.membres.filter(id => Donnees.get('eleves', id)).map(id => (prof ? `<button class="membre-volley${cfg.selectionAtelier === id ? ' choisi' : ''}" data-ovs="choisir" data-arg="${id}">${nom(id)}</button>` : `<span class="membre-volley">${nom(id)}</span>`)).join('')}</div>
     ${prof ? `<div class="boutons-outil prive-volley pied-groupe-volley">${cfg.selectionAtelier && !g.membres.includes(cfg.selectionAtelier) ? `<button data-ovs="deplacer-groupe" data-arg="${i}">↓ Mettre ici</button>` : ''}
-      <button data-ovs="version" data-arg="${i}">Changer de version</button></div>` : ''}
+      <button data-ovs="version" data-arg="${i}">Changer de version</button>
+      <button data-ovs="groupe-reussi" data-arg="${i}" title="Le groupe a atteint la réussite : il passe à la version suivante">✓ Réussi</button></div>` : ''}
   </div>`;
   return `${reglages}
     <div class="carte actions-fiche-volley">
@@ -458,7 +467,7 @@ function htmlEleveVolley(c, cfg) {
   const id = els.some(el => el.id === cfg.eleveFiche) ? cfg.eleveFiche : null;
   const choix = `<div class="chips-volley">${els.map(el => `<button type="button" class="chip-volley${el.id === id ? ' equipe-a' : ''}" data-ovs="eleve" data-arg="${el.id}" aria-pressed="${el.id === id}">${esc(nomEleveOutil(el))}</button>`).join('')}</div>`;
   if (!id) return `${prof ? periodesDiagVolley(cfg) : ''}<p class="aide">Touche un nom pour voir son défi.</p>${choix}`;
-  const d = diagnosticVolley(st[id]);
+  const d = diagnosticVolley(st[id], cfg.reussites?.[id]);
   if (!d.length) return `${prof ? periodesDiagVolley(cfg) : ''}${choix}<p class="aide">Pas encore assez de résultats pour ${esc(nomOutil(id))} : il faut au moins ${MIN_ESSAIS_VOLLEY} essais sur un geste.</p>`;
   const prio = d[0], meilleur = d.at(-1), rang = cfg.rangEleve ?? 0;
   const nomG = g => esc(nomGesteVolley(cfg, g).toLowerCase());
@@ -467,7 +476,8 @@ function htmlEleveVolley(c, cfg) {
   const nomCause = cause && CAUSES_VOLLEY.find(x => x[0] === cause[0])?.[1];
   const bilan = prof ? `<p class="bilan-eleve-volley prive-volley">À travailler : <b>${nomG(prio.geste)} ${prio.pct} %</b> sur ${prio.essais} essais, niveau ${prio.niveau}.
       ${d.length > 1 ? `Point d’appui : <b>${nomG(meilleur.geste)} ${meilleur.pct} %</b>.` : ''}
-      ${cause ? `<br>Cause la plus notée : <b>${esc(nomCause.toLowerCase())}</b> (${cause[1]}). ${esc(CONSEILS_VOLLEY[prio.geste][cause[0]])}` : ''}</p>` : '';
+      ${cause ? `<br>Cause la plus notée : <b>${esc(nomCause.toLowerCase())}</b> (${cause[1]}). ${esc(CONSEILS_VOLLEY[prio.geste][cause[0]])}` : ''}
+      ${Object.keys(cfg.reussites?.[id] || {}).length ? `<br>Ateliers réussis : ${Object.entries(cfg.reussites[id]).map(([g, n]) => `${nomG(g)} niveau ${n}`).join(', ')}.` : ''}</p>` : '';
   return `${prof ? periodesDiagVolley(cfg) : ''}${choix}
     <div class="carte actions-fiche-volley">
       <h3 class="titre-defi-volley">🎯 Le défi de ${esc(nomOutil(id))}</h3>
@@ -481,6 +491,7 @@ function htmlEleveVolley(c, cfg) {
 
 async function modifierFicheVolley(geste, niveau, rang) {
   const sit = situationVolley(geste, niveau, rang), id = sit.id;
+  if (sit.perso) return editerFichePersoVolley(geste, niveau, sit);
   const zone = (nom, cle) => `<label>${nom}<textarea name="${cle}" rows="2">${esc(sit[cle])}</textarea></label>`;
   const { resultat } = ouvrirModale(`Modifier la fiche — ${sit.titre}`, `
     <label>Titre<input name="titre" maxlength="60" value="${esc(sit.titre)}" required></label>
@@ -535,9 +546,171 @@ function actionSituationsVolley(action, arg, c) {
     }
     case 'version': { const g = cfg.classe.groupes[+arg]; g.version = g.version % 3 + 1; return rendreOutil(); }
     case 'niveau': if (f) { f.niveau = Math.max(1, Math.min(3, f.niveau + +arg)); f.rang = 0; } return rendreOutil();
-    case 'autre': if (f) f.rang = ((f.rang ?? 0) + 1) % 3; return rendreOutil();
-    case 'autre-eleve': cfg.rangEleve = ((cfg.rangEleve ?? 0) + 1) % 3; return rendreOutil();
+    case 'autre': if (f) f.rang = ((f.rang ?? 0) + 1) % listeSituationsVolley(f.geste, f.niveau).length; return rendreOutil();
+    case 'autre-eleve': cfg.rangEleve = (cfg.rangEleve ?? 0) + 1; return rendreOutil();
+    case 'ma-fiche': { const [g, n] = arg.split('|'); return lancer(() => editerFichePersoVolley(g, +n, null, cfg)); }
+    case 'bilan-eleve': {
+      const a = f; if (!a) return;
+      a.bilan = (a.bilan || []).includes(arg) ? a.bilan.filter(x => x !== arg) : [...(a.bilan || []), arg];
+      return rendreOutil();
+    }
+    case 'bilan-valider': return validerBilanAtelierVolley(cfg, f);
+    case 'groupe-reussi': return groupeReussiVolley(cfg, +arg);
+    case 'match-source': cfg.sourceMatch = arg; return rendreOutil();
+    case 'match-autre': { const [k, g] = arg.split('|'); (cfg.rangMatch ??= {})[k] = ((cfg.rangMatch?.[k] ?? 0) + 1) % MATCH_VOLLEY[g].length; return rendreOutil(); }
+    case 'match-modifier': { const [g, r] = arg.split('|'); return lancer(() => modifierRegleMatchVolley(g, +r)); }
   }
+}
+
+/* ---------- ➕ Mes fiches ---------- */
+
+async function editerFichePersoVolley(geste, niveau, fiche, cfg) {
+  const champ = (nom, cle, ph = '') => `<label>${nom}<textarea name="${cle}" rows="2" placeholder="${esc(ph)}">${esc(fiche?.[cle] || '')}</textarea></label>`;
+  const { resultat } = ouvrirModale(fiche ? `Modifier ma fiche — ${fiche.titre}` : 'Ma fiche de situation', `
+    <div class="ligne">
+      <label>Geste<select name="geste">${Object.keys(SITUATIONS_VOLLEY).map(g => `<option value="${g}" ${g === geste ? 'selected' : ''}>${esc(ucf(g === 'reception' ? 'réception' : g))}</option>`).join('')}</select></label>
+      <label>Niveau<select name="niveau">${[1, 2, 3].map(n => `<option value="${n}" ${n === niveau ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    </div>
+    <label>Titre<input name="titre" required autofocus maxlength="60" value="${esc(fiche?.titre || '')}" placeholder="ex. La passe à dix"></label>
+    ${champ('Dispositif', 'dispositif', 'Combien de joueurs, où')}${champ('But', 'but', 'Ce que les élèves doivent faire')}${champ('Réussite', 'reussite', 'ex. 7 sur 10')}
+    ${champ('Plus facile', 'facile')}${champ('Plus difficile', 'dur')}
+    <p class="aide">Ta fiche rejoint la banque et te suit sur la clé. Pas de schéma pour tes fiches.</p>`,
+  boutonsModale(fiche ? 'Enregistrer' : 'Ajouter', fiche ? BOUTON_SUPPRIMER : ''));
+  const r = await resultat;
+  let fiches = fichesPersoVolley();
+  if (r.action === 'supprimer') {
+    if (!(await confirmer(`Supprimer ta fiche « ${fiche.titre} » ?`))) return;
+    ecrireFichesPersoVolley(fiches.filter(x => x.id !== fiche.id));
+    return rendreOutil();
+  }
+  if (r.action !== 'ok') return;
+  const nouvelle = { id: fiche?.id || 'perso-' + Donnees.nouvelId(), perso: true, geste: r.data.geste, niveau: +r.data.niveau, titre: r.data.titre.trim(), dispositif: r.data.dispositif.trim(),
+    but: r.data.but.trim(), reussite: r.data.reussite.trim(), facile: r.data.facile.trim(), dur: r.data.dur.trim() };
+  fiches = fiche ? fiches.map(x => (x.id === fiche.id ? nouvelle : x)) : [...fiches, nouvelle];
+  ecrireFichesPersoVolley(fiches);
+  // (On montre tout de suite la fiche écrite, si un atelier est ouvert.)
+  const f = cfg && ficheVisibleVolley(cfg);
+  if (f) { f.geste = nouvelle.geste; f.niveau = nouvelle.niveau; f.rang = listeSituationsVolley(nouvelle.geste, nouvelle.niveau).findIndex(x => x.id === nouvelle.id); }
+  rendreOutil();
+}
+
+/* ---------- ✅ Boucle de progrès : le bilan d'un atelier propose la suite ---------- */
+
+const noterReussitesVolley = (cfg, ids, geste, niveau) => {
+  cfg.reussites ??= {};
+  for (const id of ids) { const r = (cfg.reussites[id] ??= {}); r[geste] = Math.max(r[geste] || 0, niveau); }
+};
+// Au moins 2 sur 3 ont réussi : plus difficile. Au plus 1 sur 3 : plus facile. Entre les deux : une autre situation du même niveau.
+function suiteAtelierVolley(a) {
+  const membres = a.membres.filter(id => Donnees.get('eleves', id)), nb = (a.bilan || []).filter(id => membres.includes(id)).length, part = membres.length ? nb / membres.length : 0;
+  if (part >= 2 / 3 && a.niveau < 3) return { niveau: a.niveau + 1, texte: `niveau ${a.niveau + 1}, plus difficile` };
+  if (part <= 1 / 3 && a.niveau > 1) return { niveau: a.niveau - 1, texte: `niveau ${a.niveau - 1}, plus facile` };
+  return { niveau: a.niveau, texte: `niveau ${a.niveau}, avec une autre situation` };
+}
+function htmlBilanAtelierVolley(cfg, a) {
+  const sit = situationVolley(a.geste, a.niveau, a.rang ?? 0), membres = a.membres.filter(id => Donnees.get('eleves', id)), bilan = a.bilan || [];
+  const fait = bilan.filter(id => membres.includes(id)).length, suite = suiteAtelierVolley(a);
+  return `<div class="carte bilan-atelier-volley prive-volley"><h3>✅ Bilan de l’atelier</h3>
+    <p class="aide">Touche ceux qui ont réussi${sit?.reussite ? ` : « ${esc(sit.reussite)} »` : ''}</p>
+    <div class="chips-volley">${membres.map(id => `<button type="button" class="chip-volley${bilan.includes(id) ? ' equipe-a' : ''}" data-ovs="bilan-eleve" data-arg="${id}" aria-pressed="${bilan.includes(id)}">${bilan.includes(id) ? '✓ ' : ''}${esc(nomOutil(id))}</button>`).join('')}</div>
+    <p><b>${fait} sur ${membres.length}</b> ont réussi. La prochaine fois : <b>${esc(suite.texte)}</b>.</p>
+    <button class="primaire" data-ovs="bilan-valider">Enregistrer le bilan</button></div>`;
+}
+function validerBilanAtelierVolley(cfg, a) {
+  if (!a) return;
+  const suite = suiteAtelierVolley(a), membres = a.membres.filter(id => Donnees.get('eleves', id));
+  noterReussitesVolley(cfg, (a.bilan || []).filter(id => membres.includes(id)), a.geste, a.niveau);
+  (cfg.bilansAteliers ??= []).push({ date: aujourdhui(), geste: a.geste, niveau: a.niveau, reussis: (a.bilan || []).length, total: membres.length });
+  const memeNiveau = suite.niveau === a.niveau;
+  a.rang = memeNiveau ? ((a.rang ?? 0) + 1) % listeSituationsVolley(a.geste, a.niveau).length : 0;
+  a.niveau = suite.niveau;
+  a.bilan = [];
+  toast(`Bilan enregistré. Atelier passé au ${suite.texte}.`, 'ok');
+  rendreOutil();
+}
+function groupeReussiVolley(cfg, i) {
+  const plan = cfg.classe, g = plan?.groupes[i];
+  if (!g) return;
+  noterReussitesVolley(cfg, g.membres.filter(id => Donnees.get('eleves', id)), plan.geste, g.version);
+  if (g.version < 3) { g.version++; toast(`Groupe ${i + 1} : passe à la version ${g.version}.`, 'ok'); } else toast(`Groupe ${i + 1} : version 3 réussie, bravo !`, 'ok');
+  rendreOutil();
+}
+
+/* ---------- 🏐 Situation de match par équipe ---------- */
+
+// Une règle de match par geste à travailler : on rejoue en vrai, avec une contrainte qui fait travailler ce geste.
+// (Rédigées pour l'appli : à relire par l'enseignant ; ✎ pour les corriger.)
+const MATCH_VOLLEY = {
+  service: [
+    { id: 'match-service-1', titre: 'Service qui compte double', regle: 'Un service réussi qui tombe dans le terrain adverse sans être renvoyé rapporte 2 points.' },
+    { id: 'match-service-2', titre: 'Deuxième chance', regle: 'Chacun sert à son tour. Un service raté se rejoue une fois, de plus près ; un second raté donne le point à l’adversaire.' },
+    { id: 'match-service-3', titre: 'Cinq services et on tourne', regle: 'Le serveur garde le service 5 fois de suite, puis on change. L’équipe compte aussi ses services réussis.' },
+  ],
+  reception: [
+    { id: 'match-reception-1', titre: 'Réception bonus', regle: 'Si la réception permet une deuxième touche de l’équipe, le point marqué ensuite vaut 2 points.' },
+    { id: 'match-reception-2', titre: 'Service facile, réception obligatoire', regle: 'Service à la cuillère depuis la zone avant. Le ballon doit être joué en manchette à la première touche.' },
+    { id: 'match-reception-3', titre: 'Le réceptionneur désigné', regle: 'Avant le service, l’équipe annonce un joueur qui prend la réception. Il change à chaque point.' },
+  ],
+  passe: [
+    { id: 'match-passe-1', titre: 'Trois touches obligatoires', regle: 'Le ballon doit être touché 3 fois dans l’équipe avant de passer le filet. Sinon, le point est perdu.' },
+    { id: 'match-passe-2', titre: 'Passe haute', regle: 'La deuxième touche doit être une passe haute. On peut d’abord attraper puis relancer ce ballon pour s’aider.' },
+    { id: 'match-passe-3', titre: 'Le passeur au filet', regle: 'Un joueur reste près du filet et fait toutes les deuxièmes touches. Il change à chaque point.' },
+  ],
+  attaque: [
+    { id: 'match-attaque-1', titre: 'Attaque qui compte double', regle: 'Un point marqué en renvoyant le ballon depuis la zone avant vaut 2 points.' },
+    { id: 'match-attaque-2', titre: 'Viser le fond', regle: 'Un ballon qui tombe dans la zone arrière adverse vaut 2 points.' },
+    { id: 'match-attaque-3', titre: 'Renvoi interdit à la première touche', regle: 'On ne renvoie jamais à la première touche : il faut construire pour attaquer depuis l’avant.' },
+  ],
+};
+const regleMatchVolley = (g, r) => { const l = MATCH_VOLLEY[g], s = l?.[r % l.length]; return s && { ...s, ...etatOutils.volleyFiches?.[s.id] }; };
+// Les équipes suivies : celles du dernier match, ou celles de l'outil Équipes.
+function equipesMatchVolley(c, cfg) {
+  const existe = id => Donnees.get('eleves', id), liste = etatOutils.equipes[c.id]?.liste || [];
+  if (cfg.sourceMatch === 'outil' && liste.length) return liste.map(eq => ({ cle: 'e' + eq.couleur, nom: 'Équipe ' + COULEURS_EQUIPES[eq.couleur], membres: eq.membres.filter(existe) }));
+  const m = cfg.matchs.filter(x => x.id !== cfg.enCours).at(-1) || cfg.matchs.at(-1);
+  return m ? ['a', 'b'].filter(k => m[k].membres.length).map(k => ({ cle: k, nom: m[k].nom, membres: m[k].membres.filter(existe) })) : [];
+}
+// Le geste le plus fragile d'une équipe (au moins 5 essais à eux tous).
+function gesteFragileEquipeVolley(t) {
+  return Object.keys(MATCH_VOLLEY).filter(g => t.g[g]?.e >= MIN_ESSAIS_VOLLEY).map(g => ({ g, pct: pctVolley(t.g[g].r, t.g[g].e), e: t.g[g].e })).sort((x, y) => x.pct - y.pct)[0] || null;
+}
+function htmlMatchEquipesVolley(c, cfg) {
+  const prof = !enModeEleve(), equipes = equipesMatchVolley(c, cfg), st = statsVolley(actionsVolley(cfg)), aOutil = (etatOutils.equipes[c.id]?.liste || []).length > 0;
+  const source = prof && aOutil ? `<div class="boutons-outil prive-volley"><span class="aide">Quelles équipes ?</span>${[['match', 'Dernier match'], ['outil', 'Outil Équipes']].map(([id, nom]) =>
+    `<button data-ovs="match-source" data-arg="${id}" class="${(cfg.sourceMatch ?? 'match') === id ? 'choisi' : ''}" aria-pressed="${(cfg.sourceMatch ?? 'match') === id}">${nom}</button>`).join('')}</div>` : '';
+  if (!equipes.length) return `${prof ? periodesDiagVolley(cfg) : ''}${source}<p class="aide">Joue et note un premier match dans 🏐 Match : l’appli proposera une règle de jeu à chaque équipe.</p>`;
+  const carte = e => {
+    const t = totalEquipeVolley(e.membres, st), f = gesteFragileEquipeVolley(t);
+    const choisi = cfg.gesteMatch?.[e.cle] || f?.g || 'passe', rang = cfg.rangMatch?.[e.cle] ?? 0, regle = regleMatchVolley(choisi, rang);
+    return `<div class="atelier-volley teinte-volley-${teinteVolley(cfg, choisi)}">
+      <div class="tete-atelier-volley">${esc(e.nom)} · ${esc(nomGesteVolley(cfg, choisi))}</div>
+      <div class="membres-atelier-volley">${e.membres.map(id => `<span class="membre-volley">${esc(nomOutil(id))}</span>`).join('')}</div>
+      <div class="regle-match-volley"><b>${esc(regle.titre)}</b><p>${esc(regle.regle)}</p></div>
+      ${prof ? `<p class="aide prive-volley">${f ? `Le plus fragile : ${esc(nomGesteVolley(cfg, f.g).toLowerCase())} ${f.pct} % sur ${f.e} essais.` : 'Pas encore assez d’essais : choisis le geste.'}</p>
+      <div class="boutons-outil prive-volley pied-groupe-volley">
+        <label class="en-ligne">Geste<select data-ovs-match-geste="${esc(e.cle)}">${Object.keys(MATCH_VOLLEY).map(g => `<option value="${g}" ${g === choisi ? 'selected' : ''}>${esc(nomGesteVolley(cfg, g))}</option>`).join('')}</select></label>
+        <button data-ovs="match-autre" data-arg="${esc(e.cle)}|${choisi}">🔄 Autre règle</button>
+        <button data-ovs="match-modifier" data-arg="${choisi}|${rang}">✎ Modifier</button>
+      </div>` : ''}
+    </div>`;
+  };
+  return `${prof ? periodesDiagVolley(cfg) : ''}${source}
+    ${prof ? '<div class="boutons-outil prive-volley"><button data-o="plein-ecran" title="Projeter : pourcentages cachés">📽 Projeter</button></div>' : ''}
+    <div class="match-equipes-volley">${equipes.map(carte).join('')}</div>
+    ${prof ? '<p class="aide prive-volley">Chaque équipe rejoue un vrai match avec sa règle. Note ensuite quelques gestes dans 🏐 Match pour voir si ça progresse.</p>' : ''}`;
+}
+async function modifierRegleMatchVolley(g, r) {
+  const s = regleMatchVolley(g, r), id = s.id;
+  const { resultat } = ouvrirModale(`Modifier la règle — ${s.titre}`, `
+    <label>Titre<input name="titre" required maxlength="60" value="${esc(s.titre)}"></label>
+    <label>Règle<textarea name="regle" rows="3" required>${esc(s.regle)}</textarea></label>`,
+  boutonsModale('Enregistrer', etatOutils.volleyFiches?.[id] ? '<button value="origine" formnovalidate>Remettre le texte d’origine</button>' : ''));
+  const res = await resultat;
+  etatOutils.volleyFiches ??= {};
+  if (res.action === 'origine') delete etatOutils.volleyFiches[id];
+  else if (res.action === 'ok') etatOutils.volleyFiches[id] = { titre: res.data.titre.trim(), regle: res.data.regle.trim() };
+  else return;
+  rendreOutil();
 }
 
 document.addEventListener('click', e => {
@@ -556,6 +729,7 @@ document.addEventListener('change', e => {
   if (t.dataset.ovsNb !== undefined) { cfg.nbAteliers = +t.value; return sauverOutils(); }
   if (t.dataset.ovsTaille !== undefined) { cfg.tailleGroupe = +t.value; return sauverOutils(); }
   if (t.dataset.ovsMode !== undefined) { cfg.modeGroupes = t.value; return sauverOutils(); }
+  if (t.dataset.ovsMatchGeste !== undefined) { (cfg.gesteMatch ??= {})[t.dataset.ovsMatchGeste] = t.value; (cfg.rangMatch ??= {})[t.dataset.ovsMatchGeste] = 0; return rendreOutil(); }
   if (t.dataset.ovsGeste !== undefined) {
     const f = ficheVisibleVolley(cfg);
     if (f) { f.geste = t.value; f.rang = 0; }

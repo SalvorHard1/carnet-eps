@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.8.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.11.1'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -137,7 +137,7 @@ const TELECHARGEMENTS = 'le fichier arrive dans le dossier <b>Téléchargements<
 const EN_PDF = 'en <b>PDF</b> (bouton imprimante, puis « Enregistrer au format PDF » / « Microsoft Print to PDF » comme imprimante)';
 const GUIDES_IMPORT = {
   liste: {
-    titre: '📥 Liste de classe (École Directe / Pronote)', bouton: 'Choisir le fichier…',
+    get titre() { return avecEcole() ? '📥 Liste de classe' : '📥 Liste de classe (École Directe / Pronote)'; }, bouton: 'Choisir le fichier…',
     accept: '.xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv',
     ed: {
       etapes: [
@@ -210,6 +210,14 @@ const GUIDES_IMPORT = {
 
 // Consignes (aussi affichées dans d'autres fenêtres, ex. emploi du temps), avec le choix École Directe / Pronote.
 function htmlGuideImport(type) {
+  if (avecEcole() && type === 'liste') { // (école : ONDE, École Directe ou un simple tableur)
+    return `<div class="guide-import" data-guide>
+      <ol class="etapes-guide"><li><span>Exporte ou enregistre la liste de ta classe depuis <b>ONDE</b>, <b>École Directe</b> ou ton <b>tableur</b>, en <b>.xlsx</b> ou <b>.csv</b>.</span></li>
+        <li><span>Reviens ici, touche <b>« Choisir le fichier »</b> et sélectionne ce fichier.</span></li></ol>
+      <p class="attendu-guide">📄 <b>Fichier attendu :</b> une ligne de titres avec au moins « Nom » et, si possible, « Prénom », « Sexe », « Date de naissance », « Niveau ».</p>
+      <p class="aide">${GUIDES_IMPORT.liste.apres} Le fichier est lu sur cet appareil : rien n’est envoyé nulle part.</p>
+    </div>`;
+  }
   const g = GUIDES_IMPORT[type], choisi = logicielGuide();
   return `<div class="guide-import" data-guide>
     <div class="choix-logiciel" role="group" aria-label="Logiciel de l’établissement">
@@ -495,7 +503,8 @@ const evalsDe = classeId => Donnees.liste('evals', e => e.classeId === classeId)
    Seules les dates de fin sont retenues, en « MM-JJ » : le réglage resservira l'année suivante.
    Une évaluation appartient à une période d'après sa date. */
 
-const PERIODES_DEFAUT = { type: 'trimestres', trimestres: ['11-30', '02-28'], semestres: ['01-31'] };
+// (cinq : cinq périodes, proposées dans le carnet École ; dates d'exemple à ajuster aux vacances de la zone.)
+const PERIODES_DEFAUT = { type: 'trimestres', trimestres: ['11-30', '02-28'], semestres: ['01-31'], cinq: ['10-16', '12-18', '02-12', '04-09'] };
 const reglagePeriodes = () => ({ ...PERIODES_DEFAUT, ...Donnees.get('reglages', 'periodes') });
 
 // Place d'un jour dans l'année scolaire (août = début) ; le 29 février compte comme le 28.
@@ -512,7 +521,7 @@ const lendemain = md => { const d = new Date(`2001-${md}T12:00`); d.setDate(d.ge
 function periodesAnnee() {
   const r = reglagePeriodes();
   const fins = r[r.type] || PERIODES_DEFAUT[r.type];
-  const lettre = r.type === 'semestres' ? 'S' : 'T';
+  const lettre = r.type === 'semestres' ? 'S' : r.type === 'cinq' ? 'P' : 'T';
   return [...fins, null].map((fin, k) => ({
     id: 'P' + (k + 1), code: lettre + (k + 1), fin,
     texte: `${k ? jourMois(lendemain(fins[k - 1])) : 'rentrée'} → ${fin ? jourMois(fin) : 'fin d’année'}`,
@@ -533,14 +542,17 @@ async function editerPeriodes() {
   // Les dates sont montrées dans l'année scolaire en cours.
   const auj = aujourdhui(), debut = +auj.slice(0, 4) - (+auj.slice(5, 7) < 8 ? 1 : 0);
   const versDate = md => `${+md.slice(0, 2) >= 8 ? debut : debut + 1}-${md}`.replace(/-02-29$/, '-02-28');
-  const champ = (type, k) => `<label>Fin du ${type === 'semestres' ? 'S' : 'T'}${k + 1}
+  const champ = (type, k) => `<label>Fin ${type === 'cinq' ? 'de la P' : type === 'semestres' ? 'du S' : 'du T'}${k + 1}
     <input type="date" name="${type}-${k}" required value="${versDate(r[type][k])}"></label>`;
   const { d, resultat } = ouvrirModale('Périodes de l’année', `
     <p class="aide">Les évaluations sont rangées dans une période d’après leur date. Réglage commun à toutes les classes.</p>
     <label>Découpage<select name="type">
       <option value="trimestres" ${r.type === 'trimestres' ? 'selected' : ''}>Trimestres</option>
       <option value="semestres" ${r.type === 'semestres' ? 'selected' : ''}>Semestres</option>
+      ${avecEcole() || r.type === 'cinq' ? `<option value="cinq" ${r.type === 'cinq' ? 'selected' : ''}>5 périodes</option>` : ''}
     </select></label>
+    ${avecEcole() || r.type === 'cinq' ? `<div class="ligne" data-type="cinq">${[0, 1, 2, 3].map(k => champ('cinq', k)).join('')}
+      <span class="aide">la P5 va jusqu’à la fin de l’année</span></div>` : ''}
     <div class="ligne" data-type="trimestres">${champ('trimestres', 0)}${champ('trimestres', 1)}
       <span class="aide">le T3 va jusqu’à la fin de l’année</span></div>
     <div class="ligne" data-type="semestres">${champ('semestres', 0)}
@@ -717,11 +729,12 @@ function dessinerVue(c) {
     return;
   }
   v.innerHTML = (c.exemple && !enModeEleve() ? `<p class="bandeau-exemple">🎓 <span><b>Classe exemple</b> : élèves et résultats inventés, pour voir un carnet rempli.
-    Touche à tout (notes, appel, fiches bilan, ✍ appréciations…), rien n’est grave.</span>
+    Touche à tout (${avecEcole() ? 'notes, appel, cahier journal, livret' : 'notes, appel, fiches bilan, ✍ appréciations'}…), rien n’est grave.</span>
     <button class="lien" data-action="suppr-exemple"${c.id !== ID_CLASSE_EXEMPLE ? ` data-arg="${c.id}"` : ''}>Supprimer la classe exemple</button></p>` : '')
-    + (ui.vue === 'eleves' ? htmlEleves(c) : ui.vue === 'appel' ? htmlAppel(c) : ui.vue === 'entrainement' ? htmlEntrainement(c) : htmlNotes(c));
+    + (ui.vue === 'eleves' ? htmlEleves(c) : ui.vue === 'appel' ? (avecEcole() ? htmlAppelEcole(c) : htmlAppel(c))
+      : ui.vue === 'entrainement' ? (avecEcole() ? htmlJournal(c) : htmlEntrainement(c)) : htmlNotes(c));
   if (ui.vue === 'notes') { majMoyennes(); majBilans(); caleEntete(); }
-  if (ui.vue === 'entrainement') { majStatsEnt(); caleEntete(); }
+  if (ui.vue === 'entrainement' && !avecEcole()) { majStatsEnt(); caleEntete(); }
 }
 
 // Cellule « élève » des grilles (notes et entraînement) : numéro, nom, badges PAI / BEP / dispense / adapté.
@@ -736,6 +749,7 @@ const anneeScolaire = date => +date.slice(0, 4) - (+date.slice(5, 7) < 8 ? 1 : 0
 const periodeAlerte = () => { const v = periodeAffichee(); return v !== 'annee' ? v : periodeDe(aujourdhui()); };
 
 function absencesEleve(el) {
+  if (avecEcole()) return absencesEleveEcole(el); // (école : demi-journées de l'appel, ecole.js)
   const p = periodeAlerte(), annee = anneeScolaire(aujourdhui());
   const jours = new Map();
   const noter = (date, code, quoi) => {
@@ -762,7 +776,7 @@ function badgeAlerte(el, a) {
 async function voirAbsences(id) {
   const el = Donnees.get('eleves', id), a = absencesEleve(el);
   ouvrirModale(`Absences — ${el.nom} ${el.prenom}`, `
-    <p><b>${a.n} jour${a.n > 1 ? 's' : ''}</b> ${motifsAbsence()} au <b>${esc(a.periode?.code || '')}</b>
+    <p><b>${a.n} ${a.unite || 'jour'}${a.n > 1 ? 's' : ''}</b> ${motifsAbsence()} au <b>${esc(a.periode?.code || '')}</b>
       <span class="aide">(${esc(a.periode?.texte || '')})</span></p>
     <ul class="liste-absences">${a.jours.map(([date, l]) => `<li><b>${dateCourte(date)}</b> — ${[...new Set(l.map(x => MOTIFS_ALERTE[x.code]))].join(' / ')}
       <span class="aide">· ${esc([...new Set(l.map(x => x.quoi))].join(', '))}</span></li>`).join('')}</ul>
@@ -910,12 +924,22 @@ document.addEventListener('click', e => {
 }, true);
 
 function htmlNotes(c) {
-  const eleves = ordreNotes(c, elevesDe(c.id));
+  let eleves = ordreNotes(c, elevesDe(c.id));
   const vue = periodeAffichee(), periodes = periodesAnnee();
   const toutes = evalsDe(c.id);
-  const evals = evalsDeColonne(toutes, vue);
-  const colsMoy = colonnesMoyenne();
-  if (!eleves.length) {
+  let evals = evalsDeColonne(toutes, vue);
+  // École : filtres par matière et par niveau ; sans note chiffrée à l'écran, pas de colonnes de moyenne.
+  if (avecEcole()) {
+    const f = filtresNotesEcole(c, eleves, evals);
+    eleves = f.eleves; evals = f.evals;
+  }
+  const sansNotes = avecEcole() && evals.every(sansNoteEval);
+  const colsMoy = sansNotes ? [] : colonnesMoyenne();
+  if (!eleves.length && !avecEcole()) {
+    return `<div class="vide"><h2>${esc(c.nom)}</h2><p>Pas encore d’élèves dans cette classe.</p>
+      <button class="primaire" data-action="vue-eleves">Ajouter des élèves</button></div>`;
+  }
+  if (!elevesDe(c.id).length) {
     return `<div class="vide"><h2>${esc(c.nom)}</h2><p>Pas encore d’élèves dans cette classe.</p>
       <button class="primaire" data-action="vue-eleves">Ajouter des élèves</button></div>`;
   }
@@ -926,18 +950,19 @@ function htmlNotes(c) {
       <h2>${esc(c.nom)}</h2>
       <button class="primaire" data-action="ajout-eval">+ Évaluation</button>
       <button data-action="excel-notes" title="Import de toutes ses notes d’École Directe ou de Pronote (l’export Excel des notes est aussi ici)">📥 Importer mes notes</button>
-      <button data-action="appreciations" title="Appréciations du trimestre proposées par l’appli, d’après les notes et les ${motMin('lecons')}">✍ Appréciations</button>${typeof htmlBoutonsBilansSvt === 'function' ? htmlBoutonsBilansSvt(c) : ''}
+      ${avecEcole() ? htmlBoutonsEcole(c) : `<button data-action="appreciations" title="Appréciations du trimestre proposées par l’appli, d’après les notes et les ${motMin('lecons')}">✍ Appréciations</button>`}${typeof htmlBoutonsBilansSvt === 'function' ? htmlBoutonsBilansSvt(c) : ''}
       <label class="choix-tri">Période
         <select data-periode>
           <option value="annee">Toute l’année</option>
           ${periodes.map(p => `<option value="${p.id}" ${p.id === vue ? 'selected' : ''}>${p.code} (${esc(p.texte)})</option>`).join('')}
         </select></label>
       <button class="icone-petit" data-action="periodes" title="Régler les trimestres / semestres" aria-label="Régler les périodes">⚙</button>
-      <button data-modif-classe="${c.id}" title="Régler la correspondance note → degré de maîtrise pour cette classe">⚙ Note → degré
+      ${sansNotes ? '' : `<button data-modif-classe="${c.id}" title="Régler la correspondance note → degré de maîtrise pour cette classe">⚙ Note → degré
         <span class="aide">(${seuilsClasse(c).map(fmt).join(' / ')})</span></button>
-      <span class="aide aide-saisie">Saisie : note, ou ${aideCodes()} — Entrée = élève suivant</span>
+      <span class="aide aide-saisie">Saisie : note, ou ${aideCodes()} — Entrée = élève suivant</span>`}
     </div>
-    ${evals.length ? '' : toutes.length
+    ${avecEcole() ? htmlFiltresEcole(c) : ''}
+    ${evals.length ? '' : avecEcole() && toutes.length ? '<p class="aide">Aucune évaluation pour ce choix.</p>' : toutes.length
     ? `<p class="aide">Aucune évaluation sur le ${periodes.find(p => p.id === vue).code} — ${toutes.length} sur le reste de l’année (choisis « Toute l’année » pour les voir).</p>`
     : '<p class="aide">Crée une évaluation pour commencer à noter.</p>'}
     ${evals.some(e => competencesEval(e).length) ? `
@@ -952,12 +977,12 @@ function htmlNotes(c) {
             const comp = resumeCompetences(e);
             const nb = nbSousColonnes(e);
             return `
-            <th class="col-eval${classeCa(e)}" data-eval-entete="${e.id}" ${nb ? `colspan="${nb + 1}"` : 'rowspan="2"'}
+            <th class="col-eval${classeCa(e)}" data-eval-entete="${e.id}" ${nb ? (sansNoteEval(e) && nb === 1 ? '' : `colspan="${nb + (sansNoteEval(e) ? 0 : 1)}"`) : 'rowspan="2"'}
               title="${esc(comp.detail ? comp.detail + '\n\n(cliquer pour modifier)' : 'Modifier l’évaluation')}">
               ${e.ca ? `<span class="chip-ca">${e.ca}</span>` : ''}
               <div class="eval-titre">${esc(e.titre)}</div>
               <div class="eval-info">${esc(e.apsa || '')}</div>
-              <div class="eval-info">${dateCourte(e.date)} · /${fmt(e.max)}${e.coef !== 1 ? ' · coef ' + fmt(e.coef) : ''}</div>
+              <div class="eval-info">${dateCourte(e.date)}${sansNoteEval(e) ? '' : ` · /${fmt(e.max)}${e.coef !== 1 ? ' · coef ' + fmt(e.coef) : ''}`}</div>
               ${e.nonSignificative ? '<div class="eval-info eval-non-signif" title="Note non significative : affichée entre parenthèses, elle ne compte pas dans la moyenne">non significative</div>' : ''}
               ${nb ? '' : flechesTri('note|' + e.id)}
             </th>`;
@@ -967,7 +992,7 @@ function htmlNotes(c) {
         <tr class="entete-comp">
           ${evals.filter(e => nbSousColonnes(e)).map(e => `
             ${partiesEval(e).map(p => `<th class="sous-comp sous-partie${classeCa(e)}" title="${esc((p.groupe ? p.groupe + ' › ' : '') + p.nom)} : sur ${fmt(p.max)} pts${p.source ? '\n' + { perf: 'Tape la performance : les points se calculent', degre: 'Touche le degré (1 à 4) : haut de la fourchette', palier: 'Choisis le palier atteint', case: 'Coche si le critère est rempli' }[p.source.type] : ''}">${esc(resumeTexte(p.nom, 14))}<div class="eval-info">/${fmt(p.max)}</div>${flechesTri(`part|${e.id}|${p.id}`)}</th>`).join('')}
-            <th class="sous-note${classeCa(e)}">${partiesEval(e).length ? `Total<div class="eval-info">/${fmt(e.max)}</div>` : 'Note'}${flechesTri('note|' + e.id)}</th>
+            ${sansNoteEval(e) ? '' : `<th class="sous-note${classeCa(e)}">${partiesEval(e).length ? `Total<div class="eval-info">/${fmt(e.max)}</div>` : 'Note'}${flechesTri('note|' + e.id)}</th>`}
             ${competencesEval(e).map(a => `<th class="sous-comp${classeCa(e)}" title="${esc(a.code + ' : ' + a.texte)}">${esc(a.code)}${flechesTri(`comp|${e.id}|${a.id}`)}</th>`).join('')}`).join('')}
         </tr></thead>
         <tbody>
@@ -976,6 +1001,7 @@ function htmlNotes(c) {
             return `<tr>
             ${celluleNom(el, i)}
             ${evals.map(e => {
+              if (sansNoteEval(e)) return celluleDegres(e, el, i, () => col++); // (école : degrés seulement)
               const v = Donnees.note(e.id, el.id);
               const ns = e.nonSignificative ? ' non-signif' : ''; // (note non significative : entre parenthèses, hors moyenne)
               const nomEleve = el.nom + ' ' + el.prenom;
@@ -1013,17 +1039,17 @@ function htmlNotes(c) {
           ${evals.some(e => competencesEval(e).length) ? `
           <tr class="ligne-repartition">
             <th class="col-nom">Répartition</th>
-            ${evals.map(e => `${partiesEval(e).map(() => '<td></td>').join('')}<td></td>
+            ${evals.map(e => `${partiesEval(e).map(() => '<td></td>').join('')}${sansNoteEval(e) ? '' : '<td></td>'}
               ${competencesEval(e).map(a => `<td class="bilan-comp" data-bilan="${e.id}|${esc(a.id)}"></td>`).join('')}`).join('')}
             ${colsMoy.map(m => `<td class="col-moy${classeAnnee(m)}"></td>`).join('')}
           </tr>` : ''}
         </tbody>
-        <tfoot><tr>
+        ${sansNotes ? '' : `<tfoot><tr>
           <th class="col-nom">Moyenne de la classe</th>
-          ${evals.map(e => `${partiesEval(e).map(p => `<td class="moy-partie" data-moy-partie="${e.id}|${esc(p.id)}"></td>`).join('')}<td data-moy-eval="${e.id}"></td>
+          ${evals.map(e => `${partiesEval(e).map(p => `<td class="moy-partie" data-moy-partie="${e.id}|${esc(p.id)}"></td>`).join('')}${sansNoteEval(e) ? '' : `<td data-moy-eval="${e.id}"></td>`}
             ${competencesEval(e).map(a => `<td class="bilan-mini" data-bilan-barre="${e.id}|${esc(a.id)}"></td>`).join('')}`).join('')}
           ${colsMoy.map(m => `<td class="col-moy${classeAnnee(m)}" data-moy-classe="${m.id}"></td>`).join('')}
-        </tr></tfoot>
+        </tr></tfoot>`}
       </table>
     </div>`;
 }
@@ -1042,6 +1068,9 @@ function celluleDegres(e, el, i, col) {
       aria-label="${esc(nomEleve + ' — ' + a.code + ' — ' + (n ? nomNiveau(n) : 'non évalué'))}">${n}</button></td>`;
   }).join('');
 }
+
+// École : évaluation en degrés seulement, sans colonne de note (il lui faut au moins une compétence).
+const sansNoteEval = e => !!e.sansNote && competencesEval(e).length > 0;
 
 // Couleur du champ d'apprentissage (CA1 rouge, CA2 vert, CA3 violet, CA4 bleu, CA5 orange).
 const classeCa = e => (e.ca ? ' ca-' + e.ca : '');
@@ -1232,7 +1261,7 @@ function htmlEleves(c) {
       ${eleves.length && typeof htmlModeEleves === 'function' ? htmlModeEleves() : ''}
       <button class="primaire" data-action="ajout-eleve">+ Élève</button>
       <button data-action="coller-liste" title="Coller une liste copiée depuis Pronote ou un tableur">📋 Coller une liste</button>
-      <button data-action="import-ed" title="Créer ou compléter les fiches à partir de la liste de classe exportée d’École Directe ou de Pronote (.xlsx, .csv)">📥 École Directe / Pronote</button>
+      <button data-action="import-ed" title="Créer ou compléter les fiches à partir de la liste de classe exportée d’École Directe ou de Pronote (.xlsx, .csv)">${avecEcole() ? "📥 Importer une liste" : "📥 École Directe / Pronote"}</button>
       <button data-action="trombi" title="Photos des élèves : importer le trombinoscope de la classe (PDF ou image)">📷 Trombinoscope</button>
       <label class="choix-tri">Ordre
         <select data-tri-classe="${c.id}">
@@ -1283,7 +1312,7 @@ function htmlEleves(c) {
         </tbody>
       </table></div>`
     : `<div class="vide"><p>Aucun élève pour l’instant.</p>
-        <p class="aide">Astuce : « 📥 École Directe / Pronote » avec la liste de classe exportée (.xlsx ou .csv), ou copie la liste depuis Pronote ou un tableur, puis « Coller une liste ».</p></div>`}`;
+        <p class="aide">Astuce : ${avecEcole() ? "« 📥 Importer une liste » avec la liste exportée d’ONDE, d’École Directe ou d’un tableur (.xlsx ou .csv), ou copie-la, puis « Coller une liste »" : "« 📥 École Directe / Pronote » avec la liste de classe exportée (.xlsx ou .csv), ou copie la liste depuis Pronote ou un tableur, puis « Coller une liste »"}.</p></div>`}`;
 }
 
 /* ---------- ↶ Retour en arrière / ↷ retour vers l'avant (boutons à côté d'« Enregistrer »,
@@ -1717,12 +1746,12 @@ async function editerClasse(id) {
   const c = id ? Donnees.get('classes', id) : { nom: '', niveau: '' };
   const s = seuilsClasse(c);
   const { resultat } = ouvrirModale(id ? 'Modifier la classe' : 'Nouvelle classe', `
-    <label>Nom de la classe<input name="nom" required autofocus value="${esc(c.nom)}" placeholder="ex. 3e B"></label>
+    <label>Nom de la classe<input name="nom" required autofocus value="${esc(c.nom)}" placeholder="${esc(profil().classeExemple || 'ex. 3e B')}"></label>
     <label>Niveau<select name="niveau">
-      <option value="">—</option>${NIVEAUX.map(n => `<option ${c.niveau === n ? 'selected' : ''}>${n}</option>`).join('')}
+      <option value="">—</option>${niveauxProposes().map(n => `<option ${c.niveau === n ? 'selected' : ''}>${n}</option>`).join('')}
     </select></label>
-    <label class="case"><input type="checkbox" name="pp" ${c.pp ? 'checked' : ''}> ⭐ Je suis professeur principal de cette classe
-      <span class="aide">(ajoute l’onglet « Prof principal » : bulletins, appréciation générale, conseil, suivi)</span></label>
+    ${avecEcole() ? '<input type="hidden" name="pp">' : `<label class="case"><input type="checkbox" name="pp" ${c.pp ? 'checked' : ''}> ⭐ Je suis professeur principal de cette classe
+      <span class="aide">(ajoute l’onglet « Prof principal » : bulletins, appréciation générale, conseil, suivi)</span></label>`}
     <fieldset class="competences">
       <legend>Correspondance note → degré de maîtrise (pour cette classe)</legend>
       <div class="ligne seuils">
@@ -1737,6 +1766,7 @@ async function editerClasse(id) {
   boutonsModale(id ? 'Enregistrer' : 'Créer', id
     ? BOUTON_SUPPRIMER + (elevesDe(id).some(el => el.responsables)
       ? '<button value="effacer-coord" formnovalidate title="Retire téléphones, emails et adresses des responsables de toute la classe">Effacer les coordonnées</button>' : '')
+    : avecEcole() ? '<button value="ecole-directe" formnovalidate title="Créer la classe et ses élèves à partir d’une liste exportée (ONDE, École Directe, Excel… en .xlsx ou .csv)">📥 Depuis une liste (ONDE, École Directe, Excel)…</button>'
     : '<button value="ecole-directe" formnovalidate title="Créer la classe et ses élèves à partir de la liste exportée d’École Directe ou de Pronote (.xlsx, .csv)">📥 Depuis École Directe / Pronote…</button>'
       + (classeExemple() || !aClasseExemple() ? '' : `<button value="exemple" formnovalidate title="Une classe inventée, déjà remplie, pour découvrir le carnet">🎓 Classe exemple${exemplesEnPlus().length ? ` (${esc(jeuExemple().niveau)})` : ''}</button>`)
       // (Autres classes exemples de la discipline : SVT 4e.)
@@ -1783,7 +1813,8 @@ function supprimerClasse(id) {
 async function editerEval(id) {
   const c = classeActive();
   const defaut = reglage('notes');
-  const e = id ? Donnees.get('evals', id) : { titre: '', apsa: '', date: aujourdhui(), max: defaut.max, coef: defaut.coef };
+  const e = id ? Donnees.get('evals', id) : { titre: '', apsa: '', date: aujourdhui(), max: defaut.max, coef: defaut.coef,
+    ...(avecEcole() ? { sansNote: true, ca: ui.matiereEcole || undefined } : {}) };
   // Référentiels proposés : ceux qui ne sont pas masqués dans les réglages (+ celui de l'évaluation, quoi qu'il arrive).
   // (Et seulement ceux de la discipline du carnet, plus les référentiels personnels.)
   const refsProposes = Object.values(REFERENTIEL.refs).filter(r => (!r.masque && referentielDeLaDiscipline(r)) || r.id === e.referentiel);
@@ -1852,7 +1883,7 @@ async function editerEval(id) {
     selCa.closest('label').hidden = !!ref.toutes;
     if (ref.toutes) ca = '';
     // (Référentiel personnel : un champ sans titre n'est pas utilisé.)
-    selCa.innerHTML = '<option value="">—</option>' + Object.entries(ref.champs).filter(([k, ch]) => ch.titre.trim() || k === ca)
+    selCa.innerHTML = '<option value="">—</option>' + Object.entries(ref.champs).filter(([k, ch]) => (ch.titre.trim() && (!avecEcole() || matieresClasse(c).some(([m]) => m === k))) || k === ca)
       .map(([k, ch]) => `<option value="${esc(k)}" ${k === ca ? 'selected' : ''}>${esc(k)} — ${esc(ch.titre)}</option>`).join('');
     majAttendus();
   };
@@ -1871,7 +1902,7 @@ async function editerEval(id) {
     const champ = ref.champs[selCa.value];
     // Compétences masquées dans les réglages : plus proposées, sauf si l'évaluation les a déjà.
     const attendus = champ ? champ.attendus.filter(a => !a.masque || coches.has(a.id)) : [];
-    zone.innerHTML = !champ ? '<p class="aide">Choisis le champ d’apprentissage pour cocher les compétences travaillées.</p>'
+    zone.innerHTML = !champ ? `<p class="aide">${esc(mot('choisirChamp'))} pour cocher les compétences travaillées.</p>`
       : attendus.length ? attendus.map(a => `
           <label class="case competence"><input type="checkbox" name="competence" value="${esc(a.id)}" ${coches.has(a.id) ? 'checked' : ''}>
             <span><b>${esc(a.code)}</b> ${esc(a.texte)}</span></label>`).join('')
@@ -1941,6 +1972,7 @@ async function editerEval(id) {
     const val = n => +$(`[name="${n}"]`, d).value;
     $('.seuils-bareme', d).textContent = seuilsDansBareme([val('s2'), val('s3'), val('s4')], val('max'));
   });
+  if (avecEcole()) preparerEvalEcole(d, e); // (école : degrés par défaut, note chiffrée en option)
 
   const r = await resultat;
   if (r.action === 'supprimer') {
@@ -1972,6 +2004,7 @@ async function editerEval(id) {
       parties: parties.length ? parties : undefined, bareme: lien,
       titre: r.data.titre.trim(), apsa: r.data.apsa.trim(), date: r.data.date, max, coef: +r.data.coef,
       nonSignificative: r.data.nonSignificative === 'on' || undefined,
+      ...(avecEcole() ? { sansNote: r.data.avecNote !== 'on' || undefined } : {}),
       referentiel: r.data.referentiel, ca: toutes ? '' : r.data.ca,
       competences: r.data.ca || toutes ? r.fd.getAll('competence').filter(duChamp) : [],
       competencesLibres: r.data.competencesLibres.trim(),
@@ -2859,6 +2892,18 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.11.0', titre: 'Volley-ball : de nouvelles façons de progresser', discipline: 'eps', points: [
+    '🏐 Dans Ateliers, <b>Match par équipe</b> : une règle de jeu pour chaque équipe, d’après son geste le plus fragile.',
+    '✅ <b>Bilan de l’atelier</b> : note qui a réussi, l’appli propose le niveau suivant. ➕ <b>Ma fiche</b> : ajoute tes propres situations à la banque.',
+  ] },
+  { version: '1.10.0', titre: 'De nouveaux outils pour la classe', discipline: 'ecole', points: [
+    '📖 <b>Fluence et rituels</b> : la minute de lecture, les scores de calcul mental, de dictée et de tables, la courbe de chaque élève.',
+    '🧩 <b>Groupes de besoin</b> d’après les derniers degrés. 🪑 <b>Plan de classe</b>, à imprimer pour un remplaçant. Tout est dans l’onglet Outils.',
+  ] },
+  { version: '1.9.0', titre: 'Un nouveau carnet : École élémentaire', discipline: 'ecole', points: [
+    '🏫 Une classe, toutes les matières : <b>évaluations en degrés</b> (note en option), filtres par matière et par niveau.',
+    '✅ <b>Appel par demi-journée</b>, cantine et bilan du mois. 📓 <b>Cahier journal</b>. 📘 <b>Livret de période</b> à recopier dans le LSU.',
+  ] },
   { version: '1.8.0', titre: 'Volley-ball : un atelier pour toute la classe', discipline: 'eps', points: [
     '🎯 Dans Ateliers, choisis <b>Un seul atelier</b> : l’appli relève le point le plus fragile du groupe et prépare la séance (jeu, situation en 3 versions par groupes, retour au jeu).',
     '📚 La banque passe à <b>36 situations</b>, dont des idées reprises et adaptées de documents académiques. Bouton 🔄 Autre situation.',

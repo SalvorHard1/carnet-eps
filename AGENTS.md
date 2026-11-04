@@ -71,6 +71,8 @@ une fonction de même nom dans deux fichiers écrase silencieusement l'autre. Ch
 | `fichenotes.js` | Fiche élève de l'onglet Notes. |
 | `appel.js` | Onglet « Appel » (écrit dans la leçon du jour, indicateur `presence`). |
 | `exemple.js` | Classe exemple fictive (ids fixes `exemple-…`). |
+| `ecoleaide.js` | Aide Hugo du carnet École : retire et réécrit des questions de l’arbre commun (`PATCHS_AIDE_ECOLE`), rubrique École avec guides. |
+| `ecole.js` | Carnet École (`profil().ecole`, `avecEcole()`) : matières = champs du référentiel (`eval.ca`, `seance.ca`), évaluation en degrés (`eval.sansNote`), appel par demi-journée (séance `appelJour` par jour, colonnes matin / après-midi / cantine), cahier journal (les autres séances), livret (`suivis` « livret\|élève\|période », `classe.livret`), outils (famille `classe`) : fluence et rituels (`suivis` « élève\|rituel\|id », `classe.rituels`), groupes de besoin, plan de classe (`classe.plan`). Rien ici ne doit changer EPS, SVT ou PC. |
 | `appreciations.js` | Appréciations rédigées par l'appli (banques de phrases, règles) + relecture grammaticale locale. |
 | `ppinfos.js` | Espace Prof principal › 📎 Incorporer des informations : tableaux d’absences, de vie scolaire, d’infirmerie (Excel, CSV, Word .docx, PDF, tableau collé) lus par l’appli ; listes « une ligne par événement » de la Vie scolaire École Directe (absences / retards, sanctions, dispenses) comptées par élève pour la période ; valeurs par élève et période (`suivis` « pp infos … »), seuils → élèves à suivre (`alertesPP`), blocs de la fiche bilan du conseil. |
 | `baremes.js` | Onglet « Barèmes ». |

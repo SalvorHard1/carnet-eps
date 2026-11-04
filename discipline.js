@@ -17,6 +17,7 @@ const DISCIPLINES = {
       activiteExemple: 'ex. Escalade',
       sequenceExemple: 'Handball, demi-fond…',
       champ: 'Champ d’apprentissage',
+      choisirChamp: 'Choisis le champ d’apprentissage',
       lecons: 'Leçons', // nom de l'onglet des séances
       lecon: 'leçon',
       seance: 'séance',
@@ -377,6 +378,63 @@ const DISCIPLINES = {
     },
   },
 };
+
+// École élémentaire : une classe, toutes les matières. Les matières sont les « champs » du référentiel (eval.ca, séance.ca) ;
+// le champ `apsa` garde le thème (facultatif). Appel par demi-journée, cahier journal et livret : ecole.js.
+DISCIPLINES.ecole = {
+  id: 'ecole', nom: 'École', nomChoix: 'École beta', nomComplet: 'École élémentaire, du CP au CM2', carnet: 'Carnet École', ecole: true,
+  classeExemple: 'ex. CE1-CE2 de Mme Martin',
+  mots: {
+    ...DISCIPLINES.pc.mots,
+    activite: 'Thème', activitePlaceholder: 'Facultatif : choisis ou tape un thème', activiteExemple: 'ex. Les fractions',
+    sequenceExemple: 'Les fractions, le Moyen Âge…', champ: 'Matière', choisirChamp: 'Choisis la matière',
+    lecons: 'Cahier journal', lecon: 'séance', seance: 'séance',
+    aideLecons: 'Note le déroulé de la journée : horaire, matière, objectif, puis ce qui s’est passé.',
+    titreEvalExemple: 'ex. Dictée n° 3', competenceLibreExemple: 'compétence du projet d’école',
+    titreSeanceExemple: 'ex. Lecture : le personnage principal', presenceLecons: 'présence',
+    tenueReglage: 'oublient souvent leur matériel', tenuePhrase: 'venir avec son matériel',
+    aideExercice: 'Choisis une séance.', tempsManque: 'ces temps de classe manqués',
+    evalSequenceExemple: 'ex. Évaluation de fin de séquence', evenementExemple: 'Sortie à la médiathèque, piscine, kermesse…',
+    laDiscipline: 'la classe', deDiscipline: 'de la classe', enDiscipline: 'en classe',
+    outilsVisite: 'Chrono, groupes, tirage au sort… pour la classe.', outilsVersLecon: 'chrono, équipes, tirage…',
+    exempleSerie: 'Dictée', exempleTitreEval: 'Dictée n° 3', donneesSeance: 'objectif, déroulement, bilan…',
+    aideNoterSeance: 'l’objectif, le déroulement et le bilan', aideEvenements: 'sortie, piscine, projet…', themeEnPhrase: 'en numération',
+  },
+  niveaux: ['CP', 'CE1', 'CE2', 'CM1', 'CM2', 'CP-CE1', 'CE1-CE2', 'CE2-CM1', 'CM1-CM2', 'Plusieurs niveaux'],
+  champsSequence: false,
+  activites: ['Lecture', 'Écriture', 'Grammaire', 'Orthographe', 'Lexique', 'Numération', 'Calcul', 'Résolution de problèmes', 'Fractions', 'Géométrie', 'Mesures', 'Natation', 'Jeux collectifs'],
+  referentiels: ['ecoleCycle2', 'ecoleCycle3'],
+  referentielParNiveau: { CP: 'ecoleCycle2', CE1: 'ecoleCycle2', CE2: 'ecoleCycle2', 'CP-CE1': 'ecoleCycle2', 'CE1-CE2': 'ecoleCycle2', 'CE2-CM1': 'ecoleCycle2', CM1: 'ecoleCycle3', CM2: 'ecoleCycle3', 'CM1-CM2': 'ecoleCycle3' },
+  referentielDefaut: 'ecoleCycle2',
+  familleOutilsMasquees: ['apsa', 'sciences'],
+  outilsMasques: ['intervalles', 'vma', 'tableau', 'video'],
+  ongletsMasques: ['baremes', 'pp'], // (pas de barèmes de discipline ni de professeur principal à l'école)
+  codes: ['ABS', 'NE', 'MAL', 'AUT'],
+  modeleSeance: () => [],
+  typesEvenements: [
+    { id: 'sortie', nom: 'Sortie', couleur: '#0f6670' },
+    { id: 'piscine', nom: 'Piscine, sport', couleur: '#1f5f9e' },
+    { id: 'projet', nom: 'Projet de classe ou d’école', couleur: '#a3306e' },
+    { id: 'reunion', nom: 'Réunion (conseil de maîtres, parents…)', couleur: '#5b3fa0' },
+    { id: 'autre', nom: 'Autre', couleur: '#3d4a52' },
+  ],
+  appreciations: {
+    sansTutoiement: true, // (texte lu par les familles, comme le livret : toujours à la 3e personne)
+    noms: { moteur: { nom: 'Connaissances', aide: 'résultats' }, methodo: { nom: 'Méthode', aide: 'organisation, soin' } },
+    phrases: { attitude: DISCIPLINES.svt.appreciations.phrases.attitude, moteur: DISCIPLINES.svt.appreciations.phrases.moteur,
+      methodo: {
+        4: { p: ['{S} travaille avec beaucoup de soin et de méthode.'], t: ['Travail très soigné.'] },
+        3: { p: ['{S} travaille avec méthode.'], t: ['Travail méthodique.'] },
+        2: { p: { b: ['{S} doit encore gagner en soin et en organisation.'], n: ['Le soin et l’organisation restent à améliorer.'], x: ['{S} manque de soin et d’organisation.'] }, t: { b: ['Organisation à développer.'], n: ['Organisation à améliorer.'], x: ['Manque de soin.'] } },
+        1: { p: { b: ['{S} a besoin d’aide pour s’organiser.'], n: ['{S} peine à s’organiser.'], x: ['L’organisation du travail reste très difficile.'] }, t: { b: ['Organisation à construire.'], n: ['Organisation difficile.'], x: ['Travail non organisé.'] } },
+      } },
+    objectifs: { moteur: ['consolider ses acquis', 'apprendre régulièrement ses leçons'], methodo: ['gagner en soin et en organisation', 'prendre le temps de se relire'] },
+    fiche: { niveauFort: ['Bons acquis', 'maîtrise bien ce qui a été travaillé'], niveauFaible: ['Acquis fragiles', 'consolider ses acquis avec un travail régulier'],
+      methodo: ['Méthode', 'gagner en soin et en organisation'], assiduite: ['Assiduité', 'est assidu{e} et travaille avec régularité'] },
+  },
+};
+const avecEcole = () => !!profil().ecole;
+const niveauxProposes = () => profil().niveaux || NIVEAUX;
 
 // Discipline du carnet (EPS si rien n'est choisi, ou si le carnet vient d'une version plus récente avec une discipline inconnue ici).
 function disciplineActive() {

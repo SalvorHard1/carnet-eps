@@ -225,7 +225,7 @@ function absentsDuJour(c) {
   let a = etatOutils.absents[c.id];
   if (!a || a.date !== auj) {
     const seances = seancesDe(c.id).filter(s => s.date === auj);
-    const ids = elevesDe(c.id).filter(el => dispenseLe(el, auj)
+    const ids = elevesDe(c.id).filter(el => dispenseLe(el, auj) || (avecEcole() && absentDemiJournee(c, el))
       || seances.some(s => ['ABS', 'DISP', 'BLE', 'MAL'].includes(Donnees.note(s.id, el.id)))).map(el => el.id);
     a = etatOutils.absents[c.id] = { date: auj, ids };
   }
@@ -290,8 +290,8 @@ function htmlOutils(c) {
       <h2>${o.icone} ${o.nom}</h2>
       ${o.classe && c ? `<span class="aide">${esc(c.nom)}</span>` : ''}
       <span class="espace-outil"></span>
-      ${c && !sansEleves && TRANSFERTS[o.id] && !enModeEleve() ? `<button class="primaire" data-o="vers-lecon" title="Envoyer les résultats de cet outil dans une ${motMin('lecon')} de la classe">📤 Vers une ${motMin('lecon')}</button>` : ''}
-      ${sansClasse || sansEleves || (enModeEleve() && o.id === 'vma') ? '' : '<button data-o="reinitialiser" title="Remettre cet outil à zéro">🗑 Tout effacer</button>'}
+      ${c && !sansEleves && TRANSFERTS[o.id] && !enModeEleve() && !avecEcole() ? `<button class="primaire" data-o="vers-lecon" title="Envoyer les résultats de cet outil dans une ${motMin('lecon')} de la classe">📤 Vers une ${motMin('lecon')}</button>` : ''}
+      ${sansClasse || sansEleves || o.sansEffacer || (enModeEleve() && o.id === 'vma') ? '' : '<button data-o="reinitialiser" title="Remettre cet outil à zéro">🗑 Tout effacer</button>'}
       <button data-o="plein-ecran" title="Plein écran (lisible de loin)">⛶ Plein écran</button>
     </div>
     <div class="outil-corps outil-${o.id}">

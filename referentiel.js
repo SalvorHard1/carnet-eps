@@ -250,6 +250,36 @@ const REFERENTIEL = (() => {
       socle: { C1: ['D4', 'D2', 'D1'], C2: ['D4'], C3: ['D2'], C4: ['D1', 'D4'], C5: ['D2'], C6: ['D3', 'D4', 'D5'], C7: ['D5', 'D4'] },
     },
     // Sciences et technologie, 6e (cycle 3) : programme du BO n° 25 du 22 juin 2023, compétences travaillées.
+    // École élémentaire : domaines des bilans périodiques du modèle national de livret scolaire (cycles 2 et 3).
+    // Cycle 2 : « Questionner le monde » laisse la place à l'histoire-géographie (BO n° 22 du 28/05/2026) et aux sciences et technologie
+    // (BO n° 24 du 11/06/2026) : CP à la rentrée 2026, CE1 et CE2 à la rentrée 2027 (calendrier Eduscol 07.2026) ; voir champVisibleEcole (ecole.js).
+    ecoleCycle2: {
+      nom: 'École — cycle 2 (CP, CE1, CE2)', code: '',
+      champs: {
+        FR: ['Français', [['Oral', 'Langage oral'], ['Lecture', 'Lecture et compréhension de l’écrit'], ['Écriture', 'Écriture'], ['Langue', 'Étude de la langue (vocabulaire, orthographe, grammaire)']]],
+        MA: ['Mathématiques', [['Nombres', 'Nombres et calcul'], ['Mesures', 'Grandeurs et mesures'], ['Espace', 'Espace et géométrie']]],
+        EPS: ['Éducation physique et sportive', [['EPS', 'Éducation physique et sportive']]],
+        LV: ['Langue vivante', [['Oral LV', 'Écouter et parler'], ['Écrit LV', 'Lire et écrire']]],
+        ART: ['Enseignements artistiques', [['Arts', 'Enseignements artistiques']]],
+        QLM: ['Questionner le monde', [['QLM', 'Questionner le monde']]],
+        HG: ['Histoire et géographie', [['Hist.-géo', 'Histoire et géographie']]],
+        ST: ['Sciences et technologie', [['Sciences', 'Sciences et technologie']]],
+        EMC: ['Enseignement moral et civique', [['EMC', 'Enseignement moral et civique']]],
+      },
+    },
+    ecoleCycle3: {
+      nom: 'École — cycle 3 (CM1, CM2)', code: '',
+      champs: {
+        FR: ['Français', [['Oral', 'Langage oral'], ['Lecture', 'Lecture et compréhension de l’écrit'], ['Écriture', 'Écriture'], ['Langue', 'Étude de la langue (grammaire, orthographe, lexique)']]],
+        MA: ['Mathématiques', [['Nombres', 'Nombres et calcul'], ['Mesures', 'Grandeurs et mesures'], ['Espace', 'Espace et géométrie']]],
+        EPS: ['Éducation physique et sportive', [['EPS', 'Éducation physique et sportive']]],
+        LV: ['Langue vivante', [['Oral LV', 'Écouter et parler'], ['Écrit LV', 'Lire et écrire']]],
+        ART: ['Enseignements artistiques', [['Arts pl.', 'Arts plastiques et visuels'], ['Musique', 'Éducation musicale'], ['Hist. arts', 'Histoire des arts']]],
+        HG: ['Histoire et géographie', [['Histoire', 'Histoire'], ['Géo', 'Géographie']]],
+        ST: ['Sciences et technologie', [['Sciences', 'Sciences et technologie']]],
+        EMC: ['Enseignement moral et civique', [['EMC', 'Enseignement moral et civique']]],
+      },
+    },
     sciTechCycle3: {
       nom: 'Sciences et technologie — 6e (cycle 3)', code: '', toutes: true,
       champs: {

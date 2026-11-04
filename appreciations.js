@@ -915,7 +915,9 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
             : ton === 'bienveillant' ? ['{Suite}, il faudra {but}. Courage !', 'Je te conseille, pour la suite, {deTu}. Courage !', 'Afin de progresser, {imp}. Courage !', 'Pour progresser, il faudra {but}. Courage !']
               : ['{Suite}, il faudra {but}.', 'Je te conseille, pour la suite, {deTu}.', 'Afin de progresser, {imp}.', 'Il faut maintenant {but}.'];
       const suite = choisirAppr(moinsDeRepetitions(suiteAppr(periode, per)), g('suite'));
-      let t = remplir(choisir(modelesObjectifAppr(modeles, but, false, suite), g('objectif'), 20), 0);
+      // (École : le texte parle de l'élève du début à la fin, sans « Je te conseille » ni impératif : voir sansTutoiement, discipline.js.)
+      const modelesDits = profil().appreciations?.sansTutoiement ? modeles.filter(m => !/\{deTu\}|\{imp\}/.test(m)) : modeles;
+      let t = remplir(choisir(modelesObjectifAppr(modelesDits, but, false, suite), g('objectif'), 20), 0);
       t = t[0].toUpperCase() + t.slice(1);
       ajouter({ cle: 'objectif', texte: t });
     }

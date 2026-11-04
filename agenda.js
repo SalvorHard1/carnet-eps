@@ -159,13 +159,13 @@ function htmlAgenda() {
       </select>
       <span class="espace-outil"></span>
       <button class="primaire" data-ag="nouvelle-sequence">+ Séquence</button>
-      <button data-ag="nouveau-conseil">+ Conseils de classe</button>
+      ${avecEcole() ? "" : `<button data-ag="nouveau-conseil">+ Conseils de classe</button>`}
       <button data-ag="nouvel-evenement">+ Événement</button>
       <button data-ag="edt" title="Jours et heures de cours de chaque classe (import du PDF École Directe / Pronote possible)">🕒 Emploi du temps</button>
       <button data-ag="reglages" title="Dates de l’année, vacances, types d’événements, affichage">⚙ Année et vacances</button>
     </div>
     <div class="afficher-agenda"><span class="aide">Afficher :</span>
-      ${Object.entries(AFFICHAGES_AGENDA).map(([k, nom]) => `<button class="pastille-ag${r.afficher[k] ? ' actif' : ''}" data-ag="afficher" data-arg="${k}" aria-pressed="${!!r.afficher[k]}">${nom}</button>`).join('')}
+      ${Object.entries(AFFICHAGES_AGENDA).filter(([k]) => k !== 'conseils' || !avecEcole()).map(([k, nom]) => `<button class="pastille-ag${r.afficher[k] ? ' actif' : ''}" data-ag="afficher" data-arg="${k}" aria-pressed="${!!r.afficher[k]}">${nom}</button>`).join('')}
     </div>
     ${rien ? `<p class="aide astuce-agenda">Pour commencer : <b>🕒 Emploi du temps</b> (tu peux importer le PDF d’École Directe ou de Pronote), puis <b>⚙ Année et vacances</b>,
       et ajoute tes séquences. Un toucher sur une ligne de la frise crée une séquence à cette date.</p>` : ''}
@@ -549,7 +549,7 @@ async function editerEvenementAg(id, preset = {}) {
     : `<label>Titre<input name="titre" value="${esc(e.titre)}" required placeholder="${esc(mot('evenementExemple'))}"></label>
       <div class="ligne">
         <label>Type<select name="typeEv">${r.types.map(t => `<option value="${esc(t.id)}" ${t.id === e.typeEv ? 'selected' : ''}>${esc(t.nom)}</option>`).join('')}</select></label>
-        <label>Pour<select name="classe"><option value="">Tout le collège</option>${classes.map(c => `<option value="${c.id}" ${c.id === e.classeId ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label>
+        <label>Pour<select name="classe"><option value="">${avecEcole() ? "Toute l’école" : "Tout le collège"}</option>${classes.map(c => `<option value="${c.id}" ${c.id === e.classeId ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label>
       </div>`}
     <div class="ligne">
       <label>${conseil ? 'Date' : 'Le (ou du)'}<input type="date" name="debut" value="${e.debut}" required></label>
@@ -633,7 +633,7 @@ async function reglerAgenda() {
       <div data-lignes="type">${r.types.map(ligneType).join('')}</div>
       <button type="button" data-ajout-ligne="type">+ Ajouter un type</button></fieldset>
     <fieldset><legend>Afficher dans l’agenda</legend>
-      <div class="cases-mode-eleve">${Object.entries(AFFICHAGES_AGENDA).map(([k, nom]) => `<label class="case"><input type="checkbox" name="afficher" value="${k}" ${r.afficher[k] ? 'checked' : ''}> ${nom}</label>`).join('')}</div></fieldset>`,
+      <div class="cases-mode-eleve">${Object.entries(AFFICHAGES_AGENDA).filter(([k]) => k !== 'conseils' || !avecEcole()).map(([k, nom]) => `<label class="case"><input type="checkbox" name="afficher" value="${k}" ${r.afficher[k] ? 'checked' : ''}> ${nom}</label>`).join('')}</div></fieldset>`,
   boutonsModale('Enregistrer'), 'modale-large');
   lignesDynamiques(d, { vac: () => ligneVac(), type: () => ligneType() });
   const res = await resultat;

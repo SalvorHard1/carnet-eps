@@ -2720,7 +2720,7 @@ body.mode-eleve #hugo-bouton, body.mode-eleve #hugo-panneau, body.mode-eleve #hu
 #choix-degre .niveau.vise { outline: 3px solid var(--texte); outline-offset: 1px; transform: scale(1.08); }
 @media (max-width: 400px) { #choix-degre { gap: 3px; padding: 4px; } #choix-degre .niveau { width: 58px; } #choix-degre .degre-vider { width: 44px; } }
 /* Volley-ball : plusieurs ateliers ou un seul pour toute la classe */
-.types-ateliers-volley { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.types-ateliers-volley { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 10px; }
 .type-atelier-volley { min-height: 60px; padding: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; line-height: 1.2; border: 2px solid var(--bord); border-radius: calc(12px * var(--arrondi, 1)); }
 .type-atelier-volley b { font-size: 15px; }
 .type-atelier-volley small { font-size: 12px; font-weight: 400; text-align: center; }
@@ -2742,3 +2742,94 @@ div.tete-atelier-volley { display: flex; align-items: center; justify-content: c
   :root:not([data-theme="light"]) .point-volley { border-color: var(--geste-vif); }
 }
 :root[data-theme="dark"] .point-volley { border-color: var(--geste-vif); }
+
+/* ---------- Carnet École (ecole.js) ---------- */
+.filtres-ecole { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.puce-ecole { min-height: 36px; padding: 4px 12px; border-radius: calc(999px * var(--arrondi, 1)); font-size: 14px; }
+.puce-ecole.actif { background: var(--accent); border-color: var(--accent); color: #fff; }
+.bouton-appel.b-cantine.choisi { background: #3f6ea8; border-color: #3f6ea8; color: #fff; }
+.bouton-appel.b-R.choisi { background: #d97706; border-color: #d97706; color: #fff; }
+.bouton-appel.b-P.choisi { background: #2e9d4a; border-color: #2e9d4a; color: #fff; }
+.jour-journal { margin: 10px 0 6px; }
+.liste-journal { display: grid; gap: 10px; }
+.carte-journal { padding: 10px 12px; background: var(--surface); border: 1px solid var(--bord); border-left: 6px solid var(--bord); border-radius: calc(10px * var(--arrondi, 1)); }
+.carte-journal.faite { border-left-color: #2e9d4a; }
+.carte-journal.a-reprendre { border-left-color: #d97706; }
+.carte-journal p { margin: 4px 0; }
+.texte-journal { white-space: pre-wrap; }
+.tete-journal { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: none; padding: 2px 0; color: inherit; font: inherit; }
+.heure-journal { font-variant-numeric: tabular-nums; color: var(--texte2); }
+.chip-matiere { padding: 1px 8px; border-radius: calc(999px * var(--arrondi, 1)); background: var(--surface2); font-size: 13px; }
+.bilan-journal { display: block; margin-top: 6px; }
+.bilan-journal textarea, .appr-livret textarea, .matiere-livret textarea { width: 100%; }
+.etats-journal { display: flex; gap: 6px; margin-top: 6px; }
+.etats-journal button { min-height: 36px; }
+.etats-journal button.actif { background: var(--accent); border-color: var(--accent); color: #fff; }
+.matiere-livret { padding: 8px 0 12px; border-bottom: 1px solid var(--bord); }
+.matiere-livret h3 { margin: 4px 0 6px; }
+.domaine-livret { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 0; }
+.choix-position { display: inline-flex; gap: 4px; }
+.appr-livret { display: block; margin-top: 6px; }
+@media print {
+  .page-livret { break-after: page; }
+  .page-livret:last-child { break-after: auto; }
+}
+.b-justif { margin-left: 6px; min-height: 36px; padding: 2px 10px; font-size: 13px; font-weight: 600; border-radius: calc(10px * var(--arrondi, 1)); }
+.b-justif.choisi { background: #2e7d6b; border-color: #2e7d6b; color: #fff; }
+.choix-eleve-livret { display: flex; flex: 1 1 100%; align-items: center; gap: 6px; }
+.choix-eleve-livret select { flex: 1; min-width: 0; }
+.tete-journal { justify-content: flex-start; }
+[data-type="cinq"] { flex-wrap: wrap; } [data-type="cinq"] label { flex: 1 1 150px; }
+
+/* ---------- Carnet École : outils de la classe (ecoleoutils.js) ---------- */
+.famille-classe { --fam: #c2572b; }
+.passage-fluence { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 10px 0; padding: 12px; background: var(--surface); border: 1px solid var(--bord); border-radius: calc(12px * var(--arrondi, 1)); }
+.eleve-passage { display: flex; align-items: center; gap: 8px; font-size: 20px; }
+.temps-fluence { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 110px; text-align: center; }
+.mots-fluence input { width: 110px; font-size: 20px; }
+.valeur-rituel { width: 90px; }
+.courbe-rituel { width: 90px; height: 26px; vertical-align: middle; }
+.courbe-rituel polyline { fill: none; stroke: var(--accent); stroke-width: 2; }
+.sens-rituel { margin-left: 6px; font-weight: 800; font-size: 18px; }
+.sens-rituel.hausse { color: #2e9d4a; }
+.sens-rituel.baisse { color: #e53935; }
+.absent-outil { opacity: .45; }
+.colonnes-besoin { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 8px; }
+.colonne-besoin { padding: 10px; background: var(--surface); border: 1px solid var(--bord); border-radius: calc(12px * var(--arrondi, 1)); }
+.colonne-besoin h3, .libres-plan h3 { margin: 0 0 8px; }
+.pas-evalues { margin-top: 10px; }
+.cartes-besoin { display: flex; flex-wrap: wrap; gap: 6px; }
+.carte-besoin { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 4px 10px; touch-action: manipulation; }
+.carte-besoin.deplace { border-style: dashed; }
+.carte-besoin.choisie, .table-plan.choisie { outline: 3px solid var(--accent); outline-offset: 1px; }
+.tableau-plan { margin: 10px 0 8px; padding: 6px; text-align: center; font-weight: 700; background: var(--surface2); border-radius: calc(8px * var(--arrondi, 1)); }
+.grille-plan { display: grid; gap: 6px; }
+.table-plan { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 62px; min-width: 0; padding: 4px 2px; font-size: 13px; overflow: hidden; touch-action: manipulation; }
+.table-plan span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.table-plan:not(.occupee) { background: transparent; border-style: dashed; opacity: .6; }
+.par-deux .table-plan:nth-child(2n) { margin-right: 14px; }
+.libres-plan { margin-top: 12px; }
+@media print { .plan-imprime { width: 100%; border-collapse: collapse; } .plan-imprime td { border: 1px solid #000; height: 60px; text-align: center; } }
+.plan-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+.plan-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.plan-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.plan-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.plan-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.plan-cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.plan-cols-7 { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.plan-cols-8 { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+.plan-cols-9 { grid-template-columns: repeat(9, minmax(0, 1fr)); }
+.plan-cols-10 { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+
+/* ---------- Volley-ball : match par équipe, bilan d'atelier, mes fiches ---------- */
+.fiche-volley.fiche-sans-schema { grid-template-columns: minmax(0, 1fr); }
+.match-equipes-volley { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-top: 8px; }
+.regle-match-volley { padding: 8px 12px; }
+.regle-match-volley p { margin: 4px 0 0; }
+:fullscreen .regle-match-volley { font-size: 24px; }
+.atelier-volley > p.aide { margin: 0 12px 6px; }
+.bilan-atelier-volley { margin-top: 10px; }
+.bilan-atelier-volley h3 { margin: 0 0 4px; }
+
+/* Fiche bilan (école) : les degrés d'une évaluation sans note */
+.degre-eval-fiche { display: inline-flex; align-items: center; gap: 3px; margin-right: 6px; white-space: nowrap; }
