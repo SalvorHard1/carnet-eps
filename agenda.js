@@ -294,31 +294,39 @@ function htmlSemaineAg(r) {
   const auj = aujourdhui(), a = r.afficher, classes = classesAgenda(), ids = new Set(classes.map(c => c.id));
   const lundi = lundiAffiche();
   const tous = classes.flatMap(c => creneauxDe(c).map(x => ({ ...x, c })));
+  // Bandeau d'un jour : conseils, événements et évaluations.
+  const dessusJour = d => [
+    ...(a.conseils ? elementsAgenda('conseil', x => x.debut === d && ids.has(x.classeId)).map(x =>
+      `<button class="ag-it ag-it-cc" data-ag-edit="${x.id}">${x.heure ? heureCourteAg(x.heure) + ' ' : ''}Conseil ${esc(Donnees.get('classes', x.classeId)?.nom || '')}</button>`) : []),
+    ...(a.evenements ? elementsAgenda('evenement', e => d >= e.debut && d <= (e.fin || e.debut) && (!e.classeId || ids.has(e.classeId))).map(e =>
+      `<button class="ag-it ag-it-ev" data-ag-edit="${e.id}" data-c="${esc(typeEvAg(r, e.typeEv).couleur)}">${esc(e.titre)}</button>`) : []),
+    ...(a.evaluations ? classes.flatMap(c => evalsDe(c.id).filter(e => e.date === d).map(e => `<span class="ag-it ag-it-eval">✎ ${esc(c.nom)} ${esc(e.titre)}</span>`)) : []),
+  ];
+  // Samedi et dimanche : seulement s'il s'y passe quelque chose.
+  const jours = [1, 2, 3, 4, 5, ...[6, 7].filter(j => tous.some(x => +x.jour === j) || dessusJour(plusJoursAg(lundi, j - 1)).length)];
   const nav = `<div class="nav-mois-ag">
       <button data-ag="semaine" data-arg="-7" aria-label="Semaine précédente">‹</button>
-      <b class="titre-semaine">Semaine du ${dateAg(lundi).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} au ${dateAg(plusJoursAg(lundi, 4)).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</b>
+      <b class="titre-semaine">Semaine du ${dateAg(lundi).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} au ${dateAg(plusJoursAg(lundi, jours.at(-1) - 1)).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</b>
       <button data-ag="semaine" data-arg="7" aria-label="Semaine suivante">›</button>
       <button data-ag="semaine" data-arg="0">Cette semaine</button>
       <span class="aide">n° ${semaineIso(lundi)} · ${r.semaines.nommage === 'AB' ? 'semaine ' + nomSemaine(pariteAg(lundi), r) : 'semaine ' + pariteAg(lundi)}</span>
     </div>`;
+  const teteJour = (j, d, vac) => `<div class="tete-jour"><b>${(JOURS_SEMAINE[j - 1] || 'Dimanche').slice(0, 3)}. ${dateAg(d).getDate()}</b>${vac && a.vacances ? `<span class="ag-it ag-it-vac">${esc(vac.nom || 'Vacances')}</span>` : ''}${dessusJour(d).join('')}</div>`;
   if (!tous.length) {
-    return `${nav}<div class="vide-semaine"><p>Pas encore d’emploi du temps${ui.agClasse ? ' pour cette classe' : ''}.</p>
+    // Sans emploi du temps : pas de grille d'heures, mais les événements de la semaine restent visibles.
+    const datesJours = jours.map(j => plusJoursAg(lundi, j - 1));
+    const bandeaux = datesJours.some(d => dessusJour(d).length) ? `<div class="semaine-ag">
+      <div class="jour-semaine colonne-heures"></div>
+      ${jours.map((j, k) => { const d = datesJours[k], vac = vacancesLe(d, r); return `<div class="jour-semaine${d === auj ? ' aujourdhui' : ''}${vac ? ' en-vacances' : ''}">${teteJour(j, d, vac)}</div>`; }).join('')}</div>` : '';
+    return `${nav}${bandeaux}<div class="vide-semaine"><p>Pas encore d’emploi du temps${ui.agClasse ? ' pour cette classe' : ''}.</p>
       <button class="primaire" data-ag="edt">🕒 Saisir ou importer l’emploi du temps</button></div>`;
   }
-  const jours = [1, 2, 3, 4, 5, ...(tous.some(x => +x.jour === 6) ? [6] : [])];
   const minutes = h => +h.slice(0, 2) * 60 + +h.slice(3, 5);
   const h0 = Math.floor(Math.min(...tous.map(x => minutes(x.debut))) / 60), h1 = Math.ceil(Math.max(...tous.map(x => minutes(x.fin))) / 60);
   const y = h => ((minutes(h) - h0 * 60) / 60) * PX_HEURE, hauteur = (h1 - h0) * PX_HEURE;
   const seqs = elementsAgenda('sequence', s => ids.has(s.classeId));
   const colonnes = jours.map(j => {
     const d = plusJoursAg(lundi, j - 1), vac = vacancesLe(d, r);
-    const dessus = [
-      ...(a.conseils ? elementsAgenda('conseil', x => x.debut === d && ids.has(x.classeId)).map(x =>
-        `<button class="ag-it ag-it-cc" data-ag-edit="${x.id}">${x.heure ? heureCourteAg(x.heure) + ' ' : ''}Conseil ${esc(Donnees.get('classes', x.classeId)?.nom || '')}</button>`) : []),
-      ...(a.evenements ? elementsAgenda('evenement', e => d >= e.debut && d <= (e.fin || e.debut) && (!e.classeId || ids.has(e.classeId))).map(e =>
-        `<button class="ag-it ag-it-ev" data-ag-edit="${e.id}" data-c="${esc(typeEvAg(r, e.typeEv).couleur)}">${esc(e.titre)}</button>`) : []),
-      ...(a.evaluations ? classes.flatMap(c => evalsDe(c.id).filter(e => e.date === d).map(e => `<span class="ag-it ag-it-eval">✎ ${esc(c.nom)} ${esc(e.titre)}</span>`)) : []),
-    ];
     // Cours du jour (vacances : aucun) ; deux cours au même moment se partagent la largeur. Un cours de l'autre
     // semaine (paire / impaire) reste visible à côté, en pâle : on voit l'alternance d'un coup d'œil.
     const cours = vac ? [] : tous.filter(x => +x.jour === j).map(x => ({ ...x, absent: !creneauLe(x, d) }))
@@ -337,7 +345,7 @@ function htmlSemaineAg(r) {
     }).join('');
     const maintenant = d === auj ? (() => { const n = new Date(), m = n.getHours() * 60 + n.getMinutes(); return m >= h0 * 60 && m <= h1 * 60 ? `<div class="maintenant-ag" data-top="${((m - h0 * 60) / 60) * PX_HEURE}"></div>` : ''; })() : '';
     return `<div class="jour-semaine${d === auj ? ' aujourdhui' : ''}${vac ? ' en-vacances' : ''}">
-      <div class="tete-jour"><b>${JOURS_SEMAINE[j - 1].slice(0, 3)}. ${dateAg(d).getDate()}</b>${vac && a.vacances ? `<span class="ag-it ag-it-vac">${esc(vac.nom || 'Vacances')}</span>` : ''}${dessus.join('')}</div>
+      ${teteJour(j, d, vac)}
       <div class="corps-jour" data-h="${hauteur}">${blocs}${maintenant}</div></div>`;
   });
   const heures = Array.from({ length: h1 - h0 + 1 }, (_, k) => `<span class="heure-ag" data-top="${k * PX_HEURE}">${h0 + k}h</span>`).join('');
@@ -562,6 +570,16 @@ async function editerEvenementAg(id, preset = {}) {
     ...e, id: id || Donnees.nouvelId(), classeId: v.classe || '', debut: v.debut, fin: conseil ? '' : (v.fin || ''), heure: v.heure || '', notes: v.notes.trim(),
     ...(conseil ? {} : { titre: v.titre.trim(), typeEv: v.typeEv }),
   });
+  // On montre ce qu'on vient d'enregistrer : le calendrier va à sa date, et rien ne reste masqué sans le dire.
+  const cle = conseil ? 'conseils' : 'evenements';
+  if (!r.afficher[cle]) ecrireReglageAgenda({ afficher: { ...r.afficher, [cle]: true } });
+  if (ui.agClasse && v.classe && v.classe !== ui.agClasse) ui.agClasse = '';
+  if (!id || v.debut !== e.debut) {
+    ui.agMois = v.debut.slice(0, 7);
+    ui.agSemaine = v.debut;
+    toast(`Enregistré au ${dateLongueAg(v.debut)} ✔`, 'ok');
+  }
+  memoriserUi();
   rendre();
 }
 

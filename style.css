@@ -2593,3 +2593,152 @@ body.mode-eleve #hugo-bouton, body.mode-eleve #hugo-panneau, body.mode-eleve #hu
 .hugo-corps[hidden], .hugo-resultats[hidden] { display: none; }
 .hugo-trouve { animation: hugo-trouve 1.6s ease-out; border-radius: calc(10px * var(--arrondi, 1)); }
 @keyframes hugo-trouve { 0%, 40% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 3px transparent; } }
+/* Volley-ball (volley.js) : une couleur par geste, dans la saisie comme dans le tableau */
+.teinte-volley-0 { --geste: #185fa5; --geste-vif: #85b7eb; }
+.teinte-volley-1 { --geste: #534ab7; --geste-vif: #afa9ec; }
+.teinte-volley-2 { --geste: #0f6e56; --geste-vif: #5dcaa5; }
+.teinte-volley-3 { --geste: #993c1d; --geste-vif: #f0997b; }
+.teinte-volley-4 { --geste: #7a5c00; --geste-vif: #d9b44a; }
+.teinte-volley-5 { --geste: #993556; --geste-vif: #ed93b1; }
+.pastille-volley { display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: var(--geste); }
+.chips-volley { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.chip-volley { min-height: 40px; padding: 4px 12px; font-size: 15px; display: inline-flex; align-items: center; gap: 6px; border-radius: calc(20px * var(--arrondi, 1)); }
+.chip-volley.equipe-a { background: var(--accent); color: var(--accent-texte); border-color: var(--accent); }
+.chip-volley.equipe-b { background: var(--accent-doux); border: 2px solid var(--accent); }
+.numero-volley { font-weight: 800; }
+.match-volley { display: flex; flex-direction: column; gap: 10px; }
+.dernier-volley { min-width: 0; }
+.score-volley { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.chiffres-volley { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.equipes-volley { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px; }
+.equipe-volley h4 { margin: 0 0 6px; font-size: 14px; }
+.joueurs-volley { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
+.joueur-volley { min-height: 56px; padding: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 15px; font-weight: 600; line-height: 1.2; touch-action: manipulation; user-select: none; }
+.joueur-volley small { font-size: 12px; font-weight: 400; color: var(--texte2); }
+.joueur-volley.choisi { background: var(--accent); color: var(--accent-texte); border-color: var(--accent); }
+.joueur-volley.choisi small { color: inherit; }
+.consigne-volley { margin: 0; font-size: 15px; }
+.gestes-volley { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.geste-volley { overflow: hidden; border: 2px solid var(--geste); border-radius: calc(12px * var(--arrondi, 1)); background: var(--surface2); background: color-mix(in srgb, var(--geste) 12%, var(--surface)); }
+.titre-geste-volley { padding: 6px; text-align: center; font-weight: 700; color: #fff; background: var(--geste); }
+.boutons-geste-volley { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px; }
+.boutons-geste-volley button { min-height: 68px; padding: 0; font-size: 28px; font-weight: 800; border-radius: calc(10px * var(--arrondi, 1)); touch-action: manipulation; user-select: none; }
+.reussi-volley { color: #fff; background: var(--geste); border: 2px solid var(--geste); }
+.rate-volley { color: var(--texte); background: var(--surface); border: 2px dashed var(--geste); }
+.periodes-volley { margin-bottom: 8px; }
+.periodes-volley .choisi { background: var(--accent); color: var(--accent-texte); border-color: var(--accent); }
+.tableau-volley .tete-volley { color: #fff; text-align: center; background: var(--geste); }
+.case-volley { min-width: 92px; text-align: center; white-space: nowrap; background: var(--surface2); background: color-mix(in srgb, var(--geste) 12%, var(--surface)); }
+.case-volley small, .ligne-equipe-volley small, .progression-volley small { color: var(--texte2); }
+.barre-volley { display: block; height: 5px; margin-top: 3px; border-radius: 3px; background: var(--bord); overflow: hidden; }
+.barre-volley i { display: block; height: 100%; background: var(--geste); }
+.largeur-volley-0 { width: 0; } .largeur-volley-1 { width: 10%; } .largeur-volley-2 { width: 20%; } .largeur-volley-3 { width: 30%; }
+.largeur-volley-4 { width: 40%; } .largeur-volley-5 { width: 50%; } .largeur-volley-6 { width: 60%; } .largeur-volley-7 { width: 70%; }
+.largeur-volley-8 { width: 80%; } .largeur-volley-9 { width: 90%; } .largeur-volley-10 { width: 100%; }
+.total-volley { text-align: center; white-space: nowrap; }
+.ligne-equipe-volley td { border-top: 2px solid var(--texte2); }
+.progression-volley { margin-top: 8px; }
+.progression-volley > summary { cursor: pointer; font-weight: 600; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .barre-volley i { background: var(--geste-vif); }
+  :root:not([data-theme="light"]) .geste-volley, :root:not([data-theme="light"]) .rate-volley { border-color: var(--geste-vif); }
+}
+:root[data-theme="dark"] .barre-volley i { background: var(--geste-vif); }
+:root[data-theme="dark"] .geste-volley, :root[data-theme="dark"] .rate-volley { border-color: var(--geste-vif); }
+
+/* Volley-ball : ateliers et fiches de situation (volleysituations.js) */
+.cause-volley { margin-top: 2px; }
+.ateliers-volley { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 8px; margin: 8px 0; }
+.atelier-volley { display: flex; flex-direction: column; overflow: hidden; border: 2px solid var(--geste); border-radius: calc(12px * var(--arrondi, 1)); background: var(--surface2); background: color-mix(in srgb, var(--geste) 10%, var(--surface)); }
+.atelier-volley.ouvert { box-shadow: 0 0 0 2px var(--texte); }
+.tete-atelier-volley { display: block; min-height: 42px; color: #fff; font-weight: 700; background: var(--geste); border: 0; border-radius: 0; }
+.membres-atelier-volley { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px; }
+.membre-volley { min-height: 34px; padding: 3px 8px; font-size: 14px; display: inline-flex; align-items: center; }
+.membre-volley small { margin-left: 2px; color: var(--texte2); }
+.membre-volley.choisi { background: var(--accent); color: var(--accent-texte); border-color: var(--accent); }
+.membre-volley.choisi small { color: inherit; }
+.atelier-volley > button:last-child:not(.tete-atelier-volley) { margin: 0 8px 8px; }
+.actions-fiche-volley { display: flex; flex-direction: column; gap: 10px; }
+.titre-defi-volley, .bilan-eleve-volley { margin: 0; }
+.fiche-volley { display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr); gap: 16px; padding: 12px; border: 2px solid var(--geste); border-radius: calc(12px * var(--arrondi, 1)); background: var(--surface); }
+@media (max-width: 560px) { .fiche-volley { grid-template-columns: minmax(0, 1fr); } }
+.texte-volley h3 { margin: 0 0 8px; }
+.texte-volley p { margin: 0 0 6px; font-size: 15px; line-height: 1.4; }
+.legende-volley { margin: 4px 0 0; font-size: 12px; color: var(--texte2); line-height: 1.5; }
+.schema-volley { display: block; width: 100%; max-height: 420px; }
+.terrain-volley { fill: #e8893b; fill-opacity: .25; stroke: var(--texte); stroke-width: 2; }
+.ligne-volley { stroke: var(--texte); stroke-width: 1; }
+.filet-volley { stroke: var(--texte); stroke-width: 4; }
+.cible-volley { fill: var(--geste); fill-opacity: .18; stroke: var(--geste); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.texte-cible-volley { font-size: 10px; fill: var(--texte); }
+.balle-volley { stroke: var(--texte); stroke-width: 2; }
+.balle-volley-tete { fill: var(--texte); }
+.pas-volley { stroke: var(--geste); stroke-width: 2; stroke-dasharray: 4 3; }
+.pas-volley-tete { fill: var(--geste); }
+.joueur-principal-volley { fill: var(--geste); }
+.joueur-autre-volley { fill: #5b6a66; }
+.lettre-volley { font-size: 13px; font-weight: 700; fill: #fff; }
+/* À l'écran projeté : ni niveaux ni pourcentages, pas de réglages */
+:fullscreen .prive-volley, :fullscreen .reglages-combine, :fullscreen .presents, :fullscreen .onglets-volley, :fullscreen .periodes-volley { display: none; }
+:fullscreen .ateliers-volley .atelier-volley:not(.ouvert) { display: none; }
+:fullscreen .texte-volley p { font-size: 22px; }
+:fullscreen .texte-volley h3 { font-size: 30px; }
+:fullscreen .fiche-volley { grid-template-columns: minmax(280px, 34vw) minmax(0, 1fr); }
+:fullscreen .schema-volley { max-height: 72vh; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pas-volley { stroke: var(--geste-vif); }
+  :root:not([data-theme="light"]) .pas-volley-tete { fill: var(--geste-vif); }
+  :root:not([data-theme="light"]) .cible-volley { stroke: var(--geste-vif); }
+  :root:not([data-theme="light"]) .atelier-volley, :root:not([data-theme="light"]) .fiche-volley { border-color: var(--geste-vif); }
+}
+:root[data-theme="dark"] .pas-volley { stroke: var(--geste-vif); }
+:root[data-theme="dark"] .pas-volley-tete { fill: var(--geste-vif); }
+:root[data-theme="dark"] .cible-volley { stroke: var(--geste-vif); }
+:root[data-theme="dark"] .atelier-volley, :root[data-theme="dark"] .fiche-volley { border-color: var(--geste-vif); }
+/* Volley-ball : les trois parties de l'outil, bien visibles en haut */
+.onglets-volley { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0 0 12px; }
+.onglet-volley { min-height: 84px; padding: 8px 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 2px solid var(--accent); border-radius: calc(14px * var(--arrondi, 1)); background: var(--surface); color: var(--texte); line-height: 1.2; }
+.onglet-volley.choisi { background: var(--accent); color: var(--accent-texte); }
+.icone-onglet-volley { font-size: 24px; }
+.nom-onglet-volley { font-size: 17px; font-weight: 800; }
+.info-onglet-volley { font-size: 12px; font-weight: 400; text-align: center; }
+@media (max-width: 480px) { .info-onglet-volley { display: none; } .nom-onglet-volley { font-size: 15px; } .onglet-volley { min-height: 68px; } }
+.suite-volley { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; padding: 10px 12px; border-radius: calc(12px * var(--arrondi, 1)); background: var(--accent-doux); }
+:fullscreen .suite-volley { display: none; }
+
+/* Choisir un degré d'un seul geste (choixdegre.js) */
+.grille .niveau { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.niveau.degre-appuye { outline: 2px solid var(--accent); outline-offset: 2px; }
+#choix-degre { position: fixed; z-index: 150; display: flex; gap: 6px; padding: 6px; background: var(--surface); border: 1px solid var(--bord);
+  border-radius: calc(14px * var(--arrondi, 1)); box-shadow: 0 6px 20px rgba(0, 0, 0, .35); touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+#choix-degre[hidden] { display: none; }
+#choix-degre .niveau { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 68px; height: 62px; margin: 0; padding: 2px; line-height: 1.1; touch-action: none; }
+#choix-degre .niveau b { font-size: 19px; }
+#choix-degre .niveau span { font-size: 11px; font-weight: 600; text-align: center; }
+#choix-degre .degre-vider { width: 52px; background: var(--surface2); border: 1px solid var(--bord); color: var(--texte2); }
+#choix-degre .niveau.actuel { box-shadow: inset 0 0 0 2px #fff; }
+#choix-degre .niveau.vise { outline: 3px solid var(--texte); outline-offset: 1px; transform: scale(1.08); }
+@media (max-width: 400px) { #choix-degre { gap: 3px; padding: 4px; } #choix-degre .niveau { width: 58px; } #choix-degre .degre-vider { width: 44px; } }
+/* Volley-ball : plusieurs ateliers ou un seul pour toute la classe */
+.types-ateliers-volley { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.type-atelier-volley { min-height: 60px; padding: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; line-height: 1.2; border: 2px solid var(--bord); border-radius: calc(12px * var(--arrondi, 1)); }
+.type-atelier-volley b { font-size: 15px; }
+.type-atelier-volley small { font-size: 12px; font-weight: 400; text-align: center; }
+.type-atelier-volley.choisi { border-color: var(--accent); background: var(--accent-doux); }
+.points-volley { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.point-volley { padding: 0 0 8px; overflow: hidden; display: flex; flex-direction: column; align-items: center; gap: 2px; line-height: 1.25; border: 2px solid var(--geste); border-radius: calc(12px * var(--arrondi, 1)); background: var(--surface2); background: color-mix(in srgb, var(--geste) 10%, var(--surface)); }
+.point-volley.choisi { box-shadow: 0 0 0 2px var(--texte); }
+.tete-point-volley { align-self: stretch; padding: 5px; font-size: 13px; font-weight: 700; color: #fff; background: var(--geste); }
+.point-volley b { font-size: 24px; }
+.point-volley small { padding: 0 6px; font-size: 12px; font-weight: 400; text-align: center; color: var(--texte2); }
+div.tete-atelier-volley { display: flex; align-items: center; justify-content: center; padding: 4px 8px; }
+.pied-groupe-volley { padding: 0 8px 8px; margin-top: auto; }
+.temps-volley { margin: 0; padding-left: 22px; font-size: 15px; line-height: 1.4; }
+.temps-volley li { margin-bottom: 6px; }
+.source-volley { font-size: 12px !important; color: var(--texte2); }
+:fullscreen .types-ateliers-volley { display: none; }
+:fullscreen .temps-volley { font-size: 22px; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .point-volley { border-color: var(--geste-vif); }
+}
+:root[data-theme="dark"] .point-volley { border-color: var(--geste-vif); }

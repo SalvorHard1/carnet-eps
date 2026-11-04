@@ -40,6 +40,8 @@ const etatOutilsDefaut = () => ({
   combine: {}, // classeId → combiné athlétique (combine.js)
   natation: {}, // classeId → natation : réglages, course en cours, essais (natation.js)
   boxe: {}, // classeId → boxe française : règles, assaut en cours, assauts enregistrés (boxe.js)
+  volley: {}, // classeId → volley-ball : gestes, match en cours, actions notées (volley.js)
+  volleyFiches: {}, // fiches de situation de volley corrigées par l'enseignant, pour toutes ses classes (volleysituations.js)
   ece: {}, // classeId → ECE de SVT : chrono, candidats, aides, critères (ece.js)
   ecepc: {}, // classeId → ECE de physique-chimie : grille du sujet, chrono, candidats, interventions (ecepc.js)
   asns: {}, // classeId → ASNS : étape, barèmes, résultats et médailles (asns.js)
@@ -251,6 +253,7 @@ function outilEnCours(id) {
     combine: Object.values(e.combine || {}).some(x => x.vagues?.course?.depart && !x.vagues.course.fin),
     natation: Object.values(e.natation || {}).some(x => x.course?.depart && !x.course.fin),
     boxe: Object.values(e.boxe || {}).some(x => x.assaut && x.assaut.phase !== 'fini'),
+    volley: Object.values(e.volley || {}).some(x => x.enCours),
     ece: Object.values(e.ece || {}).some(x => !!x.debut), ecepc: Object.values(e.ecepc || {}).some(x => !!x.debut),
     asns: Object.values(e.asns || {}).some(x => Object.keys(x.enCours || {}).length),
   }[id];

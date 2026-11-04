@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.4.4'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.8.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -941,7 +941,7 @@ function htmlNotes(c) {
     ? `<p class="aide">Aucune évaluation sur le ${periodes.find(p => p.id === vue).code} — ${toutes.length} sur le reste de l’année (choisis « Toute l’année » pour les voir).</p>`
     : '<p class="aide">Crée une évaluation pour commencer à noter.</p>'}
     ${evals.some(e => competencesEval(e).length) ? `
-      <div class="legende-niveaux"><span class="legende-titre">Degrés de maîtrise (toucher une case pour changer, ou taper 1 à 4) :</span>
+      <div class="legende-niveaux"><span class="legende-titre">Degrés de maîtrise (toucher une case pour changer, rester appuyé pour choisir, ou taper 1 à 4) :</span>
         ${NIVEAUX_MAITRISE.map(n => `<span class="legende-item" title="${n.nom}"><span class="niveau n${n.v}">${n.v}</span> <span class="legende-nom">${n.nom}</span></span>`).join(' ')}
         <span class="legende-item" title="Degré proposé d’après la note : touche-le pour le changer"><span class="niveau n3 auto">3</span> <span class="legende-nom">pré-rempli d’après la note</span></span></div>` : ''}
     <div class="grille-scroll">
@@ -2859,6 +2859,29 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.8.0', titre: 'Volley-ball : un atelier pour toute la classe', discipline: 'eps', points: [
+    '🎯 Dans Ateliers, choisis <b>Un seul atelier</b> : l’appli relève le point le plus fragile du groupe et prépare la séance (jeu, situation en 3 versions par groupes, retour au jeu).',
+    '📚 La banque passe à <b>36 situations</b>, dont des idées reprises et adaptées de documents académiques. Bouton 🔄 Autre situation.',
+  ] },
+  { version: '1.7.0', titre: 'Choisir un degré d’un seul geste', points: [
+    '👆 Dans les tableaux, <b>reste appuyé</b> sur une case de degré : les 4 degrés s’affichent. <b>Glisse</b> vers celui que tu veux et relâche.',
+    'Relâche sans bouger : les degrés restent affichés, touche le bon. Relâche à côté : rien ne change. Le toucher court et les touches 1 à 4 marchent comme avant.',
+  ] },
+  { version: '1.6.1', titre: 'Volley-ball plus lisible', discipline: 'eps', points: [
+    '🧩 Dans l’outil Volley-ball, <b>Match, Ateliers et Fiche élève</b> sont maintenant trois grands boutons, tout en haut.',
+  ] },
+  { version: '1.6.0', titre: 'Volley-ball : situations proposées', discipline: 'eps', points: [
+    '🧩 D’après les résultats, l’outil Volley-ball <b>forme des ateliers</b> : les élèves qui ont le même geste à travailler sont réunis, avec une fiche et son schéma. Tu peux tout changer et projeter la fiche.',
+    '🎯 La <b>fiche élève</b> donne le geste à travailler et son défi. Les 12 fiches sont modifiables (✎).',
+  ] },
+  { version: '1.5.0', titre: 'Outil Volley-ball', discipline: 'eps', points: [
+    '🏐 Dans Outils › APSA : touche un joueur, puis le geste réussi ✓ ou raté ✗. Service, réception, passe et attaque ont <b>chacun leur couleur</b>.',
+    '📊 Le tableau donne le <b>% de réussite par joueur et par geste</b>, le geste le plus fragile de l’équipe et la progression séance par séance.',
+  ] },
+  { version: '1.4.5', titre: 'Événements de l’agenda', points: [
+    '📅 Après l’ajout d’un événement, le calendrier <b>va directement à sa date</b> (semaine et mois).',
+    '🗓 La vue Semaine montre aussi le <b>samedi et le dimanche</b> quand il s’y passe quelque chose, et les événements même sans emploi du temps.',
+  ] },
   { version: '1.4.4', titre: 'Modèle de séance à la carte', points: [
     '➕ Dans la fiche d’une séance, « + Depuis le modèle » <b>n’efface plus tes données</b> : tu coches ce que tu ajoutes, dont les <b>AFC / AFL</b> du champ de l’activité (une colonne de degrés 1 à 4 chacune).',
     '↔ Dans les Notes, le tableau reste où il est quand tu touches un degré (plus de retour aux premières colonnes).',
