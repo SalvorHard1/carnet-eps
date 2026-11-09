@@ -10,6 +10,10 @@
 const FAMILLES_OUTILS = [
   { id: 'temps', nom: 'Temps' }, { id: 'groupes', nom: 'Groupes' }, { id: 'matchs', nom: 'Matchs' }, { id: 'mesures', nom: 'Mesures' },
 ];
+// Titre, description et nom de famille d'un outil : une discipline peut les changer (discipline.js › outilsRenommes, nomsFamillesOutils).
+const titreOutil = o => profil().outilsRenommes?.[o.id]?.nom || o.nom;
+const infoOutil = o => profil().outilsRenommes?.[o.id]?.info || o.info;
+const nomFamilleOutil = f => profil().nomsFamillesOutils?.[f.id] || f.nom;
 const OUTILS = [
   { id: 'chrono', famille: 'temps', icone: '⏱', nom: 'Chrono', info: 'Un ou plusieurs chronos, temps intermédiaires, départs groupés' },
   { id: 'tours', famille: 'temps', icone: '🏃', nom: 'Tours par élève', info: 'Un toucher sur l’élève à chaque passage', classe: true },
@@ -268,18 +272,18 @@ function htmlOutils(c) {
     // (eleve: false : outil réservé au professeur, jamais proposé en mode élève — ex. vidéo.)
     const visibles = OUTILS.filter(x => outilDeLaDiscipline(x) && (!enModeEleve() || (x.eleve !== false && modeEleve.outils.includes(x.id))));
     return `
-      ${enModeEleve() ? `<div class="outils bandeau-eleve"><h2>🎓 Mode élève</h2><span class="aide">${c ? 'Classe : <b>' + esc(c.nom) + '</b>' : 'Classe introuvable'}</span>
-          <span class="espace-outil"></span><button data-o="eleve-quitter">🔒 Quitter le mode élève</button></div>`
+      ${enModeEleve() ? `<div class="outils bandeau-eleve"><h2>${pictoEcole('chapeau', '🎓')} Mode élève</h2><span class="aide">${c ? 'Classe : <b>' + esc(c.nom) + '</b>' : 'Classe introuvable'}</span>
+          <span class="espace-outil"></span><button data-o="eleve-quitter">${pictoEcole('cadenas', '🔒')} Quitter le mode élève</button></div>`
     : `<div class="outils"><h2>Outils</h2><span class="aide">Pour la séance${c ? ' — classe : <b>' + esc(c.nom) + '</b>' : ''}</span>
-          <span class="espace-outil"></span>${c && elevesDe(c.id).length ? `<button data-o="eleve-entrer" title="Prêter la tablette aux élèves : seulement les outils choisis, pour ${esc(c.nom)}">🎓 Mode élève</button>` : ''}</div>`}
+          <span class="espace-outil"></span>${c && elevesDe(c.id).length ? `<button data-o="eleve-entrer" title="Prêter la tablette aux élèves : seulement les outils choisis, pour ${esc(c.nom)}">${pictoEcole('chapeau', '🎓')} Mode élève</button>` : ''}</div>`}
       <div class="familles-outils">${FAMILLES_OUTILS.filter(f => visibles.some(x => x.famille === f.id)).map(f => `
         <section class="famille-outils famille-${f.id}">
-          <h3>${f.nom}</h3>
+          <h3>${nomFamilleOutil(f)}</h3>
           <div class="bulles-outils">${visibles.filter(x => x.famille === f.id).map(x => `
-            <button class="bulle-outil" data-o="ouvrir" data-arg="${x.id}" title="${esc(x.info)}">
-              <span class="bulle" aria-hidden="true">${x.icone}${outilEnCours(x.id) ? '<span class="bulle-actif" title="En cours"></span>' : ''}</span>
-              <span class="bulle-nom">${x.nom}</span>
-              <span class="bulle-info">${x.info}</span>
+            <button class="bulle-outil" data-o="ouvrir" data-arg="${x.id}" title="${esc(infoOutil(x))}">
+              <span class="bulle" aria-hidden="true">${iconeOutil(x)}${outilEnCours(x.id) ? '<span class="bulle-actif" title="En cours"></span>' : ''}</span>
+              <span class="bulle-nom">${titreOutil(x)}</span>
+              <span class="bulle-info">${infoOutil(x)}</span>
             </button>`).join('')}</div>
         </section>`).join('')}</div>`;
   }
@@ -287,12 +291,12 @@ function htmlOutils(c) {
   return `
     <div class="outils outil-entete">
       <button class="retour-outils" data-o="accueil">← Outils</button>
-      <h2>${o.icone} ${o.nom}</h2>
+      <h2>${iconeOutil(o)} ${titreOutil(o)}</h2>
       ${o.classe && c ? `<span class="aide">${esc(c.nom)}</span>` : ''}
       <span class="espace-outil"></span>
       ${c && !sansEleves && TRANSFERTS[o.id] && !enModeEleve() && !avecEcole() ? `<button class="primaire" data-o="vers-lecon" title="Envoyer les résultats de cet outil dans une ${motMin('lecon')} de la classe">📤 Vers une ${motMin('lecon')}</button>` : ''}
-      ${sansClasse || sansEleves || o.sansEffacer || (enModeEleve() && o.id === 'vma') ? '' : '<button data-o="reinitialiser" title="Remettre cet outil à zéro">🗑 Tout effacer</button>'}
-      <button data-o="plein-ecran" title="Plein écran (lisible de loin)">⛶ Plein écran</button>
+      ${sansClasse || sansEleves || o.sansEffacer || (enModeEleve() && o.id === 'vma') ? '' : `<button data-o="reinitialiser" title="Remettre cet outil à zéro">${pictoEcole('corbeille', '🗑')} Tout effacer</button>`}
+      <button data-o="plein-ecran" title="Plein écran (lisible de loin)">${pictoEcole('pleinEcran', '⛶')} Plein écran</button>
     </div>
     <div class="outil-corps outil-${o.id}">
       ${sansClasse ? '<p class="aide">Crée d’abord une classe (☰ Classes) pour utiliser cet outil.</p>'
@@ -313,7 +317,7 @@ function htmlChrono() {
           <button class="primaire gros" data-o="chrono-go" data-arg="${ch.id}">${ch.debut ? '⏸ Pause' : ecoule(ch) ? '▶ Reprendre' : '▶ Départ'}</button>
           <button class="gros" data-o="chrono-tour" data-arg="${ch.id}" ${ch.debut ? '' : 'disabled'}>⏱ Temps</button>
           <button data-o="chrono-zero" data-arg="${ch.id}" ${ch.debut || !ecoule(ch) ? 'disabled' : ''}>↺ Zéro</button>
-          ${chronos.length > 1 ? `<button class="icone-petit" data-o="chrono-suppr" data-arg="${ch.id}" title="Retirer ce chrono" aria-label="Retirer ce chrono">🗑</button>` : ''}
+          ${chronos.length > 1 ? `<button class="icone-petit" data-o="chrono-suppr" data-arg="${ch.id}" title="Retirer ce chrono" aria-label="Retirer ce chrono">${pictoEcole('corbeille', '🗑')}</button>` : ''}
         </div>
         ${ch.tours.length ? `<ol class="liste-temps" reversed>${ch.tours.map((t, i) => `<li><b>${fmtTemps(t)}</b>
           <span class="aide">${i ? '+' + fmtTemps(t - ch.tours[i - 1]) : ''}</span></li>`).reverse().join('')}</ol>` : ''}
@@ -656,7 +660,7 @@ function htmlEquipes(c) {
       ${cfg.composition === 'homogene' && cfg.mixite === 'mixte' ? ' En homogène, le niveau passe avant la mixité.' : ''}</p>` : ''}
     <details class="separer"><summary>Élèves à séparer${cfg.separer.length ? ` (${cfg.separer.length})` : ''}</summary>
       <ul class="liste-separer">${cfg.separer.map(([a, b], k) => `<li>${esc(nomOutil(a))} ✕ ${esc(nomOutil(b))}
-        <button class="icone-petit" data-o="separer-suppr" data-arg="${k}" aria-label="Retirer">🗑</button></li>`).join('')}</ul>
+        <button class="icone-petit" data-o="separer-suppr" data-arg="${k}" aria-label="Retirer">${pictoEcole('corbeille', '🗑')}</button></li>`).join('')}</ul>
       <div class="ligne"><select data-o-separer="a" aria-label="Premier élève"><option value="">—</option>${options}</select>
         <select data-o-separer="b" aria-label="Second élève"><option value="">—</option>${options}</select>
         <button data-o="separer-ajout">+ Ajouter</button></div>
@@ -1431,7 +1435,7 @@ async function reinitialiserOutil(c) {
   if (!o) return;
   const message = o.id === 'vma'
     ? `Effacer les VMA et les distances du demi-Cooper de tous les élèves de ${c.nom} ? (Elles sont enregistrées dans leurs fiches : c’est définitif.)`
-    : `Remettre l’outil « ${o.nom} » à zéro${o.classe && c ? ` pour la classe ${c.nom}` : ''} ? Tout ce qui y a été saisi sera effacé.`;
+    : `Remettre l’outil « ${titreOutil(o)} » à zéro${o.classe && c ? ` pour la classe ${c.nom}` : ''} ? Tout ce qui y a été saisi sera effacé.`;
   if (!(await confirmer(message, 'Tout effacer'))) return;
   if (o.id === 'chrono') e.chronos = d.chronos;
   else if (['intervalles', 'ateliers', 'marque', 'tournoi'].includes(o.id)) e[o.id] = d[o.id];
@@ -1452,14 +1456,14 @@ async function entrerModeEleve(c) {
   if (!c || !elevesDe(c.id).length) throw new Error('Choisis d’abord une classe avec des élèves.');
   const choix = etatOutils.choixModeEleve || OUTILS.filter(o => outilDeLaDiscipline(o) && o.eleve !== false).map(o => o.id); // (dernier choix gardé sur cet appareil)
   const exemple = elevesDe(c.id)[0];
-  const { resultat } = ouvrirModale(`🎓 Mode élève — ${c.nom}`, `
+  const { d: fenetre, resultat } = ouvrirModale(`${avecEcole() ? '' : '🎓 '}Mode élève — ${c.nom}`, `
     <p>La tablette n’affichera plus que <b>les outils cochés</b>, pour la classe <b>${esc(c.nom)}</b>.
       Pas d’accès aux notes, aux ${motMin('lecons')}, aux fiches des élèves, à la clé ni aux réglages.</p>
     <p class="aide">Les élèves apparaissent avec l’initiale du nom et le prénom (ex. « ${esc(nomCourtEleve(exemple))} »).
       Les niveaux ne sont pas affichés dans les équipes, et rien ne part vers une ${motMin('lecon')} : tu le feras en sortant du mode élève.</p>
     <fieldset class="choix-import"><legend>Outils autorisés</legend>
       <div class="cases-mode-eleve">${OUTILS.filter(o => outilDeLaDiscipline(o) && o.eleve !== false).map(o => `<label class="case"><input type="checkbox" name="outil" value="${o.id}" ${choix.includes(o.id) ? 'checked' : ''}>
-        <span>${o.icone} ${esc(o.nom)}</span></label>`).join('')}</div>
+        <span>${iconeOutil(o)} ${esc(titreOutil(o))}</span></label>`).join('')}</div>
     </fieldset>
     <div class="ligne">
       <label>Code pour sortir (4 chiffres)<input name="code" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required autocomplete="off"></label>
@@ -1467,8 +1471,9 @@ async function entrerModeEleve(c) {
     </div>
     <p class="aide">${Donnees.meta().temoinMdp ? 'Code oublié ? Le mot de passe de ta clé permettra aussi de sortir.'
     : '⚠ Retiens bien ce code : c’est le seul moyen de sortir du mode élève sur cette tablette.'}</p>
-    <p class="aide">📌 Pour que l’élève ne puisse pas quitter l’appli : active l’<b>épinglage d’écran</b> (Android) ou l’<b>Accès guidé</b> (iPad).</p>`,
+    <p class="aide">${avecEcole() ? '' : '📌 '}Pour que l’élève ne puisse pas quitter l’appli : active l’<b>épinglage d’écran</b> (Android) ou l’<b>Accès guidé</b> (iPad).</p>`,
   boutonsModale('Passer en mode élève'));
+  if (avecEcole()) iconeTitreModale(fenetre, 'chapeau');
   const r = await resultat;
   if (r.action !== 'ok') return;
   const outils = r.fd.getAll('outil');
@@ -1482,7 +1487,7 @@ async function entrerModeEleve(c) {
   ui.outil = outils.length === 1 ? outils[0] : null; // un seul outil : il s'ouvre directement
   memoriserUi();
   rendre();
-  toast('Mode élève activé 🎓', 'ok');
+  toast(avecEcole() ? 'Mode élève activé' : 'Mode élève activé 🎓', 'ok');
 }
 
 async function quitterModeEleve() {
@@ -1491,7 +1496,7 @@ async function quitterModeEleve() {
   const attente = (m.bloqueJusqua || 0) - Date.now();
   if (attente > 0) throw new Error(`Trop d’essais : réessaie dans ${Math.ceil(attente / 1000)} s.`);
   const temoin = Donnees.meta().temoinMdp;
-  const { resultat } = ouvrirModale('🔒 Quitter le mode élève', `
+  const { resultat } = ouvrirModale(avecEcole() ? 'Quitter le mode élève' : '🔒 Quitter le mode élève', `
     <label>Code du professeur<input name="code" type="password" inputmode="numeric" maxlength="4" autocomplete="off" autofocus></label>
     ${temoin ? `<details class="code-oublie"><summary>Code oublié ?</summary>
       <label>Mot de passe de la clé<input name="mdp" type="password" autocomplete="off"></label></details>` : ''}`,

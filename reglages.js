@@ -49,7 +49,9 @@ const REGLAGES_DEFAUT = {
     // rubriques reviennent d'elles-mêmes quand le carnet signale un point de vigilance (voir rubriquesAppr).
     ordre: ['attitude', 'competences', 'moteur', 'methodo', 'comportement', 'progression', 'objectif'],
     actives: ['attitude', 'competences', 'moteur', 'objectif'],
-    bilan: true, ton: 'bienveillant', style: 'phrases', longueur: 300, // (400 jusqu'à la v0.93 : voir reglageAppr)
+    bilan: true, ton: 'bienveillant', style: 'phrases', longueur: 250, // (limite d'École Directe ; 400 puis 300 auparavant : voir reglageAppr)
+    oublis: [], // (remplacements appris que l'enseignant a décochés, carnet École)
+    voix: true, fetes: true, liens: true, // (carnet École seulement : « Je le félicite » en fin d'appréciation, souhaits de fêtes en décembre, lien avec la période précédente)
   },
   // Appréciation générale du professeur principal (pp.js) : mêmes principes, plus l'adresse (il / vous), les seuils
   // de la moyenne générale et les mentions proposées.
@@ -65,9 +67,22 @@ const REGLAGES_DEFAUT = {
 };
 const FICHES_REGLAGES = Object.keys(REGLAGES_DEFAUT);
 
+// Réglages propres à chaque discipline (le carnet École n'a pas les codes, les couleurs ou les périodes du carnet EPS) :
+// fiche « nom@discipline » (ex. notes@ecole). Tant qu'une discipline n'a pas encore la sienne, elle lit l'ancienne fiche
+// commune « nom », qui n'est plus jamais modifiée : rien ne se perd, rien n'est remis à zéro au passage à cette version.
+// Restent communs : la discipline elle-même, le prof principal (pp), l'agenda, les modèles…
+const REGLAGES_PAR_DISCIPLINE = ['apparence', 'notes', 'competences', 'onglets', 'perso', 'appreciations', 'periodes'];
+const idReglage = nom => (REGLAGES_PAR_DISCIPLINE.includes(nom) && typeof disciplineActive === 'function' ? `${nom}@${disciplineActive()}` : nom);
+function ficheReglage(nom) {
+  if (typeof Donnees !== 'object') return null;
+  return Donnees.get('reglages', idReglage(nom)) || Donnees.get('reglages', nom);
+}
+// Écrit la fiche de la discipline active (en partant de ce qu'elle voit aujourd'hui, ancienne fiche commune comprise).
+const ecrireFicheReglage = (nom, valeurs) => Donnees.ecrire('reglages', { ...ficheReglage(nom), id: idReglage(nom), ...valeurs });
+
 // Réglage complet : valeurs enregistrées par-dessus les valeurs d'origine.
 function reglage(nom) {
-  const enreg = typeof Donnees === 'object' ? Donnees.get('reglages', nom) : null;
+  const enreg = ficheReglage(nom);
   const res = structuredClone(REGLAGES_DEFAUT[nom]);
   for (const k of Object.keys(res)) if (enreg && enreg[k] !== undefined) res[k] = structuredClone(enreg[k]);
   return res;
@@ -77,7 +92,7 @@ function reglage(nom) {
 function ecrireReglage(nom, valeurs) {
   const avant = reglage(nom), apres = { ...avant, ...valeurs };
   if (JSON.stringify(avant) === JSON.stringify(apres)) return false;
-  Donnees.ecrire('reglages', { ...Donnees.get('reglages', nom), id: nom, ...valeurs });
+  ecrireFicheReglage(nom, valeurs);
   return true;
 }
 
@@ -164,7 +179,7 @@ let signatureReglages = null;
 
 // Appelée à chaque rendu : ne refait le travail que si un réglage a changé (ici ou venu d'un autre appareil).
 function appliquerReglages(forcer = false) {
-  const sig = FICHES_REGLAGES.map(n => Donnees.get('reglages', n)?.maj || 0).join('|') + '|' + JSON.stringify(reglagesAppareil());
+  const sig = disciplineActive() + '|' + FICHES_REGLAGES.map(n => ficheReglage(n)?.maj || 0).join('|') + '|' + JSON.stringify(reglagesAppareil());
   if (!forcer && sig === signatureReglages) return;
   signatureReglages = sig;
 
@@ -245,7 +260,11 @@ function htmlReglageApparence(a, appareil, p) {
 }
 
 function htmlReglageNotes(n) {
-  return `
+  // Carnet École : évaluation en degrés, codes de l'école, alerte d'absences venue de l'appel. Le reste est caché,
+  // mais ses champs restent dans la fenêtre (valeurs gardées à l'enregistrement).
+  const ecole = typeof avecEcole === 'function' && avecEcole(), cache = ecole ? ' hidden' : '';
+  const codeCache = code => (ecole && !codesDiscipline().includes(code) && !codeVisible(n, code) ? ' hidden' : '');
+  return `<div${cache}>
     <h4>Nouvelles évaluations</h4>
     <div class="ligne">
       <label class="etroit">Noté sur<input type="number" name="max" min="1" step="any" required value="${n.max}"></label>
@@ -258,13 +277,16 @@ function htmlReglageNotes(n) {
       <span class="aide">sur 20 — en dessous : <span class="niveau n1">1</span></span>
     </div>
     <p class="aide">Chaque classe garde ensuite son propre réglage (⚙ Note → degré dans l’onglet Notes).</p>
+    </div>
     <h4>Barre de saisie rapide</h4>
-    <p class="aide">Coche les boutons à afficher ; tu peux les renommer (ex. « Autre » → « Natation »). Les lettres (${Object.entries(LETTRES_CODES).filter(([c]) => !['DISP', 'BLE'].includes(c) || codeDeLaDiscipline(c)).map(([c, l]) => `<b>${l}</b> ${CODES_SAISIE[c].toLowerCase()}`).join(', ')}) marchent toujours au clavier.</p>
+    <p class="aide">Coche les boutons à afficher ; tu peux les renommer (ex. « Autre » → « ${ecole ? 'Sortie' : 'Natation'} »). Les lettres (${Object.entries(LETTRES_CODES).filter(([c]) => (!['DISP', 'BLE'].includes(c) || codeDeLaDiscipline(c)) && !codeCache(c)).map(([c, l]) => `<b>${l}</b> ${CODES_SAISIE[c].toLowerCase()}`).join(', ')}) marchent toujours au clavier.</p>
     <div class="table-reglages">
       ${Object.entries(CODES_SAISIE).map(([code, nom]) => `
-        <label class="case"><input type="checkbox" name="code-${code}" ${codeVisible(n, code) ? 'checked' : ''}> ${nom}${code === 'NE' ? ' <span class="aide">(notes)</span>' : ''}</label>
-        <input name="lib-${code}" value="${esc(n.libelles[code] || '')}" placeholder="${nom}" aria-label="Nom affiché pour ${nom}" maxlength="20">`).join('')}
+        <label class="case"${codeCache(code)}><input type="checkbox" name="code-${code}" ${codeVisible(n, code) ? 'checked' : ''}> ${nom}${code === 'NE' && !ecole ? ' <span class="aide">(notes)</span>' : ''}</label>
+        <input name="lib-${code}" value="${esc(n.libelles[code] || '')}" placeholder="${nom}" aria-label="Nom affiché pour ${nom}" maxlength="20"${codeCache(code)}>`).join('')}
     </div>
+    ${ecole ? `<h4>Alerte absences</h4><p class="aide">À l’école, l’alerte vient de l’appel : ${SEUIL_ASSIDUITE_TEXTE()}. Elle se voit dans Appel › Bilan.</p>` : ''}
+    <div${cache}>
     <h4>Alerte absences</h4>
     <label class="case"><input type="checkbox" name="alerte" ${n.alerte ? 'checked' : ''}> Signaler les élèves souvent ${codeDeLaDiscipline('BLE') ? 'absents, blessés ou malades' : 'absents ou malades'} (badge ⚠)</label>
     <div class="ligne">
@@ -278,8 +300,10 @@ function htmlReglageNotes(n) {
       <label class="etroit">Orange dès<input type="number" name="tenueOrange" min="1" max="60" step="1" required value="${n.tenueOrange}"></label>
       <label class="etroit">Rouge dès<input type="number" name="tenueRouge" min="1" max="60" step="1" required value="${n.tenueRouge}"></label>
       <span class="aide">oublis sur la période</span>
+    </div>
     </div>`;
 }
+const SEUIL_ASSIDUITE_TEXTE = () => `${typeof SEUIL_ASSIDUITE === 'number' ? SEUIL_ASSIDUITE : 4} demi-journées non justifiées ou plus dans un même mois`;
 
 // Rubrique 🎨 Apparence et personnalisation, partie « Onglets » : ordre, affichage, noms (perso.js), tablette, lancement.
 function htmlReglageOnglets(o) {
@@ -309,68 +333,74 @@ const lireAppareil = form => ({
   boutons: form.querySelector('[name="boutons"]:checked')?.value || 'normale',
 });
 
+// Carnet École : titres et boutons sans émoji (icônes au trait d'ecole.js) ; ailleurs, comme avant.
+const enEcoleReglages = () => typeof avecEcole === 'function' && avecEcole() && typeof iconeEcole === 'function';
+const titreRubrique = (emoji, icone, texte) => (enEcoleReglages() ? iconeEcole(icone) : `${emoji} `) + texte;
+const emojiReglages = e => (enEcoleReglages() ? '' : `${e} `);
+
 async function ouvrirReglages(rubrique = 'apparence') {
   const a = reglage('apparence'), n = reglage('notes'), c = reglage('competences'), o = reglage('onglets'), p = reglage('perso');
-  const ouvert = r => (r === rubrique ? 'open' : '');
+  const ouvert = r => (r === rubrique ? 'open' : ''), ecole = enEcoleReglages();
   const { d, resultat } = ouvrirModale('Réglages du carnet', `
-    <p class="aide">Ces réglages sont à toi : ils sont enregistrés dans ton carnet et te suivent sur la clé, d’un appareil à l’autre.</p>
-    <details ${ouvert('apparence')}><summary>🎨 Apparence et personnalisation <small>couleurs, formes et tailles, onglets</small></summary>
+    <p class="aide">Ces réglages sont à toi : ils sont enregistrés dans ton carnet et te suivent sur la clé, d’un appareil à l’autre.
+      Ils sont propres à la discipline du carnet (${esc(profil().nom)}) : les changer ici ne touche pas aux autres disciplines.</p>
+    <details ${ouvert('apparence')}><summary>${titreRubrique('🎨', 'palette', 'Apparence et personnalisation')} <small>couleurs, formes et tailles, onglets</small></summary>
       <div class="rubrique" data-rubrique="apparence">${htmlReglageApparence(a, reglagesAppareil(), p)}</div>
       <div class="rubrique">${htmlReglageOnglets(o)}</div>
       <div class="rubrique origine-apparence">
         <button value="origine-apparence" formnovalidate class="danger">↺ Remettre l’apparence d’origine</button>
         <p class="aide">Couleurs, formes, tailles et onglets comme au premier jour. Tes notes, compétences et autres réglages ne bougent pas.</p>
       </div></details>
-    <details ${ouvert('etablissement')}><summary>🏫 Établissement <small>nom, professeur, périodes</small></summary>
+    <details ${ouvert('etablissement')}><summary>${ecole ? `${iconeEcole('ecole')}École <small>nom, enseignant, périodes</small>` : '🏫 Établissement <small>nom, professeur, périodes</small>'}</summary>
       <div class="rubrique">
         <div class="ligne">
-          <label>Établissement (affiché en haut)<input name="etablissement" value="${esc(a.etablissement)}" maxlength="30" placeholder="ex. Collège Saint-André"></label>
-          <label>Professeur<input name="prof" value="${esc(a.prof)}" maxlength="40" placeholder="ex. M. Dupont"></label>
+          <label>${ecole ? 'École (affichée en haut)' : 'Établissement (affiché en haut)'}<input name="etablissement" value="${esc(a.etablissement)}" maxlength="30" placeholder="${ecole ? 'ex. École Jules Ferry' : 'ex. Collège Saint-André'}"></label>
+          <label>${ecole ? 'Enseignant' : 'Professeur'}<input name="prof" value="${esc(a.prof)}" maxlength="40" placeholder="${ecole ? 'ex. Mme Martin' : 'ex. M. Dupont'}"></label>
         </div>
-        <p class="aide">Le nom du professeur est repris en tête des classeurs Excel exportés.</p>
-        <button value="periodes" formnovalidate>📅 Trimestres / semestres…</button>
+        <p class="aide">${ecole ? 'Ton nom est repris en tête du registre d’appel (PDF), du livret et des tableaux exportés.' : 'Le nom du professeur est repris en tête des classeurs Excel exportés.'}</p>
+        <button value="periodes" formnovalidate>${ecole ? 'Périodes de l’année…' : '📅 Trimestres / semestres…'}</button>
       </div></details>
-    <details ${ouvert('discipline')}><summary>📚 Discipline <small>${esc(profil().nomComplet)}</small></summary>
+    <details ${ouvert('discipline')}><summary>${titreRubrique('📚', 'livre', 'Discipline')} <small>${esc(profil().nomComplet)}</small></summary>
       <div class="rubrique">
         ${htmlChoixDiscipline(disciplineActive())}
         <p class="aide">${AIDE_DISCIPLINE} Le choix est gardé dans ton carnet (il te suit sur la clé) ;
           il n’est jamais transmis avec les réglages partagés avec un collègue.</p>
       </div></details>
-    <details ${ouvert('notes')}><summary>📝 Notes <small>barème, codes, alertes absences et ${mot('deTenue').replace(/^de /, '')}</small></summary>
+    <details ${ouvert('notes')}><summary>${ecole ? `${iconeEcole('liste')}Saisie <small>boutons de la barre de saisie rapide</small>` : `📝 Notes <small>barème, codes, alertes absences et ${mot('deTenue').replace(/^de /, '')}</small>`}</summary>
       <div class="rubrique">${htmlReglageNotes(n)}</div></details>
-    <details ${ouvert('competences')}><summary>🎯 Compétences <small>degrés, référentiels</small></summary>
+    <details ${ouvert('competences')}${ecole ? ' hidden' : ''}><summary>${titreRubrique('🎯', 'cible', 'Compétences')} <small>degrés, référentiels</small></summary>
       <div class="rubrique">
         <h4>Noms des 4 degrés de maîtrise</h4>
         <div class="table-reglages">${c.niveaux.map((nom, i) => `<span class="niveau n${i + 1}">${i + 1}</span>
           <input name="niv${i + 1}" value="${esc(nom)}" placeholder="${esc(REGLAGES_DEFAUT.competences.niveaux[i])}" maxlength="40" aria-label="Nom du degré ${i + 1}">`).join('')}</div>
-        <button value="competences">📚 Référentiels et compétences…</button>
+        <button value="competences">${emojiReglages('📚')}Référentiels et compétences…</button>
         <p class="aide">Masquer des compétences officielles, ajouter les tiennes, créer ton propre référentiel.</p>
       </div></details>
-    ${typeof htmlReglageAppr === 'function' ? `<details ${ouvert('appreciations')}><summary>✍ Appréciations <small>rubriques, ton, style, longueur</small></summary>
+    ${typeof htmlReglageAppr === 'function' ? `<details ${ouvert('appreciations')}><summary>${titreRubrique('✍', 'modifier', 'Appréciations')} <small>rubriques, ton, style, longueur</small></summary>
       <div class="rubrique" data-rubrique="appreciations">${htmlReglageAppr(reglageAppr())}
-        <p class="aide">Les appréciations se préparent dans l’onglet Notes › ✍ Appréciations, ou dans la fiche d’un élève.</p></div></details>` : ''}
-    <details ${ouvert('partage')}><summary>🔄 Partager <small>avec un collègue, ou revenir à l’origine</small></summary>
+        <p class="aide">${ecole ? 'Les appréciations se préparent dans le livret (onglet Notes › Livret), ou dans la fiche d’un élève.' : 'Les appréciations se préparent dans l’onglet Notes › ✍ Appréciations, ou dans la fiche d’un élève.'}</p></div></details>` : ''}
+    <details ${ouvert('partage')}><summary>${titreRubrique('🔄', 'partager', 'Partager')} <small>avec un collègue, ou revenir à l’origine</small></summary>
       <div class="rubrique">
         <p class="aide">Le fichier de réglages ne contient <b>aucune donnée d’élève</b> : couleurs, barème, compétences, onglets, périodes.
           Un collègue peut l’importer pour démarrer avec la même organisation.</p>
         <div class="actions-reglages">
-          <button type="button" data-exporter-reglages>⬇ Exporter mes réglages</button>
-          <label class="bouton">⬆ Importer des réglages…<input type="file" accept=".json,application/json" data-importer-reglages hidden></label>
+          <button type="button" data-exporter-reglages>${emojiReglages('⬇')}Exporter mes réglages</button>
+          <label class="bouton">${emojiReglages('⬆')}Importer des réglages…<input type="file" accept=".json,application/json" data-importer-reglages hidden></label>
         </div>
         <button value="origine" formnovalidate class="danger">Revenir aux réglages d’origine</button>
       </div></details>
-    <details ${ouvert('securite')}><summary>🔒 Sécurité <small>mot de passe, verrouillage automatique</small></summary>
+    <details ${ouvert('securite')}><summary>${titreRubrique('🔒', 'cadenas', 'Sécurité')} <small>mot de passe, verrouillage automatique</small></summary>
       <div class="rubrique">
         ${typeof htmlReglageVerrou === 'function' ? htmlReglageVerrou() + '<h4>Mot de passe</h4>' : ''}
         <p class="aide">Le mot de passe chiffre le carnet sur ta clé. Pour le changer : sur l’ordinateur, clé branchée.
           Tout ce qui est sur la clé est d’abord repris, rien ne se perd ; tes autres appareils prennent le nouveau
           au prochain « Récupérer depuis la clé ».</p>
-        <button value="mdp" formnovalidate>🔑 Changer le mot de passe…</button>
+        <button value="mdp" formnovalidate>${emojiReglages('🔑')}Changer le mot de passe…</button>
       </div></details>
-    <details ${ouvert('application')}><summary>📲 L’application <small>installer sur cet appareil · v${VERSION_APP}</small></summary>
+    <details ${ouvert('application')}><summary>${titreRubrique('📲', 'appli', 'L’application')} <small>installer sur cet appareil · v${VERSION_APP}</small></summary>
       <div class="rubrique">
-        ${appliInstallee() ? '<p class="aide">✔ L’application est installée sur cet appareil : elle marche sans internet.</p>'
-          : `<button type="button" data-installer-appli>📲 Installer l’application</button>
+        ${appliInstallee() ? `<p class="aide">${emojiReglages('✔')}L’application est installée sur cet appareil : elle marche sans internet.</p>`
+          : `<button type="button" data-installer-appli>${emojiReglages('📲')}Installer l’application</button>
         <p class="aide">Elle s’ouvre alors comme une vraie appli (icône sur l’écran d’accueil ou le bureau) et marche sans internet.</p>`}
       </div></details>`,
   boutonsModale('Enregistrer'), 'modale-large reglages');
@@ -655,7 +685,7 @@ async function installerAppli() {
 function exporterReglages() {
   const contenu = { format: 'carnet-eps-reglages', version: 1, appli: VERSION_APP, date: aujourdhui(), reglages: {} };
   for (const nom of [...FICHES_REGLAGES.filter(n => n !== 'discipline'), 'periodes']) { // (la discipline reste propre à chaque carnet)
-    const r = Donnees.get('reglages', nom);
+    const r = ficheReglage(nom); // (ceux de la discipline du carnet)
     if (!r) continue;
     const { id, maj, majChamps, majChampsPour, ...valeurs } = r;
     if (nom === 'apparence') delete valeurs.prof; // le nom du prof reste chez lui
@@ -720,7 +750,9 @@ function nettoyerReglage(nom, brut) {
   if (nom === 'perso') nettoyerPerso(propre);
   if (nom === 'discipline' && propre.code && !DISCIPLINES[propre.code]) delete propre.code;
   if (nom === 'appreciations') {
-    for (const k of ['ordre', 'actives']) if (propre[k]) propre[k] = propre[k].filter(x => REGLAGES_DEFAUT.appreciations.ordre.includes(x));
+    // (Rubriques connues : celles d'origine et celles du carnet École, discipline.js.)
+    const connues = [...REGLAGES_DEFAUT.appreciations.ordre, ...(DISCIPLINES.ecole?.appreciations?.rubriques || [])];
+    for (const k of ['ordre', 'actives']) if (propre[k]) propre[k] = propre[k].filter(x => connues.includes(x));
     if (propre.ton && !['bienveillant', 'neutre', 'exigeant'].includes(propre.ton)) delete propre.ton;
     if (propre.style && !['phrases', 'telegraphique'].includes(propre.style)) delete propre.style;
     if ('longueur' in propre && !(propre.longueur >= 80 && propre.longueur <= 2000)) delete propre.longueur;
@@ -761,7 +793,7 @@ async function importerReglages(fichier) {
   const md = x => typeof x === 'string' && /^\d\d-\d\d$/.test(x);
   if (p && ['trimestres', 'semestres'].includes(p.type) && Array.isArray(p.trimestres) && p.trimestres.length === 2 && p.trimestres.every(md)
     && Array.isArray(p.semestres) && p.semestres.length === 1 && p.semestres.every(md)) {
-    Donnees.ecrire('reglages', { ...Donnees.get('reglages', 'periodes'), id: 'periodes', type: p.type, trimestres: p.trimestres, semestres: p.semestres });
+    ecrireFicheReglage('periodes', { type: p.type, trimestres: p.trimestres, semestres: p.semestres });
   }
   appliquerReglages(true);
   rendre();
@@ -771,7 +803,7 @@ async function importerReglages(fichier) {
 /* ---------- Premier lancement : quelques choix pour démarrer ---------- */
 
 async function premierLancement() {
-  if (ui.accueilVu || classesTriees().length || Donnees.get('reglages', 'apparence')) return;
+  if (ui.accueilVu || classesTriees().length || ficheReglage('apparence')) return;
   const a = reglage('apparence');
   const { d, resultat } = ouvrirModale('Bienvenue dans ton carnet 👋', `
     <p class="bienvenue-intro">Quelques réglages pour commencer (tout se change ensuite dans <b>⚙ Réglages du carnet</b>, sous la liste des classes).</p>

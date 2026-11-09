@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="EPS S-A">
   <title>Carnet EPS S-A</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icon.ico" sizes="16x16 32x32 48x48 256x256">
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -37,6 +37,9 @@
     </nav>
     <!-- Tablette : onglets regroupés en rideaux, ou favoris + « Plus » (onglets.js) -->
     <nav class="onglets-compact" id="onglets-compact" aria-label="Onglets" hidden></nav>
+    <button class="icone btn-verrou" id="btn-cache-ecran" type="button" title="Cacher les infos sensibles (F8)" aria-label="Cacher les infos sensibles" aria-pressed="false"><svg class="bouclier-infos" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"/><g class="serrure-infos"><circle cx="12" cy="11" r="1"/><path d="M12 12v2.5"/></g></svg></button>
+    <!-- Carnet École : roue des réglages du carnet, visible depuis tous les onglets (cachée ailleurs : style.css). -->
+    <button class="icone btn-verrou" id="btn-reglages-barre" type="button" data-action="reglages" title="Réglages du carnet" aria-label="Réglages du carnet"><svg class="roue-reglages" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 4.3c.4-1.8 3-1.8 3.4 0a1.7 1.7 0 0 0 2.6 1.1c1.5-.9 3.3.8 2.4 2.4a1.7 1.7 0 0 0 1 2.5c1.8.4 1.8 3 0 3.4a1.7 1.7 0 0 0-1 2.6c.9 1.5-.9 3.3-2.4 2.4a1.7 1.7 0 0 0-2.6 1c-.4 1.8-3 1.8-3.4 0a1.7 1.7 0 0 0-2.6-1c-1.5.9-3.3-.9-2.4-2.4a1.7 1.7 0 0 0-1-2.6c-1.8-.4-1.8-3 0-3.4a1.7 1.7 0 0 0 1-2.5c-.9-1.6.9-3.3 2.4-2.4a1.7 1.7 0 0 0 2.6-1.1z"/><circle cx="12" cy="12" r="3"/></svg></button>
     <button class="icone btn-verrou" id="btn-verrou" title="Verrouiller le carnet maintenant" aria-label="Verrouiller le carnet" hidden>🔒</button>
     <div class="groupe-sauvegarde">
       <!-- ↶ Retour en arrière / ↷ retour vers l'avant (donnees.js › annuler, refaire). -->
@@ -109,8 +112,7 @@
     <button data-code="">Effacer</button>
   </div>
 
-  <div class="toast" id="toast" role="status" hidden></div>
-  <div class="notif-auto" id="notif-auto" role="status" hidden></div>
+  <div class="toast" id="toast" role="status" popover="manual" hidden></div>  <div class="notif-auto" id="notif-auto" role="status" hidden></div>
 
   <script src="compat.js"></script>
   <script src="donnees.js"></script>
@@ -121,6 +123,7 @@
   <script src="tableur.js"></script>
   <script src="entrainement.js"></script>
   <script src="notesexcel.js"></script>
+  <script src="versecoledirecte.js"></script>
   <script src="listeclasse.js"></script>
   <script src="reglages.js"></script>
   <script src="perso.js"></script>
@@ -147,8 +150,10 @@
   <script src="eleves.js"></script>
   <script src="appel.js"></script>
   <script src="exemple.js"></script>
+  <script src="dessinpdf.js"></script>
   <script src="ecole.js"></script>
   <script src="ecoleoutils.js"></script>
+  <script src="ecoleclasse.js"></script>
   <script src="appreciations.js"></script>
   <script src="pp.js"></script>
   <script src="ppinfos.js"></script>
@@ -157,8 +162,10 @@
   <script src="apprendrebareme.js"></script>
   <script src="choixdegre.js"></script>
   <script src="verrou.js"></script>
+  <script src="cacheecran.js"></script>
   <script src="aide.js"></script>
   <script src="ecoleaide.js"></script>
+  <script src="extensions.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 'use strict';
 /* ---------- Carnet École : les outils de la classe (onglet Outils, famille « La classe ») ----------
-   📖 Fluence et rituels, 🧩 Groupes de besoin, 🪑 Plan de classe. Réservés au carnet École (disciplines: ['ecole']).
+   Fluence et rituels, Groupes de besoin, Plan de classe (icônes : ecole.js › ICONES_OUTILS_ECOLE). Réservés au carnet École (disciplines: ['ecole']).
    Résultats et plan rangés dans le carnet (ils suivent sur la clé et la tablette) :
    - mesures : `suivis` « élève|rituel|id » { mesures: { date: valeur } } ; rituels ajoutés : classe.rituels ;
    - plan : classe.plan { rangs, cols, parDeux, places: { "rang-colonne": eleveId } }.
@@ -27,13 +27,13 @@ function nomCourtClasse(el, tous) {
   return tous.filter(x => (x.prenom || '').trim() === (el.prenom || '').trim()).length > 1 ? `${p} ${(el.nom || '').charAt(0)}.` : p;
 }
 
-/* ---------- 📖 Fluence et rituels ---------- */
+/* ---------- Fluence et rituels ---------- */
 
 const RITUELS_BASE = [
-  { id: 'fluence', icone: '📖', nom: 'Fluence', unite: 'mots/min', chrono: true },
-  { id: 'calcul', icone: '🧮', nom: 'Calcul mental', sur: 10 },
-  { id: 'dictee', icone: '✍️', nom: 'Dictée', sur: 10 },
-  { id: 'tables', icone: '✖️', nom: 'Tables', sur: 10 },
+  { id: 'fluence', icone: 'lecture', nom: 'Fluence', unite: 'mots/min', chrono: true },
+  { id: 'calcul', icone: 'calcul', nom: 'Calcul mental', sur: 10 },
+  { id: 'dictee', icone: 'modifier', nom: 'Dictée', sur: 10 },
+  { id: 'tables', icone: 'fois', nom: 'Tables', sur: 10 },
 ];
 const DUREE_FLUENCE = 60; // secondes
 const rituelsClasse = c => [...RITUELS_BASE, ...(c.rituels || [])];
@@ -76,12 +76,12 @@ function htmlPassageFluence(rit, eleves) {
   return `<section class="passage-fluence">
     <div class="eleve-passage">${Trombi.mini(el)}<b>${esc(nomEleveOutil(el))}</b></div>
     <div class="temps-fluence" id="temps-fluence">${texteTemps(ch ? DUREE_FLUENCE - secondesFluence() : DUREE_FLUENCE)}</div>
-    ${enCours ? '<button type="button" class="gros" data-ec="fluence-stop">⏹ Arrêter</button>'
+    ${enCours ? `<button type="button" class="gros" data-ec="fluence-stop">${iconeEcole('stop')}Arrêter</button>`
     : ch ? `<label class="mots-fluence">Mots bien lus<input type="number" inputmode="numeric" min="0" data-fluence-mots></label>
-        <button type="button" class="primaire gros" data-ec="fluence-valider">✔ Valider</button>
-        <button type="button" data-ec="fluence-annuler">↺ Recommencer</button>
+        <button type="button" class="primaire gros" data-ec="fluence-valider">${iconeEcole('coche')}Valider</button>
+        <button type="button" data-ec="fluence-annuler">${iconeEcole('recommencer')}Recommencer</button>
         ${ch.fini < DUREE_FLUENCE ? `<span class="aide">Lu en ${Math.round(ch.fini)} s : l’appli ramène à une minute.</span>` : ''}`
-      : '<button type="button" class="primaire gros" data-ec="fluence-go">▶ Départ (1 minute)</button>'}
+      : `<button type="button" class="primaire gros" data-ec="fluence-go">${iconeEcole('chrono')}Départ (1 minute)</button>`}
   </section>`;
 }
 
@@ -93,9 +93,9 @@ function htmlRituels(c) {
   const unite = rit.unite || `/ ${fmt(rit.sur)}`;
   return `
     <div class="filtres-ecole" role="group" aria-label="Choisir le rituel">
-      ${rituelsClasse(c).map(r => `<button type="button" class="puce-ecole${r.id === rit.id ? ' actif' : ''}" data-ec="rituel" data-arg="${esc(r.id)}" aria-pressed="${r.id === rit.id}">${r.icone || '📝'} ${esc(r.nom)}</button>`).join('')}
+      ${rituelsClasse(c).map(r => `<button type="button" class="puce-ecole${r.id === rit.id ? ' actif' : ''}" data-ec="rituel" data-arg="${esc(r.id)}" aria-pressed="${r.id === rit.id}">${iconeEcole(TRACES_ECOLE[r.icone] ? r.icone : 'notes')}${esc(r.nom)}</button>`).join('')}
       <button type="button" class="puce-ecole" data-ec="rituel-ajout">+ Rituel</button>
-      ${rit.icone === undefined ? `<button type="button" class="puce-ecole" data-ec="rituel-retirer">🗑 Retirer « ${esc(rit.nom)} »</button>` : ''}
+      ${rit.icone === undefined ? `<button type="button" class="puce-ecole" data-ec="rituel-retirer">${iconeEcole('corbeille')}Retirer « ${esc(rit.nom)} »</button>` : ''}
     </div>
     ${htmlPucesNiveau(c)}
     <div class="outils"><label class="choix-tri">Jour<input type="date" data-rituel-date value="${date}"></label>
@@ -154,9 +154,10 @@ async function retirerRituel(c) {
   rendreOutil();
 }
 
-/* ---------- 🧩 Groupes de besoin ---------- */
+/* ---------- Groupes de besoin ---------- */
 
-const GROUPES_BESOIN = [['aide', '🔴 Besoin d’aide'], ['consolider', '🟠 À consolider'], ['aise', '🟢 À l’aise']];
+// (Pastille de couleur devant le titre : style.css, .pastille-besoin ; rouge, orange, vert : couleurs des degrés 1, 2 et 4.)
+const GROUPES_BESOIN = [['aide', 'Besoin d’aide'], ['consolider', 'À consolider'], ['aise', 'À l’aise']];
 const cfgBesoin = c => ((etatOutils.besoin ??= {})[c.id] ??= { cle: 'FR', periode: 'annee', dep: {} });
 // Degré d'un élève sur une matière (« FR ») ou un domaine (« FR|Lecture ») : moyenne des derniers degrés.
 function degreBesoin(el, c, cle, periode) {
@@ -197,20 +198,20 @@ function htmlBesoin(c) {
       <label class="choix-tri">Quoi<select data-besoin-cle>${optionsBesoin(c).map(m => `<option value="${esc(m.ca)}" ${cfg.cle === m.ca ? 'selected' : ''}>${esc(m.titre)}</option>
         ${[...m.d].map(([code, t]) => `<option value="${esc(m.ca + '|' + code)}" ${cfg.cle === m.ca + '|' + code ? 'selected' : ''}>&nbsp;&nbsp;— ${esc(t)}</option>`).join('')}`).join('')}</select></label>
       <label class="choix-tri">Période<select data-besoin-periode><option value="annee" ${cfg.periode === 'annee' ? 'selected' : ''}>Toute l’année</option>${periodesAnnee().map(p => `<option value="${p.id}" ${p.id === cfg.periode ? 'selected' : ''}>${p.code}</option>`).join('')}</select></label>
-      ${deplaces ? '<button type="button" data-ec="besoin-reset">↺ Revenir aux degrés</button>' : ''}
-      <button type="button" data-ec="besoin-copier">📋 Copier</button>
+      ${deplaces ? `<button type="button" data-ec="besoin-reset">${iconeEcole('recommencer')}Revenir aux degrés</button>` : ''}
+      <button type="button" data-ec="besoin-copier">${iconeEcole('copier')}Copier</button>
     </div>
     ${htmlPucesNiveau(c)}
-    <div class="colonnes-besoin">${GROUPES_BESOIN.map(([k, nom]) => `<section class="colonne-besoin"><h3>${nom} <span class="aide">${g[k].length}</span></h3><div class="cartes-besoin">${g[k].map(x => carte(x, k)).join('') || '<p class="aide">Personne</p>'}</div></section>`).join('')}</div>
+    <div class="colonnes-besoin">${GROUPES_BESOIN.map(([k, nom]) => `<section class="colonne-besoin"><h3><span class="pastille-besoin p-${k}" aria-hidden="true"></span>${nom} <span class="aide">${g[k].length}</span></h3><div class="cartes-besoin">${g[k].map(x => carte(x, k)).join('') || '<p class="aide">Personne</p>'}</div></section>`).join('')}</div>
     ${g[''].length ? `<section class="colonne-besoin pas-evalues"><h3>Pas encore évalués <span class="aide">${g[''].length}</span></h3><div class="cartes-besoin">${g[''].map(x => carte(x, '')).join('')}</div></section>` : ''}
     <p class="aide">Touche un élève pour le passer au groupe suivant. Moins de 2 : besoin d’aide · de 2 à moins de 3 : à consolider · 3 et plus : à l’aise.</p>`;
 }
 function texteBesoin(c) {
   const g = groupesBesoin(c), tous = elevesDe(c.id);
-  return GROUPES_BESOIN.map(([k, nom]) => `${nom.replace(/^\S+\s/, '')} : ${g[k].map(x => nomCourtClasse(x.el, tous)).join(', ') || '—'}`).join('\n');
+  return GROUPES_BESOIN.map(([k, nom]) => `${nom} :${g[k].map(x => nomCourtClasse(x.el, tous)).join(', ') || '—'}`).join('\n');
 }
 
-/* ---------- 🪑 Plan de classe ---------- */
+/* ---------- Plan de classe ---------- */
 
 let selectionPlan = '';
 const planDe = c => ({ rangs: 4, cols: 6, parDeux: true, places: {}, ...(Donnees.get('classes', c.id)?.plan || {}) });
@@ -242,11 +243,11 @@ function htmlPlan(c) {
       ${choix('Rangées', 'rangs', 1, 8, plan.rangs)}${choix('Places par rangée', 'cols', 1, 10, plan.cols)}
       <label class="case"><input type="checkbox" data-plan="parDeux" ${plan.parDeux ? 'checked' : ''}> Tables par deux</label>
       <span class="espace"></span>
-      <button type="button" data-ec="plan-hasard">🎲 Au hasard</button>
-      <button type="button" data-ec="plan-vider" ${placesParId.size ? '' : 'disabled'}>↺ Vider</button>
-      <button type="button" data-ec="plan-imprimer" ${placesParId.size ? '' : 'disabled'}>🖨 Imprimer</button>
+      <button type="button" data-ec="plan-hasard">${iconeEcole('de')}Au hasard</button>
+      <button type="button" data-ec="plan-vider" ${placesParId.size ? '' : 'disabled'}>${iconeEcole('recommencer')}Vider</button>
+      <button type="button" data-ec="plan-imprimer" ${placesParId.size ? '' : 'disabled'}>${iconeEcole('imprimer')}Imprimer</button>
     </div>
-    ${eleves.length > plan.rangs * plan.cols ? `<div class="alerte-sante">⚠ ${plan.rangs * plan.cols} places pour ${eleves.length} élèves : ajoute des places.</div>` : ''}
+    ${eleves.length > plan.rangs * plan.cols ? `<div class="alerte-sante">${iconeEcole('alerte')}${plan.rangs * plan.cols} places pour ${eleves.length} élèves : ajoute des places.</div>` : ''}
     <p class="tableau-plan">Tableau</p>
     <div class="grille-plan plan-cols-${plan.cols}${plan.parDeux ? ' par-deux' : ''}">${grille}</div>
     <section class="libres-plan"><h3>À placer <span class="aide">${libres.length}</span></h3>
@@ -397,4 +398,5 @@ function remplirOutilsExemple(c) {
   const places = {};
   eleves.forEach((el, k) => { places[`${Math.floor(k / 6)}-${k % 6}`] = el.id; });
   Donnees.ecrire('classes', { ...Donnees.get('classes', c.id), plan: { rangs: 4, cols: 6, parDeux: true, places } });
+  if (typeof remplirOutilsClasseExemple === 'function') remplirOutilsClasseExemple(c); // (métiers, coupon, prêts : ecoleclasse.js)
 }

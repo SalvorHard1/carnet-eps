@@ -407,7 +407,9 @@ DISCIPLINES.ecole = {
   referentielParNiveau: { CP: 'ecoleCycle2', CE1: 'ecoleCycle2', CE2: 'ecoleCycle2', 'CP-CE1': 'ecoleCycle2', 'CE1-CE2': 'ecoleCycle2', 'CE2-CM1': 'ecoleCycle2', CM1: 'ecoleCycle3', CM2: 'ecoleCycle3', 'CM1-CM2': 'ecoleCycle3' },
   referentielDefaut: 'ecoleCycle2',
   familleOutilsMasquees: ['apsa', 'sciences'],
-  outilsMasques: ['intervalles', 'vma', 'tableau', 'video'],
+  outilsMasques: ['chrono', 'tours', 'intervalles', 'marque', 'tournoi', 'essais', 'vma', 'tableau', 'video'], // (pas d'outils de sport : ils restent en EPS)
+  nomsFamillesOutils: { temps: 'Le temps', groupes: 'La parole et les groupes' }, // (outils.js › nomFamilleOutil)
+  outilsRenommes: { equipes: { nom: 'Groupes de travail', info: 'Groupes hétérogènes ou par affinité, sans les absents' } }, // (outils.js › titreOutil, infoOutil)
   ongletsMasques: ['baremes', 'pp'], // (pas de barèmes de discipline ni de professeur principal à l'école)
   codes: ['ABS', 'NE', 'MAL', 'AUT'],
   modeleSeance: () => [],
@@ -418,17 +420,226 @@ DISCIPLINES.ecole = {
     { id: 'reunion', nom: 'Réunion (conseil de maîtres, parents…)', couleur: '#5b3fa0' },
     { id: 'autre', nom: 'Autre', couleur: '#3d4a52' },
   ],
+  // Appréciations d'école (appreciations.js) : rubriques à elles, phrases pour les familles du primaire, matières
+  // citées (« en français ») au lieu d'une activité, pas de comparaison avec la classe, texte toujours à la 3e personne.
   appreciations: {
     sansTutoiement: true, // (texte lu par les familles, comme le livret : toujours à la 3e personne)
-    noms: { moteur: { nom: 'Connaissances', aide: 'résultats' }, methodo: { nom: 'Méthode', aide: 'organisation, soin' } },
-    phrases: { attitude: DISCIPLINES.svt.appreciations.phrases.attitude, moteur: DISCIPLINES.svt.appreciations.phrases.moteur,
+    sansClasse: true, // (ni « en retrait par rapport à la classe », ni « parmi les meilleurs »)
+    apprendre: true, // (l'appli retient les mots remplacés et les phrases ajoutées par l'enseignant : appreciations.js › apprisAppr)
+    textesDifferents: true, // (dans une même classe, les élèves se partagent les tournures : deux voisins n'ont pas la même phrase)
+    // Rubriques du carnet École, dans l'ordre proposé (les apprentissages d'abord : faute de place, ce sont les
+    // dernières qui sautent) ; cochées d'origine : toutes sauf les résultats chiffrés et les progrès.
+    rubriques: ['competences', 'consolider', 'attitude', 'comportement', 'autonomie', 'methodo', 'moteur', 'progression', 'objectif'],
+    actives: ['competences', 'consolider', 'attitude', 'comportement', 'autonomie', 'methodo', 'objectif'],
+    longueur: 350, // (longueur d'origine : plus de rubriques qu'en EPS, et pas la limite d'École Directe)
+    sansVigilance: ['moteur'], // (les notes chiffrées ne reviennent pas d'elles-mêmes : les apprentissages en parlent déjà)
+    noms: {
+      attitude: { nom: 'Participation', aide: 'écoute, envie d’apprendre, présence' },
+      comportement: { nom: 'Comportement', aide: 'règles de vie, camarades' },
+      autonomie: { nom: 'Autonomie', aide: 'se mettre au travail sans aide' },
+      methodo: { nom: 'Soin', aide: 'cahiers, présentation, organisation' },
+      competences: { nom: 'Apprentissages', aide: 'degrés des domaines, matière la plus réussie' },
+      consolider: { nom: 'À consolider', aide: 'la matière la plus fragile' },
+      moteur: { nom: 'Résultats', aide: 'notes chiffrées' },
+      progression: { nom: 'Progrès', aide: 'évolution sur la période' },
+      objectif: { nom: 'Conseil', aide: 'piste pour la suite' },
+    },
+    // Mots-clés cherchés dans les observations (sans accents ; les tournures négatives d'abord, voir motsCles).
+    mots: {
+      autonomie: { moins: ['pas autonome', 'peu autonome', 'manque d\'autonomie', 'pas d\'autonomie', 'besoin d\'aide', 'besoin de l\'adulte', 'attend l\'aide', 'attend qu\'on', 'dependant', 'ne se met pas au travail', 'lent a se mettre'],
+        plus: ['autonome', 'autonomie', 'travaille seul', 'sans aide', 'initiative', 'se met vite au travail'] },
+      methodo: { moins: ['peu soigne', 'pas soigne', 'manque de soin', 'sans soin', 'brouillon', 'mal tenu', 'mal presente', 'desordre', 'desorganise', 'oublie ses affaires', 'perd ses affaires', 'oubli du materiel'],
+        plus: ['soigne', 'avec soin', 'bien tenu', 'bien presente', 'organise', 'travail propre', 'cahiers propres', 'cahier propre'] },
+    },
+    // Portrait de l'élève (pastilles de la fiche, appreciations.js › PORTRAIT) : ce qui rend l'appréciation humaine.
+    // {E} accord (« e » au féminin), {X} soucieux / soucieuse, {LUI} lui / elle, {LE} le / la, {UN} un / une.
+    // Qualité : adj [masculin, féminin] (réunies dans « Clara est une élève consciencieuse et volontaire »),
+    // nom (sexe inconnu : « Léo fait preuve de curiosité »), ou une phrase à elle.
+    portrait: {
+      qualites: [
+        { id: 'consciencieux', nom: 'Consciencieux·se', adj: ['consciencieux', 'consciencieuse'], qualite: 'application' },
+        { id: 'serieux', nom: 'Sérieux·se', adj: ['sérieux', 'sérieuse'], qualite: 'sérieux' },
+        { id: 'volontaire', nom: 'Volontaire', adj: ['volontaire', 'volontaire'], qualite: 'bonne volonté' },
+        { id: 'curieux', nom: 'Curieux·se', adj: ['curieux', 'curieuse'], qualite: 'curiosité' },
+        { id: 'attentif', nom: 'Attentif·ve', adj: ['attentif', 'attentive'], qualite: 'attention' },
+        { id: 'perseverant', nom: 'Persévérant·e', adj: ['persévérant', 'persévérante'], qualite: 'persévérance' },
+        { id: 'dynamique', nom: 'Dynamique', adj: ['dynamique', 'dynamique'], qualite: 'dynamisme' },
+        { id: 'motive', nom: 'Motivé·e', adj: ['motivé', 'motivée'], qualite: 'motivation' },
+        { id: 'reflechi', nom: 'Réfléchi·e', adj: ['réfléchi', 'réfléchie'], qualite: 'réflexion' },
+        { id: 'creatif', nom: 'Créatif·ve', adj: ['créatif', 'créative'], qualite: 'créativité' },
+        { id: 'gentil', nom: 'Gentil·le', adj: ['gentil', 'gentille'], qualite: 'gentillesse' },
+        { id: 'calme', nom: 'Calme', adj: ['calme', 'calme'], qualite: 'calme' },
+        { id: 'poli', nom: 'Poli·e', adj: ['poli', 'polie'], qualite: 'politesse' },
+        { id: 'souriant', nom: 'Souriant·e', phrases: ['{S} participe à toutes les activités avec le sourire.', '{S} vient à l’école avec le sourire et la bonne humeur.', 'Sa bonne humeur est un vrai plaisir pour la classe.'] },
+        { id: 'plaisir', nom: 'Plaisir d’apprendre', phrases: ['{S} montre un réel plaisir à apprendre.', '{S} a une belle envie d’apprendre.', 'Son envie d’apprendre fait plaisir à voir.'] },
+        { id: 'conseils', nom: 'À l’écoute des conseils', phrases: ['{S} tient compte des conseils pour donner le meilleur de {LUI}-même.', 'Très à l’écoute, {s} sait tenir compte des conseils donnés.', '{S} écoute les conseils et sait en tirer profit.'] },
+        { id: 'mieux', nom: 'Soucieux·se de bien faire', phrases: ['Toujours soucieu{X} de faire de son mieux, {s} met tout en œuvre pour réussir.', '{S} cherche toujours à bien faire.', '{S} met beaucoup de cœur à bien faire.'] },
+        { id: 'moteur', nom: 'Moteur de la classe', phrases: ['{S} est un élément moteur de la classe.', '{S} entraîne volontiers la classe par son enthousiasme.'] },
+        { id: 'entraide', nom: 'Aide les autres', phrases: ['{S} aide volontiers ses camarades.', '{S} se montre toujours prêt{E} à aider ses camarades.', 'Toujours prêt{E} à rendre service, {s} aide volontiers les autres.'] },
+        { id: 'camarade', nom: 'Bon·ne camarade', phrases: ['{S} est apprécié{E} de ses camarades.', '{S} entretient de bonnes relations avec ses camarades.', 'Ses camarades apprécient sa présence.'] },
+        { id: 'oral', nom: 'Belle participation orale', phrases: ['Sa participation orale est très appréciée.', 'Ses interventions à l’oral enrichissent la classe.', '{S} prend volontiers la parole et ses idées sont pertinentes.'] },
+        { id: 'lecteur', nom: 'Aime lire', phrases: ['{S} a un vrai goût pour la lecture.', '{S} prend beaucoup de plaisir à lire.'] },
+      ],
+      // Points d'attention : une phrase, et les conseils qui vont avec (à la place du conseil des rubriques ; sans
+      // reprendre les mots de la phrase). leve : ce qui est dit quand la pastille de la période précédente est retirée
+      // (lien entre les périodes ; {LEPREC} = « le premier trimestre », {AUPREC} = « qu’au premier trimestre »).
+      attention: [
+        { id: 'confiance', nom: 'Manque de confiance', phrases: ['C’est {UN} élève qui veut bien faire, mais qui manque encore de confiance en {LUI}.', '{S} manque encore de confiance en {LUI}.', '{S} doute encore de {LUI}.', 'C’est {UN} élève qui veut bien faire, mais qui doute encore de {LUI}.'], buts: ['croire davantage en ses capacités', 'oser se lancer'],
+          leve: ['{S} a pris confiance en {LUI} depuis {LEPREC}.', '{S} prend peu à peu confiance en {LUI}.'] },
+        { id: 'etourderie', nom: 'Étourderie', phrases: ['{S} commet encore des erreurs d’étourderie.', 'Des erreurs d’étourderie gênent encore son travail.'], buts: ['prendre le temps de se relire', 'relire son travail avec attention'],
+          leve: ['Les erreurs d’étourderie se font plus rares depuis {LEPREC}.', '{S} a appris à se relire : les étourderies se font plus rares.'] },
+        { id: 'decourage', nom: 'Se décourage vite', phrases: ['{S} se décourage parfois face à la difficulté.', 'Face à la difficulté, {s} baisse encore parfois les bras.'], buts: ['ne pas baisser les bras', 'garder courage quand un exercice résiste'],
+          leve: ['{S} se décourage moins vite face à la difficulté depuis {LEPREC}.', '{S} persévère davantage quand un exercice résiste.'] },
+        { id: 'lent', nom: 'Lent·e à démarrer', phrases: ['{S} met parfois du temps à démarrer.', '{S} est encore lent{E} à se mettre au travail.'], buts: ['gagner en rapidité', 'se mettre au travail plus rapidement'],
+          leve: ['{S} se met désormais plus rapidement au travail.', '{S} a gagné en rapidité depuis {LEPREC}.'] },
+        { id: 'distrait', nom: 'Se laisse distraire', phrases: ['{S} se laisse encore facilement distraire.', 'Son attention se disperse encore facilement.'], buts: ['garder sa concentration jusqu’au bout', 'rester concentré{E} jusqu’au bout du travail'],
+          leve: ['{S} est désormais plus concentré{E} en classe.', 'La concentration s’est nettement améliorée depuis {LEPREC}.'] },
+        { id: 'bavard', nom: 'Bavardages', phrases: ['Les bavardages gênent parfois son travail.', '{S} bavarde encore trop souvent.'], buts: ['se concentrer davantage sur son travail', 'mieux écouter en classe'],
+          leve: ['Les bavardages ont nettement diminué depuis {LEPREC}.', '{S} bavarde beaucoup moins {AUPREC}.'] },
+        { id: 'agite', nom: 'A du mal à rester calme', phrases: ['{S} a du mal à rester calme en classe.', '{S} a encore du mal à tenir en place.'], buts: ['canaliser son énergie'],
+          leve: ['{S} est plus calme en classe depuis {LEPREC}.', '{S} canalise mieux son énergie depuis {LEPREC}.'] },
+        { id: 'timide', nom: 'Timide à l’oral', phrases: ['{S} n’ose pas encore beaucoup prendre la parole.', 'La prise de parole reste difficile pour {LUI}.'], buts: ['oser prendre la parole', 'participer davantage à l’oral'],
+          leve: ['{S} ose davantage prendre la parole depuis {LEPREC}.', 'La prise de parole devient plus facile pour {LUI}.'] },
+        { id: 'lecons', nom: 'Leçons pas apprises', phrases: ['Les leçons ne sont pas toujours apprises à la maison.', '{S} n’apprend pas toujours ses leçons.'], buts: ['apprendre ses leçons chaque soir', 'revoir chaque soir le travail de la journée'],
+          leve: ['Les leçons sont désormais mieux apprises à la maison.', '{S} apprend ses leçons plus régulièrement depuis {LEPREC}.'] },
+        { id: 'oublis', nom: 'Oublie son matériel', phrases: ['{S} oublie souvent son matériel.', 'Les oublis de matériel gênent parfois son travail.'], buts: ['vérifier son cartable chaque soir', 'penser à apporter son matériel'],
+          leve: ['Les oublis de matériel se font plus rares depuis {LEPREC}.'] },
+        { id: 'vite', nom: 'Travaille trop vite', phrases: ['{S} travaille parfois trop vite, au détriment de la qualité.', 'Par précipitation, {s} bâcle encore parfois son travail.'], buts: ['prendre le temps de bien faire'],
+          leve: ['{S} prend désormais davantage le temps de bien faire.'] },
+        { id: 'emotions', nom: 'Gère mal ses émotions', phrases: ['{S} a parfois du mal à gérer ses émotions.', 'La gestion des émotions reste parfois difficile pour {LUI}.'], buts: ['mettre des mots sur ses émotions', 'exprimer sa colère par des mots'],
+          leve: ['{S} gère mieux ses émotions depuis {LEPREC}.', '{S} apprend peu à peu à gérer ses émotions.'] },
+        { id: 'conflits', nom: 'Conflits avec les camarades', phrases: ['{S} entre parfois en conflit avec ses camarades.', 'Les relations avec les camarades sont parfois tendues.'], buts: ['régler les désaccords par la parole', 'mieux respecter ses camarades'],
+          leve: ['Les relations avec les camarades se sont apaisées depuis {LEPREC}.', '{S} règle mieux ses désaccords par la parole.'] },
+      ],
+      // pol : sens de la phrase (+1 point fort, −1 difficulté), pour les liaisons « Néanmoins », « En revanche ».
+      situations: [
+        { id: 'nouveau', nom: 'Nouveau·elle dans l’école', pol: 1, phrases: ['{S} s’est bien intégré{E} dans sa nouvelle école.', '{S} a trouvé sa place dans sa nouvelle école.'] },
+        { id: 'arrive', nom: 'Arrivé·e en cours d’année', pol: 1, phrases: ['Arrivé{E} en cours d’année, {s} a su trouver sa place dans la classe.', '{S} s’est bien adapté{E} à sa nouvelle classe.'] },
+        { id: 'murit', nom: 'A beaucoup mûri', pol: 1, phrases: ['{S} a beaucoup mûri.', '{S} a gagné en maturité.'] },
+        { id: 'lecture', nom: 'La lecture se met en place', phrases: ['La lecture se met en place.', 'L’apprentissage de la lecture se met en place.'] },
+        { id: 'aide', nom: 'Aide personnalisée (APC, PPRE)', pol: 1, phrases: ['{S} tire profit de l’aide personnalisée.', 'L’aide apportée en petit groupe lui est profitable.'] },
+        { id: 'passageres', nom: 'Difficultés passagères', pol: 1, phrases: ['Sa persévérance lui permet de surmonter ses difficultés passagères.', 'Ses efforts lui permettent de surmonter ses difficultés passagères.'] },
+        { id: 'absences', nom: 'Beaucoup d’absences', pol: -1, phrases: ['De nombreuses absences ont freiné ses apprentissages.', 'Des absences répétées ont gêné ses apprentissages.'] },
+        { id: 'pret', nom: 'Prêt·e pour la classe suivante', pol: 1, phrases: ['{S} est prêt{E} pour la classe suivante.', '{S} aborde la classe supérieure avec de bons atouts.'] },
+        { id: 'college', nom: 'Prêt·e pour le collège', pol: 1, phrases: ['{S} est prêt{E} pour l’entrée au collège.', '{S} a tous les atouts pour réussir au collège.'] },
+      ],
+    },
+    // Lien entre les périodes (case « Faire le lien avec la période précédente ») : une rubrique de comportement qui
+    // change nettement depuis la période précédente (de 2 ou moins à 3 ou plus, ou l'inverse), la matière fragile qui
+    // ne l'est plus. {LEPREC} = « le premier trimestre », {AUPREC} = « qu’au premier trimestre », {avant} = « en mathématiques ».
+    liens: {
+      mieux: {
+        attitude: ['{S} participe bien davantage depuis {LEPREC}.', 'La participation a nettement progressé depuis {LEPREC}.'],
+        comportement: ['Le comportement s’est nettement amélioré depuis {LEPREC}.', '{S} respecte désormais bien mieux les règles de la classe.'],
+        autonomie: ['{S} a gagné en autonomie depuis {LEPREC}.', 'L’autonomie a bien progressé depuis {LEPREC}.'],
+        methodo: ['Le soin des cahiers s’est nettement amélioré depuis {LEPREC}.', '{S} soigne désormais davantage son travail.'],
+      },
+      moins: {
+        attitude: ['La participation est moins régulière {AUPREC}.', '{S} participe moins {AUPREC}.'],
+        comportement: ['Le comportement est moins adapté {AUPREC}.', '{S} respecte moins bien les règles de la classe {AUPREC}.'],
+        autonomie: ['{S} est moins autonome {AUPREC}.', 'L’autonomie est en recul depuis {LEPREC}.'],
+        methodo: ['Le travail est moins soigné {AUPREC}.', 'Le soin des cahiers est en recul depuis {LEPREC}.'],
+      },
+      matiere: ['Les efforts{avant} ont porté leurs fruits depuis {LEPREC}.', 'Les progrès{avant} sont nets depuis {LEPREC}.'],
+    },
+    // Ouverture (case « Commencer par un bilan ») : selon le moment de l'année. {Ce} = « ce trimestre »…
+    ouvertures: {
+      debut: { 4: ['Excellent début d’année !', 'Très beau début d’année !', 'Un début d’année remarquable !'], 3: ['Bon début d’année.', 'Un bon début d’année.', 'Un début d’année réussi.'],
+        2: { b: ['Un début d’année encourageant.', 'Un début d’année plein de promesses.'], n: ['Un début d’année en demi-teinte.', 'Un début d’année contrasté.'], x: ['Un début d’année trop juste.', 'Un début d’année insuffisant.'] }, 1: ['Un début d’année difficile.', '{S} a rencontré des difficultés en ce début d’année.'] },
+      suite: { 4: ['Excellent travail tout au long de {ce} !', 'Très beau travail {ce} !', 'De très beaux résultats {ce} !'], 3: ['Bon travail tout au long de {ce}.', 'Du bon travail {ce}.', 'De bons résultats tout au long de {ce}.'],
+        2: { b: ['Des efforts encourageants {ce}.', 'Un travail qui avance {ce}.'], n: ['Des résultats inégaux {ce}.', 'Un travail contrasté {ce}.'], x: ['Un travail trop juste {ce}.', 'Un travail insuffisant {ce}.'] }, 1: ['{S} a rencontré des difficultés {ce}.'] },
+      annee: { 4: ['Excellente année !', 'Très belle année !', 'Une année remarquable !'], 3: ['Une bonne année de travail.', 'Une belle année.', 'Une année réussie.'],
+        2: { b: ['Une année encourageante.', 'Une année de progrès.'], n: ['Une année en demi-teinte.', 'Une année contrastée.'], x: ['Une année trop juste.', 'Une année insuffisante.'] }, 1: ['{S} a rencontré des difficultés cette année.', 'Une année difficile.'] },
+      // Après la 1re période, si les apprentissages se maintiennent à un bon niveau ou progressent.
+      pareil: ['{S} obtient des résultats tout aussi {BONS} {AUPREC}.', '{S} confirme ses {BONS} résultats.'],
+      mieux: ['{S} a bien progressé depuis {LEPREC}.', 'Les progrès sont nets depuis {LEPREC}.'],
+    },
+    // Fin dite par l'enseignant (case « Parler en mon nom »), et souhaits de fêtes (période qui finit en décembre).
+    fins: { 4: ['Je {LE} félicite.', 'Félicitations !', 'Je {LE} félicite et l’encourage à poursuivre.'], 3: ['Je {LE} félicite et l’encourage à poursuivre.', 'Je l’encourage à continuer ainsi.', 'Je compte sur {LUI} pour continuer sur cette voie.'],
+      2: ['Je l’encourage à poursuivre ses efforts.', 'J’ai toute confiance en {LUI}.', 'Je compte sur {LUI} pour continuer ses efforts.', 'Je crois en {LUI}.'],
+      1: ['Je l’encourage à ne pas se décourager.', 'J’ai toute confiance en {LUI}.', 'Je crois en {LUI}.'] },
+    fetes: ['Joyeuses fêtes de fin d’année !', 'Très belles fêtes de fin d’année !'],
+    // Bilan d'ouverture : {ce} = « ce trimestre », « cette période », « cette année ».
+    bilans: {
+      4: ['{S} a très bien réussi {ce}.', '{S} a fait un excellent travail {ce}.'],
+      3: ['{S} a bien réussi {ce}.', '{S} a fait du bon travail {ce}.'],
+      2: { b: ['{S} a fourni des efforts encourageants {ce}.', '{S} a avancé {ce}, avec des acquis encore à consolider.'], n: ['{S} a obtenu des résultats inégaux {ce}.'], x: ['{S} pourrait mieux faire {ce}.'] },
+      1: { b: ['{S} a rencontré des difficultés {ce}.'], n: ['{S} a eu des difficultés {ce}.'], x: ['{S} a eu beaucoup de difficultés {ce}.'] },
+    },
+    phrases: {
+      attitude: {
+        4: { p: ['{S} participe activement et avec beaucoup d’envie.', '{S} montre une très belle curiosité et participe beaucoup.', 'La participation en classe est excellente.', '{S} s’investit pleinement dans toutes les activités.', '{S} apporte beaucoup aux échanges.'], t: ['Participation excellente.', 'Très belle curiosité.'] },
+        3: { p: ['{S} participe volontiers en classe.', '{S} écoute avec attention et participe.', 'La participation en classe est régulière.', '{S} s’implique volontiers dans le travail proposé.', '{S} participe avec envie aux activités.', '{S} montre de l’intérêt pour ce qui est proposé.'], t: ['Bonne participation.', 'Écoute attentive.'] },
+        2: { p: { b: ['{S} participe, mais pourrait oser prendre la parole plus souvent.', 'L’attention en classe reste encore fragile.'], n: ['La participation en classe reste irrégulière.', '{S} participe de façon irrégulière.'], x: ['{S} doit participer davantage en classe.', 'L’attention en classe est trop souvent dispersée.'] },
+          t: { b: ['Participation à encourager.'], n: ['Participation irrégulière.'], x: ['Participation insuffisante.'] } },
+        1: { p: { b: ['{S} a encore du mal à entrer dans les activités de la classe.'], n: ['{S} participe très peu en classe.'], x: ['La participation en classe est très insuffisante.', '{S} ne participe presque pas en classe.'] },
+          t: { b: ['Participation à construire.'], n: ['Très peu de participation.'], x: ['Participation très insuffisante.'] } },
+      },
+      comportement: {
+        4: { p: ['{S} a un comportement exemplaire, en classe comme en récréation.', 'Le comportement est exemplaire, avec les camarades comme avec les adultes.'], t: ['Comportement exemplaire.'] },
+        3: { p: ['{S} respecte les règles de la classe.', '{S} a un bon comportement en classe.', 'Le comportement en classe est adapté et respectueux.'], t: ['Bon comportement.', 'Règles de vie respectées.'] },
+        2: { p: { b: ['{S} doit encore apprendre à mieux respecter les règles de la classe.'], n: ['Le respect des règles de vie est parfois difficile.'], x: ['{S} doit mieux respecter les règles de la classe.'] },
+          t: { b: ['Règles de vie à mieux respecter.'], n: ['Comportement parfois à reprendre.'], x: ['Comportement à améliorer.'] } },
+        1: { p: { b: ['Le respect des règles de vie doit devenir une priorité pour apprendre sereinement.'], n: ['Le comportement pose souvent problème en classe.'], x: ['Le comportement gêne le travail de la classe.', '{S} ne respecte pas les règles de la classe.'] },
+          t: { b: ['Comportement à améliorer nettement.'], n: ['Comportement difficile.'], x: ['Comportement inadapté.'] } },
+      },
+      autonomie: {
+        4: { p: ['{S} travaille avec une grande autonomie.', '{S} se met au travail sans attendre et avance avec assurance.'], t: ['Très bonne autonomie.'] },
+        3: { p: ['{S} travaille de façon autonome.', '{S} sait se mettre au travail sans aide.', 'L’autonomie dans le travail est bonne.'], t: ['Bonne autonomie.'] },
+        2: { p: { b: ['{S} gagne peu à peu en autonomie.'], n: ['{S} a encore souvent besoin d’aide pour se mettre au travail.'], x: ['{S} doit apprendre à travailler sans attendre l’aide de l’adulte.'] },
+          t: { b: ['Autonomie en progrès.'], n: ['Autonomie à développer.'], x: ['Manque d’autonomie.'] } },
+        1: { p: { b: ['{S} a encore besoin de l’adulte pour avancer dans son travail.'], n: ['L’autonomie dans le travail reste très difficile.'], x: ['{S} ne parvient pas encore à travailler sans aide.'] },
+          t: { b: ['Autonomie à construire.'], n: ['Peu d’autonomie.'], x: ['Pas encore d’autonomie.'] } },
+      },
       methodo: {
-        4: { p: ['{S} travaille avec beaucoup de soin et de méthode.'], t: ['Travail très soigné.'] },
-        3: { p: ['{S} travaille avec méthode.'], t: ['Travail méthodique.'] },
-        2: { p: { b: ['{S} doit encore gagner en soin et en organisation.'], n: ['Le soin et l’organisation restent à améliorer.'], x: ['{S} manque de soin et d’organisation.'] }, t: { b: ['Organisation à développer.'], n: ['Organisation à améliorer.'], x: ['Manque de soin.'] } },
-        1: { p: { b: ['{S} a besoin d’aide pour s’organiser.'], n: ['{S} peine à s’organiser.'], x: ['L’organisation du travail reste très difficile.'] }, t: { b: ['Organisation à construire.'], n: ['Organisation difficile.'], x: ['Travail non organisé.'] } },
-      } },
-    objectifs: { moteur: ['consolider ses acquis', 'apprendre régulièrement ses leçons'], methodo: ['gagner en soin et en organisation', 'prendre le temps de se relire'] },
+        4: { p: ['{S} présente un travail très soigné.', 'Les cahiers sont très bien tenus.'], t: ['Travail très soigné.'] },
+        3: { p: ['{S} prend soin de son travail.', 'Le travail est soigné et bien présenté.'], t: ['Travail soigné.'] },
+        2: { p: { b: ['{S} doit prendre plus de soin dans ses cahiers.'], n: ['Le soin et la présentation restent à améliorer.'], x: ['Le travail manque de soin.'] },
+          t: { b: ['Soin à améliorer.'], n: ['Présentation à améliorer.'], x: ['Manque de soin.'] } },
+        1: { p: { b: ['{S} a besoin d’aide pour soigner et organiser son travail.'], n: ['Le travail est peu soigné.'], x: ['Le travail n’est pas soigné.'] },
+          t: { b: ['Soin à construire.'], n: ['Travail peu soigné.'], x: ['Travail non soigné.'] } },
+      },
+      // ({apsa} : « , notamment en mathématiques », la matière la plus réussie ; jamais aux niveaux 1 et 2, dits par « À consolider ».)
+      competences: {
+        4: { p: ['{S} a de très bons acquis{apsa}.', 'Les apprentissages sont très bien réussis{apsa}.', '{S} réussit très bien ses apprentissages{apsa}.'], t: ['Très bons acquis{apsa}.', 'Apprentissages très bien réussis{apsa}.'] },
+        3: { p: ['{S} a de bons acquis{apsa}.', 'Les apprentissages sont bien en place{apsa}.', '{S} réussit bien ses apprentissages{apsa}.'], t: ['Bons acquis{apsa}.', 'Apprentissages bien en place{apsa}.'] },
+        2: { p: { b: ['Les apprentissages sont en bonne voie, mais encore fragiles.', '{S} progresse dans ses apprentissages, encore fragiles.'], n: ['Les acquis restent fragiles.', 'Les apprentissages sont en partie acquis.'], x: ['Les acquis sont encore trop fragiles.'] },
+          t: { b: ['Apprentissages en bonne voie.'], n: ['Acquis fragiles.'], x: ['Acquis trop fragiles.'] } },
+        1: { p: { b: ['Les apprentissages restent difficiles, mais {s} peut progresser avec de l’aide.'], n: ['Les apprentissages restent difficiles.', '{S} rencontre des difficultés dans ses apprentissages.'], x: ['Les acquis sont très insuffisants.'] },
+          t: { b: ['Apprentissages encore difficiles.'], n: ['Apprentissages difficiles.'], x: ['Acquis très insuffisants.'] } },
+      },
+      // ({faible} : « en français », la matière la plus fragile.)
+      consolider: {
+        4: { p: ['Les acquis sont solides dans toutes les matières.'], t: ['Acquis solides partout.'] },
+        3: { p: ['{S} peut encore progresser{faible}.', 'Des progrès restent possibles{faible}.'], t: ['Progrès possibles{faible}.'] },
+        2: { p: { b: ['{S} doit encore consolider ses acquis{faible}.', 'Les acquis restent à consolider{faible}.', '{S} doit encore s’entraîner{faible}.', 'Un travail régulier reste nécessaire{faible}.', 'Des efforts restent à fournir{faible}.'],
+          n: ['Les acquis restent fragiles{faible}.', '{S} a encore besoin d’entraînement{faible}.'], x: ['Les acquis sont trop fragiles{faible}.', 'Le niveau reste insuffisant{faible}.'] },
+          t: { b: ['À consolider{faible}.'], n: ['Acquis fragiles{faible}.'], x: ['Acquis insuffisants{faible}.'] } },
+        1: { p: { b: ['{S} a besoin d’aide{faible} : nous l’accompagnons.'], n: ['{S} rencontre des difficultés{faible}.'], x: ['Les difficultés sont importantes{faible}.'] },
+          t: { b: ['Aide nécessaire{faible}.'], n: ['Difficultés{faible}.'], x: ['Grandes difficultés{faible}.'] } },
+      },
+      moteur: DISCIPLINES.svt.appreciations.phrases.moteur,
+      // (Niveau 2, « stable », reste celui de toutes les disciplines.)
+      progression: {
+        4: { p: ['{S} a fait de très beaux progrès {ce}.', 'Les progrès de {P} sont remarquables {ce}.'], t: ['Très beaux progrès.'] },
+        3: { p: ['{S} a progressé {ce}.', 'Les progrès sont réguliers et encourageants.'], t: ['En progrès.', 'Progrès encourageants.'] },
+        1: { p: { b: ['Les résultats ont un peu baissé {ce} : il faut garder confiance.'], n: ['Les résultats sont en baisse {ce}.'], x: ['Les résultats sont en net recul {ce}.'] },
+          t: { b: ['Résultats en baisse : garder confiance.'], n: ['Résultats en baisse.'], x: ['Net recul des résultats.'] } },
+      },
+    },
+    objectifs: {
+      attitude: ['participer davantage en classe', 'oser prendre la parole', 'écouter attentivement les consignes'],
+      absences: ['venir à l’école plus régulièrement'],
+      comportement: ['mieux respecter les règles de la classe', 'mieux écouter ses camarades et les adultes'],
+      autonomie: ['gagner en autonomie', 'se mettre au travail sans attendre'],
+      methodo: ['prendre soin de ses cahiers', 'gagner en soin et en organisation', 'prendre le temps de se relire'],
+      competences: ['consolider ses acquis', 'apprendre régulièrement ses leçons', 'continuer à s’entraîner chaque jour'],
+      consolider: ['continuer à s’entraîner régulièrement', 'reprendre souvent ce qui a été appris'],
+      moteur: ['consolider ses acquis', 'apprendre régulièrement ses leçons'],
+      progression: ['retrouver de la régularité dans son travail', 'poursuivre ses efforts dans la durée'],
+      regularite: ['garder de la régularité dans son travail'],
+      haut: ['continuer ainsi', 'garder cette belle motivation', 'poursuivre ses efforts'],
+    },
     fiche: { niveauFort: ['Bons acquis', 'maîtrise bien ce qui a été travaillé'], niveauFaible: ['Acquis fragiles', 'consolider ses acquis avec un travail régulier'],
       methodo: ['Méthode', 'gagner en soin et en organisation'], assiduite: ['Assiduité', 'est assidu{e} et travaille avec régularité'] },
   },

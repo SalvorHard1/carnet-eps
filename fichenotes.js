@@ -145,6 +145,8 @@ function syntheseEleve(el, periode, eleves) {
 }
 
 const AXES_SYNTHESE = [['attitude', 'Attitude'], ['vie', 'Vie scolaire'], ['competences', 'Compétences'], ['niveau', 'Niveau (notes)']];
+// (École : les axes portent le nom des rubriques de l'appréciation, « Participation », « Apprentissages ».)
+const nomAxeSynthese = (k, nom) => (avecEcole() && (k === 'attitude' || k === 'competences') ? rubriqueAppr(k).nom : nom);
 
 // Graphique en toile : 4 axes (haut, droite, bas, gauche), échelle 0 à 4 ; élève en plein, classe en pointillés.
 function radarSynthese(valeurs, classe) {
@@ -155,7 +157,7 @@ function radarSynthese(valeurs, classe) {
   const rayons = AXES_SYNTHESE.map((_, i) => { const [x, y] = pt(i, 4); return `<line x1="${c}" y1="${c}" x2="${x}" y2="${y}" stroke="#8a95a1" stroke-opacity="0.35"/>`; }).join('');
   const etiq = AXES_SYNTHESE.map(([k, nom], i) => {
     const [x, y] = pt(i, 4.55), ancre = i === 1 ? 'start' : i === 3 ? 'end' : 'middle';
-    return `<text x="${x}" y="${y + (i === 0 ? -2 : i === 2 ? 12 : 4)}" text-anchor="${ancre}" font-size="12" font-weight="700" fill="currentColor">${esc(nom)}</text>`;
+    return `<text x="${x}" y="${y + (i === 0 ? -2 : i === 2 ? 12 : 4)}" text-anchor="${ancre}" font-size="12" font-weight="700" fill="currentColor">${esc(nomAxeSynthese(k, nom))}</text>`;
   }).join('');
   const points = AXES_SYNTHESE.map(([k], i) => (valeurs[k] === null ? '' : `<circle cx="${pt(i, valeurs[k])[0]}" cy="${pt(i, valeurs[k])[1]}" r="4" fill="#1f9d7a"/>`)).join('');
   return `<svg class="radar-fiche" viewBox="-40 -6 ${T + 80} ${T + 12}" role="img" aria-label="Synthèse de l’élève comparée à la classe">
@@ -265,16 +267,16 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
   const valeurAxe = (k, v) => (v === null || v === undefined ? '–' : k === 'niveau' ? `${fmt1(moy)}/20` : `${fmt1(v)}/4`);
   const classeAxe = (k, v) => (v === null || v === undefined ? '' : k === 'niveau' ? `classe ${fmt1(moyClasse)}/20` : `classe ${fmt1(v)}`);
   const signaux = [];
-  if (s.vs.abs) signaux.push(`❌ ${s.vs.abs} absence${s.vs.abs > 1 ? 's' : ''}`);
+  if (s.vs.abs) signaux.push(`${pictoEcole('absent', '❌')} ${s.vs.abs} absence${s.vs.abs > 1 ? 's' : ''}`);
   if (s.vs.tenue) signaux.push(`${mot('iconeTenue')} ${s.vs.tenue} ${oubliTenue(s.vs.tenue)}`);
-  if (s.vs.retards) signaux.push(`⏰ ${s.vs.retards} retard${s.vs.retards > 1 ? 's' : ''}`);
+  if (s.vs.retards) signaux.push(`${pictoEcole('retard', '⏰')} ${s.vs.retards} retard${s.vs.retards > 1 ? 's' : ''}`);
   const sante = bilanLecons(el, periode).sante + evals.filter(e => SANTE.includes(Donnees.note(e.id, el.id))).length;
-  if (sante) signaux.push(`🩺 ${sante} fois ${codeDeLaDiscipline('BLE') ? 'blessé·e / malade' : 'malade'}`);
+  if (sante) signaux.push(`${pictoEcole('sante', '🩺')} ${sante} fois ${codeDeLaDiscipline('BLE') ? 'blessé·e / malade' : 'malade'}`);
   let html = `<div class="synthese-fiche">
     <div class="radar-bloc">${radarSynthese(s.valeurs, classe)}
       <p class="aide legende-graph"><span class="trait-eleve"></span> ${esc(opts.anonyme ? 'élève' : el.prenom)} <span class="trait-classe"></span> moyenne de la classe</p></div>
     <div class="valeurs-synthese">
-      ${AXES_SYNTHESE.map(([k, nom]) => `<div class="valeur-axe"><span>${esc(nom)}</span><b>${valeurAxe(k, s.valeurs[k])}</b><small>${classeAxe(k, classe[k])}</small></div>`).join('')}
+      ${AXES_SYNTHESE.map(([k, nom]) => `<div class="valeur-axe"><span>${esc(nomAxeSynthese(k, nom))}</span><b>${valeurAxe(k, s.valeurs[k])}</b><small>${classeAxe(k, classe[k])}</small></div>`).join('')}
       ${signaux.length ? `<div class="signaux-fiche"><span class="aide">À signaler :</span> ${signaux.map(x => `<span class="signal-fiche">${x}</span>`).join('')}</div>` : '<p class="aide">Rien à signaler en vie scolaire.</p>'}
     </div>
   </div>`;
@@ -291,7 +293,7 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
   }
 
   // 3. Dépliables
-  html += `<details class="depli-fiche"${deplie}><summary>🧭 Points d’appui et axes de progression</summary>
+  html += `<details class="depli-fiche"${deplie}><summary>${pictoEcole('boussole', '🧭')} Points d’appui et axes de progression</summary>
     <div class="deux-col-fiche"><div><h4>${opts.anonyme ? 'Ce que l’élève' : /^[aeiouyhàâéèêëîïôöûü]/i.test(el.prenom || '') ? `Ce qu’${esc(el.prenom)}` : `Ce que ${esc(el.prenom)}`} sait faire</h4>${pa.forts.length ? `<ul class="liste-fiche">${pa.forts.slice(0, 3).map(x => `<li>${esc(x.texte)}</li>`).join('')}</ul>` : '<p class="aide">Pas encore assez de données.</p>'}</div>
     <div><h4>Axes de progression <span class="aide">(2 au plus)</span></h4><ol class="liste-fiche priorites">${pa.axes.map(x => `<li><b>${esc(x.phrase[0].toUpperCase() + x.phrase.slice(1))}</b><br><span class="aide">${esc(x.texte)}</span></li>`).join('')}</ol></div></div></details>`;
   if (notees.length >= 2) {
@@ -303,7 +305,7 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
   }
   if (s.comps.length) {
     const validees = s.comps.filter(c => c.valeurs.at(-1) >= 3).length;
-    html += `<details class="depli-fiche"${deplie}><summary>🎯 Compétences développées <span class="aide">${validees}/${s.comps.length} validées</span></summary>
+    html += `<details class="depli-fiche"${deplie}><summary>${pictoEcole('cible', '🎯')} Compétences développées <span class="aide">${validees}/${s.comps.length} validées</span></summary>
       <table class="tableau-fiche"><tbody>${s.comps.map(({ a, valeurs }) => {
       const der = valeurs.at(-1), ok = der >= 3;
       const suite = valeurs.map(v => pastilleDegre(String(v))).join('<span class="sep-suite">→</span>');
@@ -317,8 +319,8 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
     const degresLigne = l => competencesEval(l.e).map(a => [a, +Donnees.note(l.e.id, el.id, a.id)]).filter(([, d]) => d >= 1 && d <= 4)
       .map(([a, d]) => `<span class="degre-eval-fiche"><span class="aide">${esc(a.code)}</span> ${pastilleDegre(String(d))}</span>`).join(' ') || '<span class="aide">non évaluée</span>';
     const sommeNotes = avecDegres
-      ? `📝 Évaluations${moy !== null ? ` <span class="aide">moyenne des notes ${fmt1(moy)}/20${moyClasse !== null ? ` · classe ${fmt1(moyClasse)}` : ''}</span>` : ''}`
-      : `📝 Notes <span class="aide">moyenne ${fmt1(moy)}/20 · classe ${fmt1(moyClasse)}</span>`;
+      ? `${pictoEcole('notes', '📝')} Évaluations${moy !== null ? ` <span class="aide">moyenne des notes ${fmt1(moy)}/20${moyClasse !== null ? ` · classe ${fmt1(moyClasse)}` : ''}</span>` : ''}`
+      : `${pictoEcole('notes', '📝')} Notes <span class="aide">moyenne ${fmt1(moy)}/20 · classe ${fmt1(moyClasse)}</span>`;
     html += `<details class="depli-fiche"${deplie}><summary>${sommeNotes}</summary>
       <table class="tableau-fiche notes-fiche"><tbody>${lignes.map(l => `<tr>
       <th>${l.e.ca ? `<span class="chip-ca ca-${l.e.ca}">${l.e.ca}</span> ` : ''}<b>${esc(l.e.titre)}</b> <span class="aide">${dateCourte(l.e.date)}${l.e.apsa ? ' · ' + esc(l.e.apsa) : ''}${l.e.coef !== 1 ? ' · coef ' + fmt(l.e.coef) : ''}${l.e.nonSignificative ? ' · non significative' : ''}</span></th>
@@ -328,14 +330,14 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
   }
   if (!opts.anonyme) {
     const presence = htmlLeconsFiche(el, periode, moy);
-    if (presence) html += `<details class="depli-fiche"${deplie}><summary>🩺 Présence et santé</summary>${presence.replace(/^<h3>.*?<\/h3>/, '')}</details>`;
+    if (presence) html += `<details class="depli-fiche info-sensible"${deplie}><summary>${pictoEcole('sante', '🩺')} Présence et santé</summary>${presence.replace(/^<h3>.*?<\/h3>/, '')}</details>`;
   }
 
   // 4. Observations du prof (jamais dans le PDF)
   if (!opts.impression) {
     const suivi = Donnees.get('suivis', idSuivi(el.id, ID_BILAN_NOTES));
     const parApsa = Donnees.liste('suivis', x => x.eleveId === el.id && x.texte && x.apsa !== ID_BILAN_NOTES && !/^appréciation /i.test(x.apsa || ''));
-    html += `<details class="depli-fiche"${suivi?.texte || parApsa.length ? ' open' : ''}><summary>✏️ Mes observations <span class="aide">(restent dans le carnet, jamais dans le PDF)</span></summary>
+    html += `<details class="depli-fiche info-sensible"${suivi?.texte || parApsa.length ? ' open' : ''}><summary>${pictoEcole('modifier', '✏️')} Mes observations <span class="aide">(restent dans le carnet, jamais dans le PDF)</span></summary>
       <textarea class="obs-fiche" data-obs-notes rows="3" placeholder="Bilan, attitude, progrès, objectifs fixés avec l’élève…">${esc(suivi?.texte || '')}</textarea>
       ${suivi?.texte && suivi.maj > 1 ? `<p class="aide">Modifié le ${dateHeure(suivi.maj)}</p>` : ''}
       ${parApsa.length ? `<p class="aide">Notées dans les fiches ${esc(mot('lecons'))} :</p><ul class="liste-fiche">${parApsa.map(x => `<li><b>${esc(x.apsa)}</b> : ${esc(x.texte)}</li>`).join('')}</ul>` : ''}</details>`;
@@ -429,7 +431,7 @@ async function ficheNotes(eleveId) {
     $('h2', d).innerHTML = Trombi.titre(el, `Fiche bilan — ${el.nom} ${el.prenom}`); // (avec sa photo, pour le reconnaître)
     $('[data-fiche-onglets]', d).innerHTML = [['annee', 'Toute l’année'], ...periodesAnnee().map(p => [p.id, p.code])]
       .map(([v, nom]) => `<button type="button" class="${v === periode ? 'actif' : ''}" data-fiche-periode="${v}">${nom}</button>`).join('')
-      + `<label class="case delegue-fiche"><input type="checkbox" data-fiche-delegue ${el.delegue ? 'checked' : ''}> 👑 L’élève est délégué${el.sexe === 'F' ? 'e' : ''}</label>`;
+      + `<label class="case delegue-fiche"><input type="checkbox" data-fiche-delegue ${el.delegue ? 'checked' : ''}> ${pictoEcole('couronne', '👑')} L’élève est délégué${el.sexe === 'F' ? 'e' : ''}</label>`;
     $('[data-fiche]', d).innerHTML = htmlFicheNotes(el, periode, eleves, { classe: moyClasse(), reglagesOuverts });
     if (avant) d.querySelectorAll('.depli-fiche').forEach((x, k) => { if (k < avant.length) x.open = avant[k]; });
     d.querySelector('[data-fiche-nav="-1"]').disabled = idx === 0;

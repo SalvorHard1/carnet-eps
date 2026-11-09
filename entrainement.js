@@ -1159,15 +1159,15 @@ function htmlFiche(el, apsa, seances) {
   // 4. Observations notées pendant les séances (données de type texte)
   const observations = autres.filter(d => d.ind.type === 'texte').flatMap(d => d.valeurs.map(x => ({ ...x, nom: d.ind.nom })));
   if (observations.length) {
-    html += `<h3>💬 Noté pendant les séances</h3><ul class="liste-fiche">${observations
+    html += `<h3 class="info-sensible">💬 Noté pendant les séances</h3><ul class="liste-fiche info-sensible">${observations
       .map(x => `<li><span class="aide">${esc(dateCourteS(x))}${/^observations?$/i.test(x.nom.trim()) ? '' : ' · ' + esc(x.nom)} :</span> ${esc(x.v)}</li>`).join('')}</ul>`;
   }
 
   // Observations du prof (enregistrées dans le carnet)
   const suivi = Donnees.get('suivis', idSuivi(el.id, apsa));
-  html += `<h3>✍ Mon suivi <span class="aide">(enregistré tout seul)</span></h3>
+  html += `<h3 class="info-sensible">✍ Mon suivi <span class="aide">(enregistré tout seul)</span></h3>
     <textarea class="obs-fiche" data-obs rows="3" placeholder="Objectifs fixés avec l’élève, points d’appui, ce qui l’aide…">${esc(suivi?.texte || '')}</textarea>
-    ${suivi?.texte && suivi.maj > 1 ? `<p class="aide">Modifié le ${dateHeure(suivi.maj)}</p>` : ''}`;
+    ${suivi?.texte && suivi.maj > 1 ? `<p class="aide info-sensible">Modifié le ${dateHeure(suivi.maj)}</p>` : ''}`;
   return html;
 }
 

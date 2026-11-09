@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="0" fill="#1f6f5c"/>
-  <rect x="226" y="88" width="60" height="36" rx="10" fill="#fff"/>
-  <circle cx="256" cy="286" r="150" fill="none" stroke="#fff" stroke-width="36"/>
-  <line x1="256" y1="286" x2="256" y2="186" stroke="#fff" stroke-width="30" stroke-linecap="round"/>
-  <circle cx="256" cy="286" r="20" fill="#fff"/>
+  <rect width="512" height="512" fill="#FAF3E1"/>
+  <path fill="none" stroke="#D3E1F1" stroke-width="4" d="M0 40H512M0 64H512M0 88H512M0 136H512M0 160H512M0 184H512M0 232H512M0 256H512M0 280H512M0 328H512M0 352H512M0 376H512M0 424H512M0 448H512M0 472H512M224 0V512M320 0V512M416 0V512"/>
+  <path fill="none" stroke="#8FB2DC" stroke-width="9" d="M0 112H512M0 208H512M0 304H512M0 400H512"/>
+  <path fill="none" stroke="#DE5345" stroke-width="13" d="M128 0V512"/>
+  <path fill="#1E3A6E" d="M172 272C186 250 214 250 228 268L256 304C290 240 340 180 396 132C406 124 418 136 410 146C362 206 318 280 286 352C276 374 246 376 232 356Z"/>
 </svg>

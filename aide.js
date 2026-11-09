@@ -15,7 +15,11 @@ const teteHugo = (actif = 7, question = false) => `<span class="hugo-tete"><svg 
 
 /* ---------- Repérer les éléments de l'écran (pour le guide) ---------- */
 
-const visibleHugo = el => !!el && el.getClientRects().length > 0 && el.getBoundingClientRect().width > 0;
+// (visibility : la colonne des classes repliée derrière ☰ garde sa taille mais est cachée)
+const visibleHugo = el => !!el && el.getClientRects().length > 0 && el.getBoundingClientRect().width > 0 && getComputedStyle(el).visibility !== 'hidden';
+// Carnet École : pas de colonne des classes ni de ☰ ; la classe se gère dans l'onglet Élèves (ecole.js › htmlClasseEcole).
+const ONGLET_ELEVES_HUGO = '#onglets [data-vue="eleves"]';
+const versOngletElevesHugo = el => (el?.matches?.(ONGLET_ELEVES_HUGO) ? 'Touche l’onglet « Élèves » : ta classe se gère en haut à droite.' : '');
 const premierVisible = (...sel) => sel.flatMap(s => [...document.querySelectorAll(s)]).find(visibleHugo) || null;
 // Fenêtre ouverte reconnue par ce qu'elle contient (null si elle n'est pas ouverte).
 const fenetreAvec = sel => () => { const m = modaleOuverte(); return m?.querySelector(sel) ? m : null; };
@@ -55,8 +59,8 @@ const ETAPES_HUGO = {
     () => ui.vue === 'baremes' && !!document.querySelector('#vue [data-bar="nouveau"]')),
   classe: {
     // Sans classe choisie, l'onglet Notes n'a pas de bouton « + Évaluation ».
-    cible: () => premierVisible('#liste-classes li', '#btn-menu'),
-    texte: el => el?.id === 'btn-menu' ? 'Touche ☰ pour voir tes classes, puis choisis-en une.' : 'Choisis d’abord une classe dans la liste.',
+    cible: () => premierVisible('#liste-classes li', '#btn-menu', '#vue .choix-classe-ecole button', ONGLET_ELEVES_HUGO),
+    texte: el => versOngletElevesHugo(el) || (el?.id === 'btn-menu' ? 'Touche ☰ pour voir tes classes, puis choisis-en une.' : 'Choisis d’abord une classe dans la liste.'),
     fait: () => !!document.querySelector('#vue [data-action="ajout-eval"]') || !!fenetreEval(),
   },
   ouvrirEval: {
@@ -115,14 +119,17 @@ const ETAPES_ELEVES = {
     pageEleves('[data-action="ajout-eleve"]')),
   consulter: etapeBouton('#vue [data-mode-eleves="consulter"]', 'Touche « 👀 Consulter » pour voir les cartes des élèves.', pageEleves('[data-carte-eleve]')),
   // Le bouton ✎ de la classe est dans la liste de gauche (sur tablette : derrière ☰).
+  // (Carnet École : ni liste ni ☰, ces boutons sont dans l'onglet Élèves, en haut à droite.)
   ouvrirClasse: {
-    cible: () => premierVisible('#liste-classes .modif', '#btn-menu'),
-    texte: el => el?.id === 'btn-menu' ? 'Touche ☰ pour voir tes classes, puis choisis la classe.' : 'Touche ✎ à côté du nom de la classe.',
+    cible: () => premierVisible('#liste-classes .modif', '#btn-menu', '#vue .classe-ecole [data-modif-classe]', ONGLET_ELEVES_HUGO),
+    texte: el => versOngletElevesHugo(el) || (el?.closest('.classe-ecole') ? 'Touche « Modifier la classe ».'
+      : el?.id === 'btn-menu' ? 'Touche ☰ pour voir tes classes, puis choisis la classe.' : 'Touche ✎ à côté du nom de la classe.'),
     fait: () => !!fenetreClasse(),
   },
   nouvelleClasse: {
-    cible: () => premierVisible('#classes [data-action="ajout-classe"]', '#btn-menu'),
-    texte: el => el?.id === 'btn-menu' ? 'Touche ☰ pour voir la liste des classes.' : 'Touche « + Nouvelle classe », sous la liste des classes.',
+    cible: () => premierVisible('#classes [data-action="ajout-classe"]', '#btn-menu', '#vue .classe-ecole [data-action="ajout-classe"]', ONGLET_ELEVES_HUGO),
+    texte: el => versOngletElevesHugo(el) || (el?.closest('.classe-ecole') ? 'Touche « Nouvelle classe ».'
+      : el?.id === 'btn-menu' ? 'Touche ☰ pour voir la liste des classes.' : 'Touche « + Nouvelle classe », sous la liste des classes.'),
     fait: () => !!fenetreClasse() || !!fenetreListeClasse(),
   },
 };
@@ -194,7 +201,7 @@ const ETAPES_OUTILS = {
 };
 // Les outils de la discipline du carnet (même règle que l'onglet Outils), avec ceux réservés au professeur.
 const outilsDuCarnet = () => OUTILS.filter(outilDeLaDiscipline);
-const nomsOutils = liste => liste.map(o => `${o.icone} ${o.nom}`).join(', ');
+const nomsOutils = liste => liste.map(o => `${iconeOutil(o)} ${titreOutil(o)}`).join(', ');
 
 // Enregistrer : le menu du bouton « Enregistrer » (pas une fenêtre : il se ferme si on touche ailleurs,
 // sauf la bulle de Hugo, voir app.js), la fenêtre « Aide et dépannage », les Réglages › Sécurité.
@@ -222,8 +229,9 @@ const ETAPES_ENR = {
   },
   depannage: { ...etapeBouton('#menu-cle:not([hidden]) [data-menu-cle="aide"]', 'Touche « Aide et dépannage… », en bas du menu.', () => !!fenetreDepannage()), sinon: MENU_FERME },
   reglages: {
-    cible: () => premierVisible('[data-action="reglages"]', '#btn-menu'),
-    texte: el => el?.id === 'btn-menu' ? 'Touche ☰, puis « ⚙ Réglages du carnet », sous la liste des classes.' : 'Touche « ⚙ Réglages du carnet », sous la liste des classes.',
+    cible: () => premierVisible('[data-action="reglages"]', '#btn-menu', ONGLET_ELEVES_HUGO),
+    texte: el => versOngletElevesHugo(el) || (el?.id === 'btn-reglages-barre' ? 'Touche la roue, dans la barre du haut, à côté du bouclier.'
+      : el?.id === 'btn-menu' ? 'Touche ☰, puis « ⚙ Réglages du carnet », sous la liste des classes.' : 'Touche « ⚙ Réglages du carnet », sous la liste des classes.'),
     fait: () => !!fenetreReglages(),
   },
   securite: {
@@ -250,9 +258,11 @@ function etapesVisite() {
   };
   const visibles = ongletsVisibles(), si = (vue, etapes) => (visibles.includes(vue) ? etapes : []);
   return [
-    { cible: () => premierVisible('#liste-classes', '#btn-menu'), suivant: true,
-      texte: el => `${el?.id === 'btn-menu' ? 'Derrière ☰ : tes classes' : 'Ici : tes classes'} (la classe « Exemple » est inventée, essaie tout dessus)`
-        + ' et, en dessous, ⚙ Réglages du carnet. « ✕ Terminer la visite » arrête quand tu veux.' },
+    { cible: () => premierVisible('#liste-classes', '#btn-menu', '#vue .classe-ecole', ONGLET_ELEVES_HUGO), suivant: true,
+      texte: el => (el?.id === 'liste-classes' || el?.id === 'btn-menu'
+        ? `${el.id === 'btn-menu' ? 'Derrière ☰ : tes classes' : 'Ici : tes classes'} (la classe « Exemple » est inventée, essaie tout dessus) et, en dessous, ⚙ Réglages du carnet.`
+        : 'Ta classe se gère dans l’onglet « Élèves », en haut à droite : la modifier, en créer une. La roue, dans la barre du haut, ouvre les réglages du carnet. La classe « Exemple » est inventée : essaie tout dessus.')
+        + ' « ✕ Terminer la visite » arrête quand tu veux.' },
     // (sans classe, les onglets n'ont rien à montrer : en créer une d'abord)
     ...(Donnees.liste('classes').length ? [] : [{ ...ETAPES_HUGO.classe, fait: () => !!classeActive(),
       sinon: 'Crée d’abord une classe (« + Nouvelle classe »), puis relance la visite depuis le ?.' }]),
@@ -795,7 +805,7 @@ function rubriquesAideBase() {
             id: 'liste', titre: `Quels outils pour ${mot('laDiscipline')} ?`, puces: true,
             intro: 'Les outils proposés dépendent de la discipline du carnet (⚙ Réglages › Discipline).',
             reponse: FAMILLES_OUTILS.map(f => [f, outilsDuCarnet().filter(o => o.famille === f.id)]).filter(([, l]) => l.length)
-              .map(([f, l]) => `<b>${esc(f.nom)}</b> : ${l.map(o => `${o.icone} ${esc(o.nom)} <small>(${esc(o.info)})</small>`).join(' · ')}`),
+              .map(([f, l]) => `<b>${esc(nomFamilleOutil(f))}</b> : ${l.map(o => `${iconeOutil(o)} ${esc(titreOutil(o))} <small>(${esc(infoOutil(o))})</small>`).join(' · ')}`),
             guide: [ETAPES_OUTILS.onglet, ETAPES_OUTILS.accueil,
               etapeZonePage('#vue .familles-outils', 'Les outils, rangés par famille : touche une bulle pour ouvrir l’outil.')],
           },
@@ -1592,6 +1602,13 @@ function rubriquesAideBase() {
                   zoneSecurite('[data-verrou-minutes]', 'Choisis au bout de combien de temps sans activité l’écran se verrouille (enregistré tout de suite).')],
               },
               {
+                id: 'cache-ecran', titre: 'Cacher les infos sensibles',
+                reponse: ['Le <b>bouclier</b>, en haut, ou la touche <b>F8</b> cache les PAI, BEP, dispenses, pratiques adaptées, alertes, remarques et observations. Le reste du carnet reste utilisable : pratique quand l’écran est projeté ou qu’un élève est à côté.',
+                  'Touche à nouveau le bouclier ou <b>F8</b> pour tout réafficher. Rien n’est effacé.',
+                  'Quand une fenêtre est ouverte, seule la touche <b>F8</b> marche : le bouton de la barre n’est plus accessible.',
+                  '⚠ N’importe qui peut les réafficher. Si tu t’absentes, utilise plutôt le <b>🔒</b>.'],
+              },
+              {
                 id: 'autre-poste', titre: 'Sur un ordinateur qui n’est pas le mien', puces: true,
                 reponse: ['Évite d’y ouvrir le carnet : sa copie resterait dans le navigateur de cet ordinateur, <b>sans chiffrement</b>.',
                   'Si tu dois le faire : enregistre sur ta clé, puis Enregistrer › Aide et dépannage › Plus d’options › <b>« Oublier le mot de passe sur cet appareil »</b>.',
@@ -1692,16 +1709,16 @@ hugo.ouverts = new Set(); // rubriques dépliées (chemins « notes/creer »), g
 function htmlReponseHugo(n, chemin = null) {
   const liste = n.puces ? 'ul' : 'ol'; // (puces : points à savoir, sans ordre ; sinon étapes numérotées)
   const ici = chemin === null ? '' : ` data-hugo-chemin="${esc(chemin)}"`;
-  return `${n.intro ? `<p class="hugo-intro">${n.intro}</p>` : ''}<${liste} class="hugo-reponse">${n.reponse.map(l => `<li>${l}</li>`).join('')}</${liste}>
+  return emojisEcole(`${n.intro ? `<p class="hugo-intro">${n.intro}</p>` : ''}<${liste} class="hugo-reponse">${n.reponse.map(l => `<li>${l}</li>`).join('')}</${liste}>
     <p class="hugo-dit">Ça t’a aidé ?</p>
     <div class="hugo-choix"><button type="button" data-hugo="merci">👍 Oui, merci</button>
-      ${n.guide ? `<button type="button" class="primaire" data-hugo="montrer"${ici}>🙋 Non, montre-moi sur l’écran</button>` : ''}</div>`;
+      ${n.guide ? `<button type="button" class="primaire" data-hugo="montrer"${ici}>🙋 Non, montre-moi sur l’écran</button>` : ''}</div>`);
 }
 
 // Accordéon : un panneau dépliant par rubrique, sous-rubrique et question.
 function htmlDeroulantHugo(n, chemin) {
   const ouvert = hugo.ouverts.has(chemin) ? ' open' : '';
-  const titre = `${n.icone ? `<span class="hugo-icone" aria-hidden="true">${n.icone}</span>` : ''}<span>${esc(n.titre)}</span>`;
+  const titre = `${n.icone ? `<span class="hugo-icone" aria-hidden="true">${iconeEmoji(n.icone)}</span>` : ''}<span>${esc(n.titre)}</span>`;
   if (n.bientot) return `<div class="hugo-deroulant hugo-bientot">${titre}<small>bientôt</small></div>`;
   return `<details class="hugo-deroulant${n.reponse ? ' hugo-feuille' : ''}" data-hugo-ouvre="${esc(chemin)}"${ouvert}><summary>${titre}</summary>
     <div class="hugo-sous">${n.reponse ? htmlReponseHugo(n, chemin) : n.enfants.map(x => htmlDeroulantHugo(x, chemin + '/' + x.id)).join('')}</div></details>`;
@@ -1768,7 +1785,7 @@ function htmlResultatsHugo(texte) {
   const r = chercherHugo(texte);
   if (!r.length) return `<p class="hugo-dit">Je n’ai rien trouvé pour « ${esc(texte.trim())} ». Essaie un autre mot : note, barème, photo, clé, absent…</p>`;
   return `<ul class="hugo-liste hugo-resultats-liste">${r.map(x => `<li><button type="button" data-hugo-aller="${esc(x.chemin.join('/'))}">
-    ${x.icone ? `<span class="hugo-icone" aria-hidden="true">${x.icone}</span>` : ''}<span><span class="hugo-res-titre">${esc(x.titre)}</span>
+    ${x.icone ? `<span class="hugo-icone" aria-hidden="true">${iconeEmoji(x.icone)}</span>` : ''}<span><span class="hugo-res-titre">${esc(x.titre)}</span>
     ${x.fil.length ? `<small class="hugo-fil">${esc(x.fil.join(' › '))}</small>` : ''}</span><span class="hugo-fleche">›</span></button></li>`).join('')}</ul>`;
 }
 
@@ -1812,13 +1829,13 @@ function dessinerHugo() {
   } else {
     corps = `${filHugo()}<p class="hugo-dit">${hugo.chemin.length ? esc(n.titre) + ' : quelle est ta question ?' : 'Salut, moi c’est Hugo ! ' + esc(n.titre)}</p>
       <ul class="hugo-liste">${n.enfants.map(x => `<li><button type="button" data-hugo-noeud="${esc(x.id)}" ${x.bientot ? 'disabled' : ''}>
-        ${x.icone ? `<span class="hugo-icone" aria-hidden="true">${x.icone}</span>` : ''}<span>${esc(x.titre)}</span>
+        ${x.icone ? `<span class="hugo-icone" aria-hidden="true">${iconeEmoji(x.icone)}</span>` : ''}<span>${esc(x.titre)}</span>
         <span class="hugo-fleche">${x.bientot ? 'bientôt' : '›'}</span></button></li>`).join('')}</ul>`;
   }
   // Recherche en haut des rubriques (pas sur l'écran « merci ») ; ses résultats remplacent la liste tant qu'on tape.
   const q = hugo.recherche || '';
   const recherche = hugo.vue ? '' : `<div class="hugo-recherche"><input type="search" id="hugo-recherche" value="${esc(q)}"
-    placeholder="🔍 Un mot-clé : note, barème, photo, clé…" aria-label="Chercher dans l’aide" autocomplete="off" spellcheck="false"></div>
+    placeholder="${avecEcole() ? '' : '🔍 '}Un mot-clé : note, barème, photo, clé…" aria-label="Chercher dans l’aide" autocomplete="off" spellcheck="false"></div>
     <div class="hugo-resultats" ${q.trim() ? '' : 'hidden'}>${htmlResultatsHugo(q)}</div>`;
   p.innerHTML = `${entete}${recherche}<div class="hugo-corps" ${q.trim() && !hugo.vue ? 'hidden' : ''}>${retour}${corps}</div>`;
 }
@@ -1954,7 +1971,7 @@ function finGuideHugo(bulle, anneau, message = 'Bravo, c’est fait ! 🎉') {
   clearInterval(guideHugo.minuteur);
   if (!bulle.isConnected) (modaleOuverte() || document.body).append(anneau, bulle);
   anneau.hidden = true;
-  bulle.innerHTML = `${teteHugo()}<div class="hugo-guide-texte"><p>${esc(message)}</p>
+  bulle.innerHTML = `${teteHugo()}<div class="hugo-guide-texte"><p>${emojisEcole(esc(message))}</p>
     <div class="hugo-guide-boutons"><button type="button" data-hugo="arreter">Fermer</button></div></div>`;
   placerGuideHugo(modaleOuverte() || document.body, null, anneau, bulle);
   guideHugo.fin = setTimeout(arreterGuideHugo, 5000);

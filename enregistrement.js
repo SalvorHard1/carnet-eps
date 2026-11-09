@@ -173,13 +173,18 @@ async function enregistrerAnnexes(principal, mdp, { silencieux = false, copie = 
   if (bilan.n) migrerTout();
   const sortie = await Cle.chiffrer(Donnees.exporter(), mdp);
   if (bilan.n) {
-    try { await Cle.ecrire(await Cle.fichierCarnet(principal), sortie); } catch (e) { console.warn('Dossier principal non réécrit :', e); }
+    const principalCle = destinationActive() === 'cle';
+    try { await (principalCle ? Cle.ecrireVerifie : Cle.ecrire)(await Cle.fichierCarnet(principal), sortie); } catch (e) {
+      console.warn('Dossier principal non réécrit :', e);
+      if (principalCle) bilan.principalNonVerifie = true;
+    }
   }
   for (const { x, dossier, h } of joignables) {
+    const cle = x === DESTINATIONS.cle; // (clé USB : fichier relu après l'écriture)
     try {
-      await Cle.ecrire(h, sortie);
+      await (cle ? Cle.ecrireVerifie : Cle.ecrire)(h, sortie);
       if (copie) {
-        await Cle.copieDatee(dossier, sortie);
+        await Cle.copieDatee(dossier, sortie, { verifier: cle });
         try { await Cle.nettoyerCopies(dossier); } catch (e) { console.warn('Ménage des copies datées impossible :', e); }
       }
       bilan.faits.push(x);

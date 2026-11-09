@@ -101,7 +101,7 @@ function htmlConsulterEleves(c, eleves) {
 
 // Interrupteur Consulter / Modifier (en haut de l'onglet).
 const htmlModeEleves = () => `<div class="mode-eleves" role="group" aria-label="Affichage de la liste">
-  ${[['consulter', '👀 Consulter'], ['modifier', '✎ Modifier la liste']].map(([m, nom]) =>
+  ${[['consulter', `${pictoEcole('regarder', '👀')} Consulter`], ['modifier', `${pictoEcole('modifier', '✎')} Modifier la liste`]].map(([m, nom]) =>
     `<button type="button" data-mode-eleves="${m}" class="${modeEleves() === m ? 'actif' : ''}" aria-pressed="${modeEleves() === m}">${nom}</button>`).join('')}
 </div>`;
 

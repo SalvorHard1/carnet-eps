@@ -161,8 +161,8 @@ function htmlAgenda() {
       <button class="primaire" data-ag="nouvelle-sequence">+ Séquence</button>
       ${avecEcole() ? "" : `<button data-ag="nouveau-conseil">+ Conseils de classe</button>`}
       <button data-ag="nouvel-evenement">+ Événement</button>
-      <button data-ag="edt" title="Jours et heures de cours de chaque classe (import du PDF École Directe / Pronote possible)">🕒 Emploi du temps</button>
-      <button data-ag="reglages" title="Dates de l’année, vacances, types d’événements, affichage">⚙ Année et vacances</button>
+      <button data-ag="edt" title="Jours et heures de cours de chaque classe (import du PDF École Directe / Pronote possible)">${pictoEcole('horloge', '🕒')} Emploi du temps</button>
+      <button data-ag="reglages" title="Dates de l’année, vacances, types d’événements, affichage">${pictoEcole('calendrier', '⚙')} Année et vacances</button>
     </div>
     <div class="afficher-agenda"><span class="aide">Afficher :</span>
       ${Object.entries(AFFICHAGES_AGENDA).filter(([k]) => k !== 'conseils' || !avecEcole()).map(([k, nom]) => `<button class="pastille-ag${r.afficher[k] ? ' actif' : ''}" data-ag="afficher" data-arg="${k}" aria-pressed="${!!r.afficher[k]}">${nom}</button>`).join('')}

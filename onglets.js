@@ -16,6 +16,9 @@ const GROUPES_ONGLETS = [
   { id: 'pp', vues: ['pp'] },
 ];
 const ICONES_ONGLETS = { eleves: '👥', appel: '✅', notes: '📝', entrainement: '📋', outils: '⏱', agenda: '📅', baremes: '📏', pp: '⭐' };
+// Carnet École : icônes au trait du jeu d'ecole.js (pictoEcole), l'émoji reste pour EPS, SVT et PC.
+const ICONES_ONGLETS_ECOLE = { eleves: 'eleves', appel: 'appel', notes: 'notes', entrainement: 'cahier', outils: 'outils', agenda: 'calendrier', baremes: 'regle', pp: 'etoile' };
+const iconeOnglet = v => (typeof pictoEcole === 'function' ? pictoEcole(ICONES_ONGLETS_ECOLE[v], ICONES_ONGLETS[v]) : ICONES_ONGLETS[v]);
 const FAVORIS_MAX = 4;
 const ecranCompact = matchMedia('(max-width: 1199px), (hover: none) and (pointer: coarse)');
 
@@ -49,7 +52,7 @@ function majOnglets() {
   haut.innerHTML = disp === 'rideaux' ? htmlRideaux(visibles) : disp === 'favoris' ? htmlFavoris(visibles) : '';
   montrerOngletActif(haut);
   bas.innerHTML = disp === 'bas' ? visibles.map(v => boutonOnglet(v,
-    `<span class="icone-onglet" aria-hidden="true">${ICONES_ONGLETS[v]}</span><span class="nom-onglet">${esc(nomOnglet(v))}</span>`)).join('') : '';
+    `<span class="icone-onglet" aria-hidden="true">${iconeOnglet(v)}</span><span class="nom-onglet">${esc(nomOnglet(v))}</span>`)).join('') : '';
 }
 
 // Barre trop étroite (téléphone) : les onglets défilent de côté dans la barre ; l'onglet ouvert reste visible.
@@ -103,7 +106,7 @@ function ouvrirRideau(bouton) {
   r.setAttribute('role', 'menu');
   r.dataset.groupe = id;
   r.innerHTML = `<div class="rideau-titre">${esc(g ? g.nom : 'Autres onglets')}</div>` + vues.map(v =>
-    `<button type="button" role="menuitem" data-vue="${v}" class="${v === ui.vue ? 'actif' : ''}"><span aria-hidden="true">${ICONES_ONGLETS[v]}</span>
+    `<button type="button" role="menuitem" data-vue="${v}" class="${v === ui.vue ? 'actif' : ''}"><span aria-hidden="true">${iconeOnglet(v)}</span>
       ${esc(nomOnglet(v))}${v === ui.vue ? '<span class="coche" aria-hidden="true">✓</span>' : ''}</button>`).join('');
   document.body.appendChild(r);
   // Sous le groupe, sans dépasser du bord droit (position posée par script : pas de style dans la page).
@@ -144,5 +147,5 @@ function htmlReglageDisposition(o) {
       Sur un ordinateur à grand écran, tous les onglets restent affichés en haut.</p>
     <h4>Onglets favoris <span class="appareil">— disposition Favoris, ${FAVORIS_MAX} au plus</span></h4>
     <div class="favoris-onglets">${Object.keys(NOMS_ONGLETS).map(v => `<label class="case"><input type="checkbox" name="favori-${v}"
-      ${o.favoris.includes(v) ? 'checked' : ''}> ${ICONES_ONGLETS[v]} ${esc((o.noms[v] || '').trim() || NOMS_ONGLETS[v])}</label>`).join('')}</div>`;
+      ${o.favoris.includes(v) ? 'checked' : ''}> ${iconeOnglet(v)} ${esc((o.noms[v] || '').trim() || NOMS_ONGLETS[v])}</label>`).join('')}</div>`;
 }

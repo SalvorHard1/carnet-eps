@@ -396,7 +396,7 @@ function htmlSecurite(c) {
       : '<p class="aide">Coche l’équipement et les dangers du TP ci-dessus : les consignes s’affichent ici, en grand (⛶ Plein écran pour les projeter).</p>'}
     </section>
     <details class="prof-labo"><summary>🔒 Pour le professeur — ne pas projeter <span class="aide">(${pai.length} PAI · ${oublis.length} oubli${oublis.length > 1 ? 's' : ''} de matériel aujourd’hui)</span></summary>
-      ${pai.length ? `<h4>Élèves avec un PAI</h4><ul class="liste-fiche">${pai.map(el => `<li><b>${esc(el.prenom)} ${esc(el.nom)}</b>${el.paiInfo ? ' — ' + esc(el.paiInfo) : ''}</li>`).join('')}</ul>`
+      ${pai.length ? `<h4 class="info-sensible">Élèves avec un PAI</h4><ul class="liste-fiche info-sensible">${pai.map(el => `<li><b>${esc(el.prenom)} ${esc(el.nom)}</b>${el.paiInfo ? ' — ' + esc(el.paiInfo) : ''}</li>`).join('')}</ul>`
       : '<p class="aide">Aucun PAI dans cette classe.</p>'}
       ${oublis.length ? `<h4>Oubli de matériel aujourd’hui (appel)</h4><p>${oublis.map(el => esc(`${el.prenom} ${el.nom}`)).join(', ')} : prévoir une blouse de prêt.</p>`
       : '<p class="aide">Aucun oubli de matériel noté aujourd’hui (onglet Appel).</p>'}

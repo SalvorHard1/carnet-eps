@@ -12,6 +12,8 @@ const Cle = (() => {
 
   class ErreurMdp extends Error {}
   class ErreurVersion extends Error {} // carnet d'une appli plus récente (format de données inconnu ici)
+  class ErreurRelecture extends Error {} // le fichier relu n'est pas celui qu'on vient d'écrire
+  class ErreurCarnetAbime extends Error {} // carnet illisible, vu pendant un enregistrement automatique
 
   // Version de l'appli qui écrit le carnet (VERSION_APP, app.js) et comparaison « 1.2.0 » > « 0.159.0 ».
   const versionAppli = () => (typeof VERSION_APP === 'string' ? VERSION_APP : '');
@@ -143,6 +145,8 @@ const Cle = (() => {
 
   // Nom des copies datées que l'ordinateur range dans « Sauvegardes ».
   const MOTIF_COPIE = /^carnet-eps_(\d{4})-(\d{2})-(\d{2})_(\d{2})h(\d{2})\.json$/;
+  // Carnets abîmés mis de côté : gardés, mais jamais repris.
+  const MOTIF_ABIME = /^carnet-eps-abime.*\.json$/i;
 
   // Date d'enregistrement d'un carnet, écrite en clair dans son en-tête (pas besoin du mot de passe).
   const dateCarnet = texte => { try { return JSON.parse(texte).enregistreLe || ''; } catch { return ''; } };
@@ -154,7 +158,7 @@ const Cle = (() => {
     const trouves = [];
     const parcourir = async (rep, prefixe) => {
       for await (const [nom, h] of rep.entries()) {
-        if (h.kind !== 'file' || !/\.json$/i.test(nom) || (!prefixe && nom === NOM_FICHIER) || MOTIF_COPIE.test(nom)) continue;
+        if (h.kind !== 'file' || !/\.json$/i.test(nom) || (!prefixe && nom === NOM_FICHIER) || MOTIF_COPIE.test(nom) || MOTIF_ABIME.test(nom)) continue;
         try {
           const f = await h.getFile();
           const texte = await f.text();
@@ -171,12 +175,12 @@ const Cle = (() => {
   }
 
   // Copie datée dans le sous-dossier « Sauvegardes » (pour revenir à une version antérieure).
-  async function copieDatee(dossier, texte) {
+  async function copieDatee(dossier, texte, { verifier = false } = {}) {
     const d = new Date();
     const deux = n => String(n).padStart(2, '0');
     const nom = `carnet-eps_${d.getFullYear()}-${deux(d.getMonth() + 1)}-${deux(d.getDate())}_${deux(d.getHours())}h${deux(d.getMinutes())}.json`;
     const sous = await dossier.getDirectoryHandle('Sauvegardes', { create: true });
-    await ecrire(await sous.getFileHandle(nom, { create: true }), texte);
+    await (verifier ? ecrireVerifie : ecrire)(await sous.getFileHandle(nom, { create: true }), texte);
     return nom;
   }
 
@@ -241,6 +245,52 @@ const Cle = (() => {
     await flux.close();
   }
 
+  // Le fichier a-t-il la forme complète d'un carnet ? (Sans mot de passe : seule l'enveloppe est regardée.)
+  function carnetLisible(texte) {
+    try {
+      const f = JSON.parse(texte);
+      return f?.app === APP && [f.sel, f.iv, f.donnees].every(x => typeof x === 'string' && x.length > 0);
+    } catch {
+      return false;
+    }
+  }
+
+  // Clé USB : écrit puis relit le fichier. (Une tablette peut relire sa mémoire plutôt que la clé : le risque baisse sans disparaître.)
+  async function ecrireVerifie(h, texte) {
+    await ecrire(h, texte);
+    const relu = await lire(h);
+    if (relu !== texte || !carnetLisible(relu)) throw new ErreurRelecture('Le fichier relu n’est pas celui qui vient d’être écrit.');
+  }
+
+  // Met un carnet abîmé de côté, à l'identique, sans jamais rien effacer. Renvoie le nom de la copie.
+  async function mettreDeCote(dossier, h) {
+    const fichier = await h.getFile();
+    for await (const [nom, entree] of dossier.entries()) {
+      if (entree.kind === 'file' && MOTIF_ABIME.test(nom) && (await entree.getFile()).size === fichier.size) return nom; // déjà de côté
+    }
+    const d = new Date();
+    const deux = n => String(n).padStart(2, '0');
+    const nom = `carnet-eps-abime_${d.getFullYear()}-${deux(d.getMonth() + 1)}-${deux(d.getDate())}_${deux(d.getHours())}h${deux(d.getMinutes())}.json`;
+    const copie = await dossier.getFileHandle(nom, { create: true });
+    const flux = await copie.createWritable();
+    await flux.write(fichier);
+    await flux.close();
+    if ((await copie.getFile()).size !== fichier.size) throw new ErreurRelecture('Le carnet abîmé n’a pas pu être mis de côté.');
+    return nom;
+  }
+
+  // La copie datée lisible la plus récente de « Sauvegardes » : { nom, texte, date }, ou null.
+  async function derniereCopieLisible(dossier) {
+    const copies = (await copiesDatees(dossier)).sort((a, b) => b.nom.localeCompare(a.nom));
+    for (const { nom, h } of copies) {
+      try {
+        const texte = await lire(h);
+        if (carnetLisible(texte)) return { nom, texte, date: dateCarnet(texte) };
+      } catch { /* copie illisible : on passe à la précédente */ }
+    }
+    return null;
+  }
+
   // Tablette : comment le fichier partira sur la clé.
   //   'enregistrer' : fenêtre « Enregistrer sous » du système, on choisit la clé directement ;
   //   'partager'    : feuille de partage (iPad : « Enregistrer dans Fichiers » → clé USB) ;
@@ -264,7 +314,7 @@ const Cle = (() => {
 
   // Renvoie false si l'utilisateur a fermé la fenêtre sans enregistrer.
   // nom : unique par défaut (repris par l'ordinateur) ; « carnet-eps.json » pour un dossier de la tablette (on remplace).
-  async function enregistrerSurCle(texte, mode = modeTablette, nom = nomFichierTablette()) {
+  async function enregistrerSurCle(texte, mode = modeTablette, nom = nomFichierTablette(), { verifier = false } = {}) {
     if (mode === 'enregistrer') {
       let h;
       try {
@@ -276,7 +326,7 @@ const Cle = (() => {
         if (e.name === 'AbortError') return false;
         throw e;
       }
-      await ecrire(h, texte);
+      await (verifier ? ecrireVerifie : ecrire)(h, texte);
       return true;
     }
     try {
@@ -301,7 +351,7 @@ const Cle = (() => {
   }
 
   return {
-    NOM_FICHIER, accesDirect, ErreurMdp, ErreurVersion, compareVersions, chiffrer, dechiffrer, creerTemoin, verifierTemoin, memoriser, dossierMemorise, choisirDossier, contientCarnet, estDossierCopies,
+    NOM_FICHIER, accesDirect, ErreurMdp, ErreurVersion, ErreurRelecture, ErreurCarnetAbime, carnetLisible, ecrireVerifie, mettreDeCote, derniereCopieLisible, compareVersions, chiffrer, dechiffrer, creerTemoin, verifierTemoin, memoriser, dossierMemorise, choisirDossier, contientCarnet, estDossierCopies,
     fichierCarnet, dateCarnet, autresCarnets, copieDatee, copiesDatees, rechiffrer, nettoyerCopies, autoriser, lire, ecrire, partagerOuTelecharger, enregistrerSurCle, estFichierTablette, modeTablette, modeTablettePour,
   };
 })();

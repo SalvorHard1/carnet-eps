@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.11.1'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.25.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -21,13 +21,16 @@ function memoriserUi() { try { localStorage.setItem('carnet-eps-ui', JSON.string
 
 /* ---------- Petits outils d'interface ---------- */
 
-function toast(message, type = '') {
+function toast(message, type = '', duree = null) {
   const t = $('#toast');
   t.textContent = message;
   t.className = 'toast ' + type;
   t.hidden = false;
+  // Popover : le message passe au-dessus d'une fenêtre ouverte (showModal), qui cacherait sinon tout le reste de la page.
+  const ouvert = () => t.matches?.(':popover-open');
+  if (t.showPopover) { if (ouvert()) t.hidePopover(); t.showPopover(); }
   clearTimeout(toast.minuteur);
-  toast.minuteur = setTimeout(() => { t.hidden = true; }, type === 'erreur' ? 6000 : 3500);
+  toast.minuteur = setTimeout(() => { if (t.hidePopover && ouvert()) t.hidePopover(); t.hidden = true; }, duree ?? (type === 'erreur' ? 6000 : 3500));
 }
 
 function signalerErreur(e) {
@@ -505,7 +508,7 @@ const evalsDe = classeId => Donnees.liste('evals', e => e.classeId === classeId)
 
 // (cinq : cinq périodes, proposées dans le carnet École ; dates d'exemple à ajuster aux vacances de la zone.)
 const PERIODES_DEFAUT = { type: 'trimestres', trimestres: ['11-30', '02-28'], semestres: ['01-31'], cinq: ['10-16', '12-18', '02-12', '04-09'] };
-const reglagePeriodes = () => ({ ...PERIODES_DEFAUT, ...Donnees.get('reglages', 'periodes') });
+const reglagePeriodes = () => ({ ...PERIODES_DEFAUT, ...ficheReglage('periodes') }); // (propres à la discipline : reglages.js › idReglage)
 
 // Place d'un jour dans l'année scolaire (août = début) ; le 29 février compte comme le 28.
 const rangAnnee = md => {
@@ -573,7 +576,7 @@ async function editerPeriodes() {
   const fins = Object.keys(res.data).filter(k => k.startsWith(type + '-')).map(k => res.data[k].slice(5))
     .sort((a, b) => rangAnnee(a) - rangAnnee(b));
   if (new Set(fins).size < fins.length) return toast('Deux périodes ne peuvent pas finir le même jour.', 'erreur');
-  Donnees.ecrire('reglages', { ...Donnees.get('reglages', 'periodes'), id: 'periodes', type, [type]: fins });
+  ecrireFicheReglage('periodes', { type, [type]: fins });
   rendre();
 }
 
@@ -627,6 +630,10 @@ function rendreClasses() {
       ${c.id === active?.id ? `<button class="modif" data-modif-classe="${c.id}" title="Modifier la classe" aria-label="Modifier la classe">✎</button>` : ''}
     </li>`).join('') || '<li class="aide">Aucune classe</li>';
   $('#astuce-classes').hidden = classes.length < 2;
+  // Carnet École : un enseignant, une classe → ni colonne des classes ni bouton ☰ ; la classe se gère dans l'onglet Élèves (style.css).
+  document.body.classList.toggle('classes-repliees', typeof avecEcole === 'function' && avecEcole());
+  // Carnet École : direction « cahier Seyès » (fond crème, encre bleue, lignage, marge rouge ; style.css, section Carnet École).
+  document.documentElement.classList.toggle('carnet-ecole', typeof avecEcole === 'function' && avecEcole());
 }
 
 /* ---------- Ordre des classes : appui long, puis glisser ----------
@@ -728,7 +735,7 @@ function dessinerVue(c) {
       </div>`;
     return;
   }
-  v.innerHTML = (c.exemple && !enModeEleve() ? `<p class="bandeau-exemple">🎓 <span><b>Classe exemple</b> : élèves et résultats inventés, pour voir un carnet rempli.
+  v.innerHTML = (c.exemple && !enModeEleve() ? `<p class="bandeau-exemple">${pictoEcole('chapeau', '🎓')} <span><b>Classe exemple</b> : élèves et résultats inventés, pour voir un carnet rempli.
     Touche à tout (${avecEcole() ? 'notes, appel, cahier journal, livret' : 'notes, appel, fiches bilan, ✍ appréciations'}…), rien n’est grave.</span>
     <button class="lien" data-action="suppr-exemple"${c.id !== ID_CLASSE_EXEMPLE ? ` data-arg="${c.id}"` : ''}>Supprimer la classe exemple</button></p>` : '')
     + (ui.vue === 'eleves' ? htmlEleves(c) : ui.vue === 'appel' ? (avecEcole() ? htmlAppelEcole(c) : htmlAppel(c))
@@ -770,7 +777,7 @@ function absencesEleve(el) {
 function badgeAlerte(el, a) {
   if (!a.niveau) return '';
   return ` <button class="alerte-abs ${a.niveau}" data-alerte-abs="${el.id}"
-    title="${a.n} jours ${motifsAbsence()} au ${a.periode?.code || 'trimestre'} — toucher pour le détail">⚠ ${a.n}</button>`;
+    title="${a.n} jours ${motifsAbsence()} au ${a.periode?.code || 'trimestre'} — toucher pour le détail">${pictoEcole('alerte', '⚠')} ${a.n}</button>`;
 }
 
 async function voirAbsences(id) {
@@ -838,7 +845,7 @@ document.addEventListener('click', e => {
 function celluleNom(el, i) {
   const alerte = absencesEleve(el), tenue = oublisTenue(el);
   const infos = [
-    alerte.niveau ? `⚠ ${alerte.n} jours ${motifsAbsence()} au ${alerte.periode?.code}` : '',
+    alerte.niveau ? `${avecEcole() ? 'Alerte :' : '⚠'} ${alerte.n} jours ${motifsAbsence()} au ${alerte.periode?.code}` : '',
     tenue.niveau ? `${mot('iconeTenue')} ${tenue.n} ${oubliTenue(tenue.n)} au ${tenue.periode?.code}` : '',
     aPai(el) ? 'PAI' + (el.paiInfo ? ' : ' + el.paiInfo : '') : '',
     el.bep ? 'BEP' + (el.bepInfo ? ' : ' + el.bepInfo : '') : '',
@@ -851,7 +858,7 @@ function celluleNom(el, i) {
     + (el.bep ? ` <button class="badge-bep" data-voir-besoin="bep" data-id="${el.id}" title="Voir le BEP">BEP</button>` : '')
     + badgeDispenseGrille(el)
     + (el.adapte ? ' <span class="badge-adapte-grille" title="Pratique adaptée"><span class="forme-longue">ADAPTÉ</span><span class="forme-courte">AD</span></span>' : '');
-  return `<th class="col-nom${alerte.niveau ? ' alerte-' + alerte.niveau : ''}" data-nom-eleve="${el.id}" title="${esc(infos)}"><span class="num-eleve">${i + 1}</span>${Trombi.mini(el, 'mini-photo photo-grille')}<span class="nom-eleve">${esc(el.nom)} ${esc(el.prenom)}</span>`
+  return `<th class="col-nom${alerte.niveau ? ' alerte-' + alerte.niveau : ''}" data-nom-eleve="${el.id}" title="${infosCachees() ? "" : esc(infos)}"><span class="num-eleve">${i + 1}</span>${Trombi.mini(el, 'mini-photo photo-grille')}<span class="nom-eleve">${esc(el.nom)} ${esc(el.prenom)}</span>`
     + (etiquettes ? `<span class="etiquettes-nom">${etiquettes}</span>` : '')
     + '</th>';
 }
@@ -949,17 +956,19 @@ function htmlNotes(c) {
     <div class="outils">
       <h2>${esc(c.nom)}</h2>
       <button class="primaire" data-action="ajout-eval">+ Évaluation</button>
-      <button data-action="excel-notes" title="Import de toutes ses notes d’École Directe ou de Pronote (l’export Excel des notes est aussi ici)">📥 Importer mes notes</button>
+      <button data-action="excel-notes" title="Import de toutes ses notes d’École Directe ou de Pronote (l’export Excel des notes est aussi ici)">${pictoEcole('telecharger', '📥')} Importer mes notes</button>
+      ${avecEcole() ? '' : '<button data-action="vers-ecole-directe" title="Copier les notes d’une évaluation pour les coller dans École Directe">📋 Reporter mes notes sur École Directe</button>'}
       ${avecEcole() ? htmlBoutonsEcole(c) : `<button data-action="appreciations" title="Appréciations du trimestre proposées par l’appli, d’après les notes et les ${motMin('lecons')}">✍ Appréciations</button>`}${typeof htmlBoutonsBilansSvt === 'function' ? htmlBoutonsBilansSvt(c) : ''}
       <label class="choix-tri">Période
         <select data-periode>
           <option value="annee">Toute l’année</option>
           ${periodes.map(p => `<option value="${p.id}" ${p.id === vue ? 'selected' : ''}>${p.code} (${esc(p.texte)})</option>`).join('')}
         </select></label>
-      <button class="icone-petit" data-action="periodes" title="Régler les trimestres / semestres" aria-label="Régler les périodes">⚙</button>
-      ${sansNotes ? '' : `<button data-modif-classe="${c.id}" title="Régler la correspondance note → degré de maîtrise pour cette classe">⚙ Note → degré
-        <span class="aide">(${seuilsClasse(c).map(fmt).join(' / ')})</span></button>
+      <button class="icone-petit" data-action="periodes" title="Régler les trimestres / semestres" aria-label="Régler les périodes">${pictoEcole('reglages', '⚙')}</button>
+      ${sansNotes ? '' : `${avecEcole() ? '' : `<button data-modif-classe="${c.id}" title="Régler la correspondance note → degré de maîtrise pour cette classe">${pictoEcole('reglages', '⚙')} Note → degré
+        <span class="aide">(${seuilsClasse(c).map(fmt).join(' / ')})</span></button>`}
       <span class="aide aide-saisie">Saisie : note, ou ${aideCodes()} — Entrée = élève suivant</span>`}
+      ${avecEcole() ? htmlBoutonReglagesNotesEcole(c) : ''}
     </div>
     ${avecEcole() ? htmlFiltresEcole(c) : ''}
     ${evals.length ? '' : avecEcole() && toutes.length ? '<p class="aide">Aucune évaluation pour ce choix.</p>' : toutes.length
@@ -1252,6 +1261,7 @@ function htmlEleves(c) {
     <div class="outils">
       <h2>${esc(c.nom)}</h2>
       ${htmlModeEleves()}
+      ${avecEcole() ? htmlClasseEcole(c) : ''}
     </div>
     ${htmlConsulterEleves(c, eleves)}`;
   }
@@ -1261,18 +1271,19 @@ function htmlEleves(c) {
       ${eleves.length && typeof htmlModeEleves === 'function' ? htmlModeEleves() : ''}
       <button class="primaire" data-action="ajout-eleve">+ Élève</button>
       <button data-action="coller-liste" title="Coller une liste copiée depuis Pronote ou un tableur">📋 Coller une liste</button>
-      <button data-action="import-ed" title="Créer ou compléter les fiches à partir de la liste de classe exportée d’École Directe ou de Pronote (.xlsx, .csv)">${avecEcole() ? "📥 Importer une liste" : "📥 École Directe / Pronote"}</button>
+      <button data-action="import-ed" title="Créer ou compléter les fiches à partir de la liste de classe exportée d’École Directe ou de Pronote (.xlsx, .csv)">${avecEcole() ? `${iconeEcole('telecharger')}Importer une liste` : "📥 École Directe / Pronote"}</button>
       <button data-action="trombi" title="Photos des élèves : importer le trombinoscope de la classe (PDF ou image)">📷 Trombinoscope</button>
       <label class="choix-tri">Ordre
         <select data-tri-classe="${c.id}">
           <option value="alpha" ${c.tri !== 'perso' ? 'selected' : ''}>Alphabétique</option>
           <option value="perso" ${c.tri === 'perso' ? 'selected' : ''}>Personnalisé</option>
         </select></label>
-      <span class="aide">${eleves.length} élève${eleves.length > 1 ? 's' : ''}${enCours ? ` · ${enCours} dispense${enCours > 1 ? 's' : ''} en cours` : ''}${adaptes ? ` · ${adaptes} adapté${adaptes > 1 ? 's' : ''}` : ''}</span>
+      <span class="aide">${eleves.length} élève${eleves.length > 1 ? 's' : ''}<span class="info-sensible">${enCours ? ` · ${enCours} dispense${enCours > 1 ? 's' : ''} en cours` : ''}${adaptes ? ` · ${adaptes} adapté${adaptes > 1 ? 's' : ''}` : ''}</span></span>
+      ${avecEcole() ? htmlClasseEcole(c) : ''}
     </div>
     ${eleves.length ? `
       <div class="carte"><table class="tableau-eleves">
-        <thead><tr><th class="c-num">N°</th><th>Nom</th><th>Prénom</th><th class="c-sexe">Sexe</th><th>PAI</th><th title="Besoin éducatif particulier">BEP</th>${avecDisp ? '<th>Dispense / adapté</th>' : ''}<th title="${esc(aideRem[0].toUpperCase() + aideRem.slice(1))}">Remarques</th><th></th></tr></thead>
+        <thead><tr><th class="c-num">N°</th><th>Nom</th><th>Prénom</th><th class="c-sexe">Sexe</th><th class="info-sensible">PAI</th><th class="info-sensible" title="Besoin éducatif particulier">BEP</th>${avecDisp ? '<th class="info-sensible">Dispense / adapté</th>' : ''}<th class="info-sensible" title="${esc(aideRem[0].toUpperCase() + aideRem.slice(1))}">Remarques</th><th></th></tr></thead>
         <tbody>${eleves.map((el, i) => {
           const s = statutDispense(el);
           return `
@@ -1362,7 +1373,9 @@ function majPastille() {
   const b = $('#btn-sauver');
   b.className = 'sauver etat-' + etat + (etat === 'attente' && !Cle.accesDirect ? ' rappel' : '');
   b.title = info;
-  $('.sauver-icone', b).textContent = etat === 'ok' || !ui.destination ? '💾' : x.icone;
+  // (Carnet École : l'icône au trait du jeu d'ecole.js, quel que soit l'endroit choisi.)
+  if (typeof avecEcole === 'function' && avecEcole()) $('.sauver-icone', b).innerHTML = iconeEcole('enregistrer');
+  else $('.sauver-icone', b).textContent = etat === 'ok' || !ui.destination ? '💾' : x.icone;
   $('#etat-cle').textContent = texte;
   // Heure du dernier enregistrement, à côté de « Enregistré » (cachée sur tablette en portrait, faute de place).
   $('#etat-cle').insertAdjacentHTML('beforeend', etat === 'ok'
@@ -1752,7 +1765,7 @@ async function editerClasse(id) {
     </select></label>
     ${avecEcole() ? '<input type="hidden" name="pp">' : `<label class="case"><input type="checkbox" name="pp" ${c.pp ? 'checked' : ''}> ⭐ Je suis professeur principal de cette classe
       <span class="aide">(ajoute l’onglet « Prof principal » : bulletins, appréciation générale, conseil, suivi)</span></label>`}
-    <fieldset class="competences">
+    <fieldset class="competences"${avecEcole() ? ' hidden' : ''}>
       <legend>Correspondance note → degré de maîtrise (pour cette classe)</legend>
       <div class="ligne seuils">
         <label><span><span class="niveau n2">2</span> dès</span><input type="number" name="s2" min="0" max="20" step="any" required value="${s[0]}"></label>
@@ -2238,6 +2251,14 @@ async function synchroniser(dossier, { silencieux = false, copie = false, annexe
   } catch {
     throw new Error(`Dossier introuvable : ${x.verifier}.`);
   }
+  // Clé USB seulement : relecture après écriture, carnet abîmé repris, message de retrait.
+  const surCle = destinationActive() === 'cle';
+  let reprise = null;
+  if (surCle && texte.trim() && !Cle.carnetLisible(texte)) {
+    if (silencieux) throw new Cle.ErreurCarnetAbime('Carnet de la clé illisible.');
+    reprise = await reprendreCarnetAbime(dossier, h);
+    texte = reprise.texte;
+  }
   // Récupérer / Enregistrer (pas l'enregistrement automatique) : en plus de carnet-eps.json, on réunit les
   // autres carnets posés à côté ou dans « Sauvegardes » (ex. le fichier enregistré sur la tablette).
   // Chacun est réuni une fois, quelle que soit sa date (carnet-eps.json a pu être réécrit entre-temps par
@@ -2291,9 +2312,10 @@ async function synchroniser(dossier, { silencieux = false, copie = false, annexe
   const sortie = await Cle.chiffrer(Donnees.exporter(), mdp);
   let nomCopie = null;
   try {
-    await Cle.ecrire(h, sortie);
-    if (copie) nomCopie = await Cle.copieDatee(dossier, sortie);
-  } catch {
+    await (surCle ? Cle.ecrireVerifie : Cle.ecrire)(h, sortie);
+    if (copie) nomCopie = await Cle.copieDatee(dossier, sortie, { verifier: surCle });
+  } catch (e) {
+    if (e instanceof Cle.ErreurRelecture) throw new Error('⚠ Le fichier écrit sur la clé n’est pas correct. Ne retire pas la clé et touche à nouveau « Enregistrer ».');
     throw new Error(`Impossible d’écrire ${x.sur} (${x.verifier} ; protégé en écriture ?).`);
   }
   let supprimes = 0;
@@ -2321,8 +2343,30 @@ async function synchroniser(dossier, { silencieux = false, copie = false, annexe
     + (repris.length ? `\nRepris aussi : ${repris.join(', ')}` : '')
     + (annexes && texteAnnexes(annexes) ? '\n' + texteAnnexes(annexes) : '')
     + (supprimes ? `\n${supprimes} fichier${supprimes > 1 ? 's' : ''} de la tablette retiré${supprimes > 1 ? 's' : ''} du dossier (contenu gardé dans le carnet)` : '')
-    + (ignores.length ? `\n⚠ Laissé de côté (autre mot de passe) : ${ignores.map(c => c.nom).join(', ')}` : ''), ignores.length ? 'erreur' : 'ok');
+    + (ignores.length ? `\n⚠ Laissé de côté (autre mot de passe) : ${ignores.map(c => c.nom).join(', ')}` : '')
+    + (reprise ? `\n⚠ Fichier abîmé gardé de côté : ${reprise.nomAbime}${reprise.copie ? ` · repris depuis la copie ${reprise.copie.nom}` : ''}` : '')
+    + (surCle && !annexes?.principalNonVerifie ? `\n✅ Fichier vérifié : éjecte la clé si possible, puis tu peux la retirer.` : '')
+    + (annexes?.principalNonVerifie ? '\n⚠ La dernière écriture sur la clé n’a pas été vérifiée : ne la retire pas et touche à nouveau « Enregistrer ».' : ''),
+  ignores.length || annexes?.principalNonVerifie ? 'erreur' : 'ok', surCle ? 10000 : null);
   return { ignores: ignores.map(c => c.nom) };
+}
+
+// Clé USB : carnet-eps.json illisible (enregistrement interrompu…). On le met de côté sans rien effacer, puis on
+// reprend la dernière copie datée lisible ; la réunion garde ce qui est plus récent sur cet appareil.
+async function reprendreCarnetAbime(dossier, h) {
+  const copie = await Cle.derniereCopieLisible(dossier);
+  if (!copie && !Donnees.liste('classes').length) {
+    throw new Error('Le carnet de la clé est abîmé et aucune copie lisible n’a été trouvée. Rien n’a été modifié.');
+  }
+  const { resultat } = ouvrirModale('⚠ Le carnet de la clé est abîmé', `
+    <p><b>carnet-eps.json</b> ne peut pas être lu : un enregistrement a sans doute été interrompu, par exemple si la clé a été retirée trop tôt.</p>
+    <p><b>Rien ne sera effacé.</b> L’appli garde ce fichier de côté, puis ${copie
+    ? `reprend la dernière copie lisible, <b>${esc(copie.date ? dateHeure(Date.parse(copie.date)) : copie.nom)}</b>`
+    : 'enregistre le carnet de cet appareil'}.</p>
+    <p class="aide">Ce qui est plus récent sur cet appareil est gardé. Si ton dernier travail a été fait ailleurs, il reviendra quand tu enregistreras depuis cet autre appareil.</p>`,
+  boutonsModale('Mettre de côté et continuer'));
+  if ((await resultat).action !== 'ok') throw new Annule();
+  return { nomAbime: await Cle.mettreDeCote(dossier, h), texte: copie?.texte || '', copie };
 }
 
 // Fichiers de la clé chiffrés avec un autre mot de passe que celui du carnet : on demande lequel.
@@ -2496,7 +2540,8 @@ function planifierSauvegardeAuto() {
     } catch (e) {
       console.warn('Sauvegarde automatique impossible :', e);
       etatAuto = 'erreur';
-      notifAuto(`⚠ Enregistrement automatique impossible : ${destEnr().verifier}.`, true);
+      notifAuto(e instanceof Cle.ErreurCarnetAbime ? '⚠ Le carnet de la clé est abîmé : touche « Enregistrer » pour le réparer.'
+        : `⚠ Enregistrement automatique impossible : ${destEnr().verifier}.`, true);
     }
     majPastille();
     planifierSauvegardeAuto(); // des modifications faites pendant l'enregistrement
@@ -2588,7 +2633,8 @@ async function exporterTablette({ secours = false } = {}) {
   const { d } = ouvrirModale(secours ? 'Copie de secours prête' : 'Fichier prêt', `<p>Touche le bouton ci-dessous : ${consigne}</p>`,
     `<span class="espace"></span><button type="button" data-fermer>Annuler</button><button type="button" class="primaire" data-partager>${libelle}</button>`);
   $('[data-partager]', d).addEventListener('click', () => {
-    Cle.enregistrerSurCle(texte, mode, nomFixe).then(fait => {
+    const verifie = dest === 'cle' && mode === 'enregistrer'; // (clé USB : fichier relu quand la tablette y donne accès)
+    Cle.enregistrerSurCle(texte, mode, nomFixe, { verifier: verifie }).then(fait => {
       if (!fait) return; // fenêtre fermée sans enregistrer : on peut réessayer
       d.fermer();
       if (ailleurs) { // (copie hors de la tablette : ne change pas l'état « enregistré » du carnet)
@@ -2599,8 +2645,10 @@ async function exporterTablette({ secours = false } = {}) {
       const envoye = texteChangements(Donnees.marquerEnvoi());
       toast((mode !== 'telecharger' || dest === 'dossier' ? `Fichier enregistré ${x.sur} ✔`
         : `Fichier dans Téléchargements ✔ — pense à le mettre ${x.sur} (voir la consigne).`)
-        + (envoye ? '\n⬆ Envoyé : ' + envoye : ''), 'ok');
-    }).catch(signalerErreur);
+        + (envoye ? '\n⬆ Envoyé : ' + envoye : '')
+        + (verifie ? '\n✅ Fichier vérifié : éjecte la clé si possible, puis tu peux la retirer.' : ''), 'ok', dest === 'cle' ? 10000 : null);
+    }).catch(e => signalerErreur(e instanceof Cle.ErreurRelecture
+      ? new Error('⚠ Le fichier écrit sur la clé n’est pas correct. Ne retire pas la clé et touche à nouveau « Enregistrer ».') : e));
   });
 }
 
@@ -2892,6 +2940,103 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.25.0', titre: 'Des appréciations qui se suivent et qui apprennent', discipline: 'ecole', points: [
+    'Fiche d’un élève › Appréciation : <b>plus de pastilles</b> (gentil, calme, réfléchi, créatif, bon camarade, aime lire… ; timide à l’oral, leçons pas apprises, gère mal ses émotions, conflits… ; arrivé en cours d’année, prêt pour le collège…) et plus de tournures.',
+    '<b>Lien avec la période précédente</b> : quand tu retires une pastille « À surveiller », l’appli le dit (« Elle a pris confiance en elle depuis le premier trimestre ») ; si elle reste, « Comme au premier trimestre, il bavarde encore… ». Une participation, un comportement ou une matière qui change nettement est aussi relevé. Case dans ⚙ réglages.',
+    '<b>Textes tous différents</b> : dans une même classe, les élèves se partagent les tournures, deux élèves voisins n’ont plus la même phrase.',
+    '<b>L’appli apprend de tes corrections</b> : un mot que tu remplaces chez deux élèves est ensuite remplacé partout (« maintenant » → « désormais ») ; une phrase que tu ajoutes pour un élève lui est reproposée aux autres périodes (« Tes phrases »). Tout reste dans ton carnet ; ⚙ réglages › 🧠 pour décocher.',
+  ] },
+  { version: '1.24.0', titre: 'Des appréciations plus humaines', discipline: 'ecole', points: [
+    'Fiche d’un élève › Appréciation : un <b>portrait</b> en pastilles. Touche 2 ou 3 <b>qualités</b> (consciencieux, volontaire, souriant, moteur de la classe…), un <b>point à surveiller</b> (manque de confiance, étourderie…) ou une <b>situation</b> (nouveau dans l’école, la lecture se met en place…).',
+    'L’appréciation parle alors d’abord de l’élève : « Clara est une élève consciencieuse et volontaire. Sa participation orale est très appréciée. » Les matières passent après. Le portrait est repris aux périodes suivantes.',
+    'Elle commence selon le moment de l’année (« Excellent début d’année ! ») et peut finir en ton nom (« Je la félicite et l’encourage à poursuivre. »), avec des souhaits de fêtes en décembre. Les deux se décochent dans les réglages de l’appréciation.',
+  ] },
+  { version: '1.23.0', titre: 'Des appréciations d’école', discipline: 'ecole', points: [
+    'Fiche d’un élève › <b>Appréciation</b> : de nouvelles rubriques d’école, <b>Apprentissages</b>, <b>À consolider</b>, <b>Participation</b>, <b>Comportement</b>, <b>Autonomie</b> et <b>Soin</b>. Touche une rubrique pour changer son niveau.',
+    'Les phrases sont écrites pour les familles : la <b>matière</b> la plus réussie et la plus fragile sont citées (« en mathématiques »), sans comparaison avec le reste de la classe.',
+    'Autonomie et soin viennent de tes observations (« autonome », « besoin d’aide », « soigné », « brouillon »…) ; sans observation, touche la rubrique pour lui donner un niveau.',
+  ] },
+  { version: '1.22.0', titre: 'Les réglages des notes au bon endroit', discipline: 'ecole', points: [
+    'Onglet <b>Notes</b>, tout à droite : <b>« Réglages des notes »</b>. On y trouve la correspondance <b>note → degré</b> (ex. 10 / 14 / 18), les <b>noms des 4 degrés</b> et les <b>compétences évaluées</b> (en créer, en modifier).',
+    'Ces réglages ne sont plus en double dans les Réglages du carnet ni dans « Modifier la classe ».',
+  ] },
+  { version: '1.21.7', titre: 'Le tableau des notes sur tout l’écran', discipline: 'ecole', points: [
+    'Onglet <b>Notes</b> : le tableau prend maintenant <b>toute la hauteur de l’écran</b>. Fais défiler : les filtres remontent d’abord, puis tu parcours les élèves.',
+  ] },
+  { version: '1.21.6', titre: 'Les réglages toujours à portée', discipline: 'ecole', points: [
+    'Les <b>Réglages</b> du carnet ont maintenant leur <b>roue</b> dans la barre du haut, à côté du bouclier : on les ouvre depuis n’importe quel onglet.',
+  ] },
+  { version: '1.21.5', titre: 'Un carnet sans émojis', discipline: 'ecole', points: [
+    'Partout dans le carnet École (barre, fiches, outils, réglages), les émojis laissent la place aux <b>icônes au trait</b> de l’appel.',
+    'La couleur ne sert que quand elle dit quelque chose : vert pour ce qui est validé, rouge pour une alerte.',
+  ] },
+  { version: '1.21.3', titre: 'Des outils pour la classe', discipline: 'ecole', points: [
+    'Onglet <b>Outils</b> : place aux outils du professeur des écoles. Les outils de sport restent dans le carnet EPS.',
+    'Nouveaux : <b>Métiers de la classe</b>, <b>Coupons rendus</b>, <b>Bibliothèque</b>, <b>Minuteur visuel</b>, <b>Journée</b>, <b>Tour de parole</b>, <b>Niveau sonore</b> et <b>Consignes en grand</b>.',
+    'Le niveau sonore écoute le micro sur l’appareil : rien n’est enregistré ni envoyé.',
+  ] },
+  { version: '1.21.2', titre: 'Le bilan de l’appel sur une page', discipline: 'ecole', points: [
+    'Appel › <b>Bilan</b> : le <b>calendrier de la classe</b> montre chaque jour d’un coup d’œil (vert, orange, rouge selon les absents) ; touche un jour pour savoir qui manquait.',
+    'Le <b>PDF</b> tient sur <b>une seule page</b>, comme une fiche de cahier : chiffres clés, calendrier, élèves à suivre, visa.',
+    'Onglet <b>Outils</b> : des bulles à l’encre, avec une touche de rouge.',
+  ] },
+  { version: '1.21.1', titre: 'Un carnet aux couleurs du cahier', discipline: 'ecole', points: [
+    'Le carnet École prend l’allure d’un <b>cahier d’écolier</b> : fond crème, encre bleue, lignes et marge rouge, en clair comme en sombre.',
+    'Des <b>icônes dessinées</b> partout (onglets, livret, cahier journal, outils, aide) à la place des émojis.',
+    'Le tableau jour par jour du <b>bilan de l’appel</b> suit le même style.',
+  ] },
+  { version: '1.21.0', titre: 'Des réglages propres à chaque discipline', points: [
+    'Les <b>Réglages du carnet</b> (couleurs, saisie, compétences, onglets, appréciations, périodes) sont maintenant <b>propres à la discipline</b> : les changer en École ne touche pas au carnet EPS, et inversement. Tes réglages actuels sont gardés.',
+    'En École, la fenêtre ne montre que ce qui sert à l’école.',
+  ] },
+  { version: '1.20.0', titre: 'Le bilan de l’appel en PDF', discipline: 'ecole', points: [
+    'Appel › <b>Bilan</b> : la <b>semaine</b>, le <b>mois</b> ou le <b>trimestre</b>, avec les flèches pour passer de l’un à l’autre.',
+    '<b>Aperçu, PDF, impression</b> : tu vois les pages (synthèse avec graphiques, puis le registre jour par jour), puis tu les télécharges en PDF ou tu les imprimes.',
+  ] },
+  { version: '1.19.2', titre: 'Ta classe, dans l’onglet Élèves', discipline: 'ecole', points: [
+    'Plus de place : la colonne des classes, à gauche, a disparu.',
+    'Onglet <b>Élèves</b>, en haut à droite : <b>Modifier la classe</b>, <b>Nouvelle classe</b> et <b>Réglages</b>. Si tu as plusieurs classes, tu passes de l’une à l’autre au même endroit.',
+  ] },
+  { version: '1.19.0', titre: 'Un calendrier à côté de l’appel', discipline: 'ecole', points: [
+    'Dans <b>Appel</b>, un calendrier à droite : sous chaque jour, deux petits traits (matin, après-midi) montrent si l’appel est fait. Touche un jour pour l’ouvrir.',
+    'Sur téléphone : la <b>semaine</b> au-dessus de la liste.',
+  ] },
+  { version: '1.18.2', titre: 'Le registre du mois, plus lisible', discipline: 'ecole', points: [
+    'Appel › <b>Bilan du mois</b> : tout le mois jour après jour, week-ends grisés, matin à gauche et après-midi à droite.',
+    'Un point pour chaque présent : seuls les absences et les retards ressortent. Le <b>% de présence</b> de chaque élève est à droite.',
+  ] },
+  { version: '1.18.1', titre: 'Un appel plus sobre', discipline: 'ecole', points: [
+    'L’<b>appel</b> et le <b>bilan du mois</b> ont de nouvelles icônes, plus lisibles, en clair comme en sombre.',
+  ] },
+  { version: '1.18.0', titre: 'Un bilan d’appel qui se lit d’un coup d’œil', discipline: 'ecole', points: [
+    '👀 Dans Appel › 📊 <b>Bilan du mois</b> : les chiffres clés, puis <b>qui regarder d’abord</b>, avec le seuil des 4 demi-journées non justifiées.',
+    '🗓 Le <b>mois jour par jour</b> en couleurs (haut = matin, bas = après-midi), à imprimer comme registre.',
+  ] },
+  { version: '1.17.1', titre: 'Cacher les infos sensibles', points: [
+    '🛡 En haut, le <b>bouclier</b> (ou la touche <b>F8</b>) cache les PAI, BEP, dispenses, pratiques adaptées, alertes, remarques et observations. Le reste du carnet reste utilisable : pratique pour un écran projeté.',
+    'Touche-le à nouveau pour tout réafficher. Rien n’est effacé. Pour protéger le carnet quand tu t’absentes, garde le <b>🔒</b>.',
+  ] },
+  { version: '1.15.2', titre: 'Tes appréciations vers École Directe', points: [
+    '✍ Dans <b>Appréciations</b>, <b>Reporter sur École Directe</b> prépare les textes de la période pour l’extension du carnet, qui s’appelle désormais <b>Passerelle</b>.',
+    'Dans École Directe, un panneau montre le texte de l’élève où se trouve ton curseur : <b>Ctrl+V</b>, tu relis, <b>Entrée</b>. C’est toi qui enregistres.',
+    'Les appréciations proposées font désormais <b>250 caractères</b> au plus, la limite d’École Directe. Tu peux changer cette longueur dans leurs réglages.',
+  ] },
+  { version: '1.14.2', titre: 'Les extensions du carnet', points: [
+    '🧩 Le <b>bouton puzzle</b>, en bas à gauche, ouvre la liste des extensions, à commencer par <b>Passerelle</b>.',
+    'Elle reste passive : un clic te la donne, avec un guide pour l’ajouter à ton navigateur et un <b>guide PDF</b> complet.',
+  ] },
+  { version: '1.13.0', titre: 'Clé USB : un carnet mieux protégé', points: [
+    '🔑 Après un enregistrement sur la clé, l’appli <b>relit le fichier</b> et te dit quand tu peux la retirer. Éjecte-la si possible.',
+    'Si le carnet de la clé est abîmé, l’appli le <b>garde de côté</b> et te propose de reprendre la dernière copie lisible : rien n’est effacé.',
+  ] },
+  { version: '1.12.0', titre: 'Préparer ses notes pour École Directe', points: [
+    '📋 Dans Notes, <b>Reporter mes notes sur École Directe</b> copie les notes d’une évaluation pour l’extension du carnet, qui les remet dans l’ordre de la grille.',
+    'Tu gardes la main : c’est toi qui colles et qui enregistres dans École Directe. Rien n’est envoyé.',
+  ] },
+  { version: '1.11.3', titre: 'Un nouveau logo', points: [
+    '📓 Le chrono laisse la place à une <b>page de cahier</b> : le carnet sert maintenant à plusieurs disciplines et à l’école.',
+    'Sur l’écran d’accueil, l’ancienne icône peut rester un moment : selon l’appareil, il faut réinstaller l’application pour voir la nouvelle.',
+  ] },
   { version: '1.11.0', titre: 'Volley-ball : de nouvelles façons de progresser', discipline: 'eps', points: [
     '🏐 Dans Ateliers, <b>Match par équipe</b> : une règle de jeu pour chaque équipe, d’après son geste le plus fragile.',
     '✅ <b>Bilan de l’atelier</b> : note qui a réussi, l’appli propose le niveau suivant. ➕ <b>Ma fiche</b> : ajoute tes propres situations à la banque.',
@@ -2990,7 +3135,7 @@ async function afficherNouveautes(depuis) {
   const liste = NOUVEAUTES.filter(n => (!n.discipline || n.discipline === disciplineActive()) && (!/^\d/.test(depuis) || Cle.compareVersions(n.version, depuis) > 0)
     && Cle.compareVersions(n.version, VERSION_APP) <= 0);
   if (!liste.length) return;
-  const { resultat } = ouvrirModale(`🎉 Quoi de neuf ? (v${VERSION_APP})`,
+  const { resultat } = ouvrirModale(`${avecEcole() ? '' : '🎉 '}Quoi de neuf ? (v${VERSION_APP})`,
     liste.map(n => `<h3>${esc(n.titre)}</h3><ul class="nouveautes">${n.points.map(p => `<li>${p}</li>`).join('')}</ul>`).join(''),
     '<span class="espace"></span><button value="ok" class="primaire">Super !</button>');
   await resultat;
@@ -3185,6 +3330,7 @@ document.addEventListener('click', e => {
     case 'ajout-seance': return lancer(() => editerSeance());
     case 'excel-ent': return lancer(echangeExcel);
     case 'excel-notes': return lancer(echangeExcelNotes);
+    case 'vers-ecole-directe': return lancer(versEcoleDirecte);
     case 'appreciations': return lancer(() => ouvrirAppreciations());
     case 'ajout-eleve': return lancer(ajouterEleve);
     case 'coller-liste': return lancer(collerListe);
