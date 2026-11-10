@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.27.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.29.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2979,6 +2979,14 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.29.0', titre: 'Plus d’émojis : des icônes partout', points: [
+    'Tout le carnet passe aux <b>icônes dessinées</b>, du même style que l’appel et les outils : barre du haut, onglets, fenêtres, outils de séance, aide.',
+    'Les pastilles de couleur (orange, rouge, jaune, bleu) restent des pastilles de couleur : elles gardent leur sens.',
+    'Ce que tu écris toi-même (remarques, observations) n’est pas touché.',
+  ] },
+  { version: '1.28.0', titre: 'Plus d’élèves à l’écran', points: [
+    'Par défaut, le carnet s’affiche maintenant en <b>texte petit</b> et en <b>grilles compactes</b> : on voit plus d’élèves d’un coup. Pour revenir comme avant : ⚙ Réglages › Apparence › Taille du texte « Normale » et Espacement « Normale ».',
+  ] },
   { version: '1.27.0', titre: 'Un carnet plus lisible', points: [
     'Les <b>degrés 2 et 3</b> s’écrivent maintenant en foncé : on les lit bien, même au soleil. Les couleurs ne changent pas.',
     '<b>Appel</b> et <b>Outils</b> : des icônes dessinées, toutes du même style. Sur téléphone, chaque bouton de l’appel garde son nom (Présent, Absent, Retard…).',

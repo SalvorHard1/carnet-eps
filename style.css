@@ -3271,3 +3271,22 @@ html.carnet-ecole .bulle { color: var(--texte); }
   .actions-larges { display: none; }
   .menu-plus-notes { display: inline-block; }
 }
+
+/* ---------- Plus d'émoji à l'écran, toutes disciplines (ecole.js › iconesPourEmojis, v1.29.0) ---------- */
+/* Pastilles de couleur à la place de 🟠 🔴 🟡 🔵 : la couleur porte le sens (niveau d'alerte). */
+.pastille-emoji { display: inline-block; width: .75em; height: .75em; margin-right: .35em; border-radius: 50%; vertical-align: -0.05em; flex: none;
+  print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.pastille-emoji.seule { margin-right: 0; }
+.pastille-orange { background: #e8891a; }
+.pastille-rouge { background: #d62828; }
+.pastille-jaune { background: #e6b800; }
+.pastille-bleu { background: #2f78d6; }
+/* Icônes des boutons qui ne contiennent qu'elle (▶, ⏸, 🗑…) : un peu plus grandes que le texte, sans marge. */
+button > .ic-emoji.seule:only-child { width: 1.3em; height: 1.3em; }
+/* Médailles des leçons et de l'ASNS : l'icône prend une encre foncée sur le fond or, argent ou bronze. */
+:is(.niveau, .medaille-asns, .medaille-carte):is(.m-or, .m-argent, .m-bronze) .ic-emoji { color: #3b2f1e; }
+/* Sur un badge ou un bouton plein (alerte d'absences, de tenue…), l'icône prend la couleur du texte du badge. */
+:is(.alerte-abs, .badge-pai, .badge-bep, .badge-disp, .badge-adapte, .chip-ca, [class*="choisi"], .actif) .ic-emoji { color: inherit; }
+/* Leçons, case « Présence » : la coche reste sur la même ligne que le mot. */
+.cellule-presence { white-space: nowrap; }
+.cellule-presence .ic-emoji { width: 1em; height: 1em; margin-right: .25em; vertical-align: -0.15em; }

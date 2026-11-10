@@ -264,6 +264,17 @@ const TRACES_ECOLE = {
   ballon: '<circle cx="12" cy="12" r="9"/><path d="M12 3c-2.5 3-2.5 6 0 9s6 3.5 8.5 2.5M12 12c-3 1.5-6.5 1-8.6-1.5M12 12c2.5-3 6-4 8.4-2.7"/>',
   microscope: '<path d="M4.5 20.5h15M8 17.5h8M12 17.5v-2.5M9 3.5l3.8 1.4-2.6 7.1-3.8-1.4z"/><path d="M14.3 9.2a5 5 0 0 1 .7 8.3"/>',
   fiole: '<path d="M9 3h6M10 3v6l-5.2 9.2A1.9 1.9 0 0 0 6.5 21h11a1.9 1.9 0 0 0 1.7-2.8L14 9V3"/><path d="M7.2 15h9.6"/>',
+  // (Derniers émojis de toutes les disciplines : v1.29.0)
+  doigt: '<path d="M9 11.5V4.5a1.5 1.5 0 0 1 3 0V10m0 0V9a1.5 1.5 0 0 1 3 0v1.5m0 0a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-.8a6 6 0 0 1-5-2.7l-2.4-3.7a1.5 1.5 0 0 1 2.5-1.7L9 15"/>',
+  pouceHaut: '<path d="M7 10.5v10H4a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z"/><path d="M7 10.5 11 3a2.5 2.5 0 0 1 2.5 2.5V9h5.2a2 2 0 0 1 2 2.3l-1.2 7.5a2 2 0 0 1-2 1.7H7"/>',
+  pouceBas: '<g transform="rotate(180 12 12)"><path d="M7 10.5v10H4a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z"/><path d="M7 10.5 11 3a2.5 2.5 0 0 1 2.5 2.5V9h5.2a2 2 0 0 1 2 2.3l-1.2 7.5a2 2 0 0 1-2 1.7H7"/></g>',
+  deplacer: '<path d="M12 3v18M3 12h18M9.5 5.5 12 3l2.5 2.5M9.5 18.5 12 21l2.5-2.5M5.5 9.5 3 12l2.5 2.5M18.5 9.5 21 12l-2.5 2.5"/>',
+  gomme: '<path d="m7.5 20.5-4-4a2 2 0 0 1 0-2.8L13.2 4a2 2 0 0 1 2.8 0l4 4a2 2 0 0 1 0 2.8l-9.7 9.7z"/><path d="m8.5 9 6.5 6.5M11 20.5h9.5"/>',
+  volant: '<circle cx="7" cy="17" r="3.5"/><path d="m9.5 14.5 6-10.5 4.5 4.5-10.5 6M12.8 9.3l2.3-2.4M14.7 11.2l2.4-2.3"/>',
+  cadenasOuvert: '<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5v-3a4 4 0 0 1 7.7-1.5"/>',
+  melanger: '<path d="M3 7h3c4.5 0 6.5 10 11 10h4M3 17h3c1.5 0 2.7-1.2 3.7-2.8M14.3 9.8C15.3 8.2 16.4 7 18 7h3M18.5 4.5 21 7l-2.5 2.5M18.5 14.5 21 17l-2.5 2.5"/>',
+  ampoule: '<path d="M9.5 17.5h5M10.5 21h3M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.1v1.6h5v-1.6c0-.8.4-1.6 1.1-2.1A6 6 0 0 0 12 3z"/>',
+  balance: '<path d="M12 3.5v17M8 20.5h8M5 7h14M5 7l-2.5 6a2.5 2.5 0 0 0 5 0zM19 7l-2.5 6a2.5 2.5 0 0 0 5 0z"/>',
 };
 // Icône décorative (le texte à côté porte le sens) ; avec un libellé, elle est lue par les lecteurs d'écran.
 // (traces : le dessin ; par défaut celui du jeu.)
@@ -327,9 +338,23 @@ const EMOJIS_ECOLE = { '🧭': 'boussole', '🏫': 'ecole', '🧰': 'outils', '�
   '❌': 'absent', '☑': 'coche', '☰': 'menu', '🩺': 'sante', '🤒': 'sante', '🩹': 'sante', '🥇': 'coupe', '🥈': 'coupe', '🥉': 'coupe',
   '🏆': 'coupe', '🏅': 'coupe', '🗓': 'calendrier', '💨': 'vent', '🧰': 'outils', '🖨': 'imprimer', '🔗': 'lien', '📞': 'telephone',
   '✉': 'mail', '📑': 'notes', '📇': 'liste', '📌': 'liste', '🎛': 'reglages', '⛶': 'pleinEcran', '🎉': 'etoile', '🆕': 'etoile',
-  '❓': 'aide', 'ℹ': 'aide', '🛟': 'aide', '🆘': 'aide', '📎': 'lien' };
-// Même émoji, autre sens selon le mot qui le suit (« 📋 Copier », « ▶ Départ », « ✅ Appel », « ⏱ Outils »).
-const EMOJIS_SELON_MOT = [['📋', /^\s*Copier/, 'copier'], ['▶', /^\s*(Départ|Reprendre|Lancer)/, 'jouer'], ['✅', /^\s*Appel/, 'appel'], ['⏱', /^\s*Outils/, 'outils']];
+  '❓': 'aide', 'ℹ': 'aide', '🛟': 'aide', '🆘': 'aide', '📎': 'lien',
+  // (Toutes les disciplines, v1.28.0 : sports, labo, gestes. « - » : l'émoji est seulement retiré ;
+  //  « pastille-… » : une pastille de couleur dessinée en CSS, car la couleur porte le sens.)
+  '🏐': 'ballon', '⚽': 'ballon', '🏸': 'volant', '🏊': 'natation', '🥊': 'gant', '👊': 'gant', '🏃': 'tours', '🏁': 'tours',
+  '🚦': 'tours', '🔬': 'microscope', '🦠': 'microscope', '🧪': 'fiole', '⚗': 'fiole', '🧾': 'notes', '👆': 'doigt', '👉': 'suivant',
+  '👍': 'pouceHaut', '👎': 'pouceBas', '✋': 'deplacer', '🧹': 'gomme', '🧽': 'gomme', '🗣': 'parole', '📐': 'regle', '👕': 'tenue',
+  '🎽': 'tenue', '🥼': 'tenue', '🧠': 'ampoule', '📽': 'camera', '🎥': 'camera', '🧑': 'eleve', '🙋': 'eleve', '👫': 'eleves',
+  '❗': 'alerte', '☠': 'alerte', '🔥': 'alerte', '♨': 'alerte', '🔪': 'alerte', '🧤': 'alerte', '👏': 'etoile', '🔀': 'melanger',
+  '♊': 'copier', '⏳': 'horloge', '🤖': 'appli', '✖': 'absent', '📮': 'envoyer', '🥽': 'regarder', '🔓': 'cadenasOuvert',
+  '⏮': 'precedent', '🔌': 'lien', '📍': 'cible', '↩': 'reprendre', '🪑': 'plan', '🖥': 'ordi', '🔎': 'loupe', '🔦': 'regarder',
+  '😊': '-', '🦶': '-', '👋': '-', '💇': '-', '⚖': 'balance', '⚖️': 'balance',
+  '🟠': 'pastille-orange', '🔶': 'pastille-orange', '🔴': 'pastille-rouge', '🟡': 'pastille-jaune', '🔵': 'pastille-bleu', '🔹': 'pastille-bleu' };
+// Médailles : une seule médaille dessinée ; or, argent et bronze se lisent à la couleur de la case.
+Object.assign(EMOJIS_ECOLE, { '🥇': 'medaille', '🥈': 'medaille', '🥉': 'medaille', '🏅': 'medaille' });
+// Même émoji, autre sens selon le mot qui le suit (« 📋 Copier », « ▶ Départ », « ✅ Appel », « ⏱ Outils », « ✋ Stop »).
+const EMOJIS_SELON_MOT = [['📋', /^\s*Copier/, 'copier'], ['▶', /^\s*(Départ|Reprendre|Lancer)/, 'jouer'], ['✅', /^\s*Appel/, 'appel'], ['⏱', /^\s*Outils/, 'outils'],
+  ['✋', /^\s*Stop/, 'stop']];
 const iconeEmoji = e => (avecEcole() ? (EMOJIS_ECOLE[e] ? iconeEcole(EMOJIS_ECOLE[e]) : '') : e);
 // Textes écrits par l'appli et communs à toutes les disciplines (réponses de l'aide…) : en École, chaque émoji devient
 // son icône ou disparaît. (Les flèches ↗ ↘ ↔ et ©, ®, ™ restent : ce sont des signes typographiques.)
@@ -338,21 +363,39 @@ const emojisEcole = html => (avecEcole() ? html.replace(RE_EMOJI_ECOLE, (m, e) =
 // Le titre d'une fenêtre est du texte simple (ouvrirModale l'échappe) : l'icône s'ajoute après.
 const iconeTitreModale = (d, nom) => d.querySelector('h2')?.insertAdjacentHTML('afterbegin', iconeEcole(nom));
 
-/* ---------- Carnet École : plus d'émoji à l'écran ---------- */
-// Les écrans communs à toutes les disciplines (barre, menus, fiche élève, réglages, outils…) gardent leurs émojis
-// dans le code. En École, chaque émoji affiché devient l'icône au trait qui lui correspond (même DA que l'appel),
-// dès qu'il apparaît. L'émoji d'origine reste noté (data-emoji) : en changeant de discipline, il revient.
+/* ---------- Plus d'émoji à l'écran (carnet École depuis la v1.21, toutes les disciplines depuis la v1.28.0) ---------- */
+// Les écrans gardent leurs émojis dans le code. Chaque émoji affiché devient l'icône au trait qui lui correspond
+// (même DA que l'appel), dès qu'il apparaît ; l'émoji d'origine reste noté (data-emoji).
 // Un émoji sans icône (tapé par l'enseignant dans une remarque…) est laissé tel quel. Les données ne changent pas.
-const enEcole = () => { try { return avecEcole(); } catch { return false; } }; // (au chargement, le carnet n’est pas encore lu)
+// (Interrupteur unique : le renvoyer à false fait revenir tous les émojis.)
+const ICONES_AU_TRAIT = true;
+const enEcole = () => ICONES_AU_TRAIT;
 const RE_UN_EMOJI = /((?![↔-↙©®™])\p{Extended_Pictographic}️?)/u;
 const nomPourEmoji = (e, suite) => {
   const base = e.replace('️', '');
   const r = EMOJIS_SELON_MOT.find(([x, mot]) => x === base && mot.test(suite));
   const nom = r ? r[2] : EMOJIS_ECOLE[e] || EMOJIS_ECOLE[base];
-  return TRACES_ECOLE[nom] ? nom : '';
+  return TRACES_ECOLE[nom] || nom === '-' || nom?.startsWith('pastille-') ? nom : '';
 };
+// Ce qui remplace un émoji : l'icône, une pastille de couleur, ou rien (« - »).
+function remplacantEmoji(nom, modele) {
+  if (nom.startsWith('pastille-')) {
+    const p = document.createElement('span');
+    p.className = 'pastille-emoji ' + nom;
+    p.setAttribute('aria-hidden', 'true');
+    return p;
+  }
+  modele.innerHTML = iconeEcole(nom);
+  return modele.content.firstChild;
+}
 function iconesPourEmojis(racine) {
   if (!racine || !enEcole()) return;
+  // Listes déroulantes : pas de place pour une icône dans une option, l'émoji est seulement retiré.
+  if (racine.nodeType === 1) {
+    for (const o of racine.tagName === 'OPTION' ? [racine] : racine.querySelectorAll('option')) {
+      if (RE_UN_EMOJI.test(o.text)) { o.dataset.emojiTexte = o.text; o.text = o.text.replace(RE_EMOJI_ECOLE, '').trim(); }
+    }
+  }
   const textes = [], w = document.createTreeWalker(racine, NodeFilter.SHOW_TEXT, { acceptNode: n => (RE_UN_EMOJI.test(n.data)
     && !n.parentElement?.closest('script, style, textarea, option, svg, [contenteditable="true"]') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
   for (let n; (n = w.nextNode());) textes.push(n);
@@ -363,15 +406,24 @@ function iconesPourEmojis(racine) {
     morceaux.forEach((m, i) => {
       const nom = i % 2 ? nomPourEmoji(m, morceaux[i + 1] || '') : '';
       if (!nom) { if (m) frag.append(m); return; }
-      modele.innerHTML = iconeEcole(nom);
-      const ic = modele.content.firstChild;
+      const suite = morceaux[i + 1] || '';
+      if (nom === '-') { if (suite.startsWith(' ')) morceaux[i + 1] = suite.slice(1); return; }
+      const ic = remplacantEmoji(nom, modele);
       ic.classList.add('ic-emoji');
       ic.dataset.emoji = m;
-      const suite = morceaux[i + 1] || '';
       if (suite.startsWith(' ')) { morceaux[i + 1] = suite.slice(1); ic.dataset.espace = '1'; }
       if (!morceaux[i + 1]?.trim() && i + 2 >= morceaux.length && !n.nextSibling) ic.classList.add('seule');
       frag.append(ic);
     });
+    // Dans un bloc empilé (étiquette au-dessus de sa liste, grille), l'icône et son texte restent sur la même ligne.
+    const p = n.parentElement, s = p && getComputedStyle(p);
+    if (s && (s.display.includes('grid') || (s.display.includes('flex') && s.flexDirection.startsWith('column')))) {
+      const ligne = document.createElement('span');
+      ligne.className = 'ligne-emoji';
+      ligne.append(frag);
+      n.replaceWith(ligne);
+      continue;
+    }
     n.replaceWith(frag);
   }
   // Textes d'aide des champs et info-bulles : pas de place pour une icône, l'émoji est seulement retiré.
@@ -386,7 +438,8 @@ function iconesPourEmojis(racine) {
   }
 }
 function emojisRetablis() {
-  document.querySelectorAll('svg.ic-emoji').forEach(ic => ic.replaceWith(ic.dataset.emoji + (ic.dataset.espace ? ' ' : '')));
+  document.querySelectorAll('.ic-emoji').forEach(ic => ic.replaceWith(ic.dataset.emoji + (ic.dataset.espace ? ' ' : '')));
+  document.querySelectorAll('option[data-emoji-texte]').forEach(o => { o.text = o.dataset.emojiTexte; delete o.dataset.emojiTexte; });
   for (const a of ['placeholder', 'title']) {
     document.querySelectorAll(`[data-emoji-${a}]`).forEach(el => { el.setAttribute(a, el.getAttribute('data-emoji-' + a)); el.removeAttribute('data-emoji-' + a); });
   }

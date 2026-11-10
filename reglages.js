@@ -168,11 +168,13 @@ function appliquerApparence(a, appareil, etablissement, perso = reglage('perso')
 (() => {
   try {
     const memo = JSON.parse(localStorage.getItem('carnet-eps-apparence'));
-    if (memo?.a) appliquerApparence({ ...REGLAGES_DEFAUT.apparence, ...memo.a }, memo.appareil || {}, undefined, REGLAGES_DEFAUT.perso);
+    if (memo?.a) appliquerApparence({ ...REGLAGES_DEFAUT.apparence, ...memo.a }, { taille: 'petite', densite: 'compacte', ...memo.appareil }, undefined, REGLAGES_DEFAUT.perso);
   } catch { /* première fois : couleurs d'origine */ }
 })();
 
-const reglagesAppareil = () => ({ taille: ui.taille || 'normale', densite: ui.densite || 'normale', boutons: ui.boutons || 'normale' });
+// Par défaut (appareil qui n'a rien choisi) : texte petit et grilles compactes, pour voir plus d'élèves.
+const APPAREIL_DEFAUT = { taille: 'petite', densite: 'compacte', boutons: 'normale' };
+const reglagesAppareil = () => ({ taille: ui.taille || APPAREIL_DEFAUT.taille, densite: ui.densite || APPAREIL_DEFAUT.densite, boutons: ui.boutons || APPAREIL_DEFAUT.boutons });
 
 /* ---------- Application de tous les réglages ---------- */
 
@@ -329,8 +331,8 @@ function lireApparence(form, base) {
   };
 }
 const lireAppareil = form => ({
-  taille: form.querySelector('[name="taille"]:checked')?.value || 'normale',
-  densite: form.querySelector('[name="densite"]:checked')?.value || 'normale',
+  taille: form.querySelector('[name="taille"]:checked')?.value || APPAREIL_DEFAUT.taille,
+  densite: form.querySelector('[name="densite"]:checked')?.value || APPAREIL_DEFAUT.densite,
   boutons: form.querySelector('[name="boutons"]:checked')?.value || 'normale',
 });
 
