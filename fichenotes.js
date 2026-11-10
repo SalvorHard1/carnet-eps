@@ -272,12 +272,31 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
   if (s.vs.retards) signaux.push(`${pictoEcole('retard', '⏰')} ${s.vs.retards} retard${s.vs.retards > 1 ? 's' : ''}`);
   const sante = bilanLecons(el, periode).sante + evals.filter(e => SANTE.includes(Donnees.note(e.id, el.id))).length;
   if (sante) signaux.push(`${pictoEcole('sante', '🩺')} ${sante} fois ${codeDeLaDiscipline('BLE') ? 'blessé·e / malade' : 'malade'}`);
+  // Dispenses (toutes, avec leurs dates ; la période affichée en évidence) — pas dans la fiche anonyme.
+  const dispenses = opts.anonyme ? [] : dispensesEleve(el);
+  const pAff = periodesAnnee().find(x => x.id === periode);
+  const htmlDispenses = dispenses.length ? `<div class="dispenses-fiche info-sensible"><span class="aide">${dispenses.length > 1 ? `${dispenses.length} dispenses` : 'Dispense'} :</span>
+    <ul>${dispenses.map(dp => {
+      const st = dp.actuelle ? statutDispense(el) : { code: 'finie' };
+      const dates = !dp.debut ? `jusqu’au ${dateCourte(dp.fin)}` : !dp.fin ? `depuis le ${dateCourte(dp.debut)}, sans date de fin`
+        : `du ${dateCourte(dp.debut)} au ${dateCourte(dp.fin)}`;
+      const jours = dp.debut && dp.fin ? ecartJours(dp.debut, dp.fin) + 1 : 0;
+      // Périodes touchées (T1, T1–T2…) ; une dispense hors de la période affichée est grisée.
+      const ps = periodesAnnee(), rang = d => ps.findIndex(x => x.id === periodeDe(d));
+      const r1 = dp.debut ? rang(dp.debut) : 0, r2 = Math.max(r1, rang(dp.fin || aujourdhui()));
+      const touchees = ps.slice(r1, r2 + 1);
+      const pers = touchees.length ? [touchees[0].code, ...(touchees.length > 1 ? [touchees.at(-1).code] : [])] : [];
+      const horsPeriode = pAff && !touchees.some(x => x.id === periode);
+      return `<li class="${horsPeriode ? 'hors-periode' : ''}"><b>${esc(dates)}</b>${jours ? ` <span class="aide">· ${jours} jour${jours > 1 ? 's' : ''}</span>` : ''}${pers.length ? ` <span class="aide">· ${esc(pers.join('–'))}</span>` : ''}${dispenseLongue(dp) ? ' <span class="aide">· plus d’un trimestre : absences justifiées</span>' : ''}
+        <span class="badge-disp ${st.code}">${{ avenir: 'à venir', encours: 'en cours', bientot: 'se termine bientôt' }[st.code] || 'terminée'}</span></li>`;
+    }).join('')}</ul></div>` : '';
   let html = `<div class="synthese-fiche">
     <div class="radar-bloc">${radarSynthese(s.valeurs, classe)}
       <p class="aide legende-graph"><span class="trait-eleve"></span> ${esc(opts.anonyme ? 'élève' : el.prenom)} <span class="trait-classe"></span> moyenne de la classe</p></div>
     <div class="valeurs-synthese">
       ${AXES_SYNTHESE.map(([k, nom]) => `<div class="valeur-axe"><span>${esc(nomAxeSynthese(k, nom))}</span><b>${valeurAxe(k, s.valeurs[k])}</b><small>${classeAxe(k, classe[k])}</small></div>`).join('')}
       ${signaux.length ? `<div class="signaux-fiche"><span class="aide">À signaler :</span> ${signaux.map(x => `<span class="signal-fiche">${x}</span>`).join('')}</div>` : '<p class="aide">Rien à signaler en vie scolaire.</p>'}
+      ${htmlDispenses}
     </div>
   </div>`;
 
@@ -375,6 +394,7 @@ function imprimerFiche(el, periode, eleves, classe, anonyme) {
 
 async function ficheNotes(eleveId) {
   const c = classeActive(), eleves = elevesDe(c.id);
+  justifierAbsencesDispenses(c.id); // (absence saisie à l'instant pendant une dispense : déjà justifiée dans la fiche)
   let idx = eleves.findIndex(x => x.id === eleveId);
   if (idx < 0) return;
   let periode = periodeAffichee();

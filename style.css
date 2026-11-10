@@ -2156,6 +2156,7 @@ body[data-densite="aeree"] .grille .cellule-presence { height: 56px; }
 @media print {
   body.impression-bareme > *:not(#zone-impression) { display: none !important; }
   body.impression-bareme #zone-impression { display: block; color: #000; background: #fff; font-size: 11pt; }
+  body.impression-bareme { background: #fff; } /* (sinon le fond de l'appli, gris ou noir en mode sombre, s'imprime sous la feuille) */
   #zone-impression h1 { font-size: 18pt; margin: 0 0 4pt; }
   #zone-impression h2 { font-size: 13pt; margin: 12pt 0 4pt; break-after: avoid; }
   #zone-impression table { border-collapse: collapse; width: 100%; break-inside: auto; }
@@ -2190,6 +2191,10 @@ body[data-densite="compacte"] .grille .photo-grille { width: 22px; height: 22px;
 .valeur-axe b { font-size: 22px; font-variant-numeric: tabular-nums; }
 .valeur-axe small { font-size: 12px; color: var(--texte2); }
 .signaux-fiche { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.dispenses-fiche { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.dispenses-fiche ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.dispenses-fiche li { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; font-size: 14px; }
+.dispenses-fiche li.hors-periode { opacity: .55; }
 .signal-fiche { padding: 3px 10px; border-radius: calc(999px * var(--arrondi, 1)); background: color-mix(in srgb, var(--attention) 15%, var(--surface)); font-size: 13px; font-weight: 600; }
 .cats-bilan { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 8px; }
 .cat-bilan { min-height: 32px; padding: 3px 12px; border-radius: calc(999px * var(--arrondi, 1)); font-size: 13px; }
@@ -3290,3 +3295,30 @@ button > .ic-emoji.seule:only-child { width: 1.3em; height: 1.3em; }
 /* Leçons, case « Présence » : la coche reste sur la même ligne que le mot. */
 .cellule-presence { white-space: nowrap; }
 .cellule-presence .ic-emoji { width: 1em; height: 1em; margin-right: .25em; vertical-align: -0.15em; }
+/* Notes › Bilan pour le PP (bilanpp.js) : fenêtre de préparation, puis feuille A4 imprimée (couleurs fixes : c'est du papier). */
+.modale-bpp .bpp-haut { display: flex; gap: 12px; flex-wrap: wrap; }
+.modale-bpp .bpp-haut label { flex: 1 1 220px; }
+.modale-bpp h3 { margin: 14px 0 4px; }
+.modale-bpp .bpp-bloc { display: block; margin-top: 6px; }
+.modale-bpp .bpp-bloc textarea { width: 100%; }
+.modale-bpp .bpp-defile { overflow-x: auto; }
+.bpp-eleves { width: 100%; border-collapse: collapse; font-size: 13px; }
+.bpp-eleves th, .bpp-eleves td { padding: 4px 6px; border-bottom: 1px solid var(--bord); text-align: left; vertical-align: middle; }
+.bpp-eleves tbody th { font-weight: 600; white-space: nowrap; }
+.bpp-eleves input[name="remarque"] { width: 100%; min-width: 160px; }
+.bpp-eleves select[name="mention"] { min-width: 150px; }
+.bpp-eleves .case { display: flex; align-items: center; gap: 6px; }
+.bpp-signaux { display: flex; flex-wrap: wrap; gap: 3px; }
+.bpp-pil { display: inline-block; padding: 1px 7px; border-radius: calc(6px * var(--arrondi, 1)); font-size: 11px; font-weight: 600; background: var(--surface2); color: var(--texte2); }
+.bpp-pil.bpp-alerte { background: #fde2e1; color: #9b1c1c; }
+.bpp-pil.bpp-attention { background: #fdf0d5; color: #8a5300; }
+.bpp-pil.bpp-ok { background: #dcefdc; color: #1e6a2c; }
+:root[data-theme="dark"] .bpp-pil.bpp-alerte { background: #4a1f1f; color: #f6b4b4; }
+:root[data-theme="dark"] .bpp-pil.bpp-attention { background: #44330f; color: #f3cf86; }
+:root[data-theme="dark"] .bpp-pil.bpp-ok { background: #1d3b24; color: #a8dcb3; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .bpp-pil.bpp-alerte { background: #4a1f1f; color: #f6b4b4; }
+  :root:not([data-theme="light"]) .bpp-pil.bpp-attention { background: #44330f; color: #f3cf86; }
+  :root:not([data-theme="light"]) .bpp-pil.bpp-ok { background: #1d3b24; color: #a8dcb3; }
+}
+.modale-bpp .bpp-annexe-choix { font-weight: 600; white-space: nowrap; }

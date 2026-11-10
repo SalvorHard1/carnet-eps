@@ -171,6 +171,8 @@ const TRACES_ECOLE = {
   matin: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
   apresMidi: '<path d="M7 17a5 5 0 0 1 10 0M3 17h18M6 21h12M12 5v3M4.9 9.9l1.4 1.4M19.1 9.9l-1.4 1.4"/>',
   bilan: '<path d="M4 20h16M7.5 16v-5M12 16V6M16.5 16v-8"/>',
+  // Bilan pour le PP : une feuille (coin plié, deux lignes) remise d'une main à l'autre (flèche qui sort).
+  bilanPP: '<path d="M18 11V8l-5-5H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/><path d="M13 3v5h5M8.5 12.5h5M8.5 16h3M15.5 18.5h6M19 16l2.5 2.5L19 21"/>',
   present: '<circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16 9.8"/>',
   absent: '<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/>',
   retard: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9.5 2.5h5"/>',

@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.29.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.33.1'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -351,9 +351,78 @@ async function editerAdaptation(id) {
   rendre();
 }
 
+// Toutes les dispenses de l'élève, de la plus ancienne à la plus récente : les anciennes (dispensesPassees,
+// { debut, fin }) et celle en cours (dispense, dispDebut, dispFin), marquée « actuelle ».
+const dateDispenseValable = d => !!d && +d.slice(0, 4) >= 2000;
+function dispensesEleve(el) {
+  const l = (el.dispensesPassees || []).filter(d => dateDispenseValable(d.debut) && (!d.fin || d.fin >= d.debut)).map(d => ({ ...d }));
+  if (el.dispense) l.push({ debut: el.dispDebut || '', fin: el.dispFin || '', actuelle: true });
+  return l.sort((a, b) => (a.debut || '').localeCompare(b.debut || ''));
+}
+const dansDispense = (d, date) => (!d.debut || date >= d.debut) && (!d.fin || date <= d.fin);
+
 function dispenseLe(el, date) {
-  if (!el.dispense || !date) return false;
-  return (!el.dispDebut || date >= el.dispDebut) && (!el.dispFin || date <= el.dispFin);
+  return !!date && dispensesEleve(el).some(d => dansDispense(d, date));
+}
+
+// La dispense actuelle rejoint les anciennes (si elle a commencé avant aujourd'hui ; sinon elle est simplement retirée).
+// Fin : la date saisie, ramenée à aujourd'hui au plus tard (dispense levée plus tôt que prévu).
+function dispensesAvecActuelle(el) {
+  const auj = aujourdhui(), l = el.dispensesPassees || [];
+  if (!el.dispDebut || el.dispDebut >= auj) return l;
+  return [...l, { debut: el.dispDebut, fin: el.dispFin && el.dispFin < auj ? el.dispFin : auj }];
+}
+
+// Dispense longue (plus d'un trimestre, soit 3 mois ou plus du début à la fin — à aujourd'hui si la fin n'est pas
+// saisie) : l'élève n'a pas à venir, ses absences (ABS) pendant la dispense deviennent « Dispensé » et ne pèsent plus
+// sur la vie scolaire. Dispense courte : l'élève doit être présent, ses absences comptent normalement.
+// Les cases changées par l'appli sont marquées (parDispense) : si la dispense redevient courte ou disparaît,
+// elles reviennent à « ABS ». Une case retouchée à la main perd la marque et n'est plus jamais changée.
+const DUREE_DISPENSE_LONGUE_MOIS = 3;
+function finDispenseLongue(debut) {
+  const d = new Date(debut + 'T12:00');
+  d.setMonth(d.getMonth() + DUREE_DISPENSE_LONGUE_MOIS);
+  return d.toLocaleDateString('sv');
+}
+const dispenseLongue = d => dateDispenseValable(d.debut) && (!d.fin || d.fin >= d.debut)
+  && (d.fin || aujourdhui()) >= finDispenseLongue(d.debut);
+
+// Après la saisie d'une dispense (dates conclues, dispense levée ou nouvelle) : mise à jour et message.
+// (Avant le nouveau rendu, qui ferait sinon la mise à jour sans rien dire.)
+function absencesDispenseAvecMessage(id) {
+  const el = Donnees.get('eleves', id);
+  if (!el) return;
+  const { justifiees: n, retablies: r } = majAbsencesDispense(el);
+  if (n) toast(`${el.prenom} ${el.nom} : dispense de plus d’un trimestre, ${n} absence${n > 1 ? 's' : ''} ${n > 1 ? 'remplacées' : 'remplacée'} par « Dispensé ».`, 'ok', 6000);
+  else if (r) toast(`${el.prenom} ${el.nom} : ${r} absence${r > 1 ? 's' : ''} ${r > 1 ? 'remises' : 'remise'} (dispense de moins d’un trimestre : l’élève devait être présent).`, 'ok', 6000);
+}
+
+// Réparation (v1.33.0) : avant, la date se perdait pendant la frappe et une année incomplète (« 0002 ») pouvait rester ;
+// ces dates impossibles sont effacées (à ressaisir), les anciennes dispenses incohérentes retirées.
+function reparerDatesDispense() {
+  for (const el of Donnees.liste('eleves', e => e.dispDebut || e.dispFin || e.dispensesPassees?.length)) {
+    const modif = { ...el };
+    for (const k of ['dispDebut', 'dispFin']) if (el[k] && !dateDispenseValable(el[k])) modif[k] = '';
+    if (el.dispensesPassees) modif.dispensesPassees = el.dispensesPassees.filter(d => dateDispenseValable(d.debut) && dateDispenseValable(d.fin) && d.fin >= d.debut);
+    if (JSON.stringify(modif) !== JSON.stringify(el)) Donnees.ecrire('eleves', modif);
+  }
+}
+
+// Tous les élèves (ou ceux d'une classe) : au démarrage, après une fusion, à chaque affichage de la classe.
+function justifierAbsencesDispenses(classeId) {
+  for (const el of Donnees.liste('eleves', e => !e.supprime && (!classeId || e.classeId === classeId))) majAbsencesDispense(el);
+}
+function majAbsencesDispense(el) {
+  const longues = dispensesEleve(el).filter(dispenseLongue);
+  let justifiees = 0, retablies = 0;
+  for (const x of [...evalsDe(el.classeId), ...seancesDe(el.classeId)]) {
+    const n = Donnees.noteComplete(x.id, el.id);
+    if (!n || !x.date) continue;
+    const couverte = longues.some(d => dansDispense(d, x.date));
+    if (couverte && n.valeur === 'ABS') { Donnees.ecrireNote(x.id, el.id, 'DISP', undefined, { parDispense: true }); justifiees++; }
+    else if (!couverte && n.parDispense && n.valeur === 'DISP') { Donnees.ecrireNote(x.id, el.id, 'ABS'); retablies++; }
+  }
+  return { justifiees, retablies };
 }
 
 // PAI : case cochée sur la fiche ; pour les fiches plus anciennes, « PAI » écrit dans les remarques.
@@ -709,6 +778,7 @@ $('#liste-classes').addEventListener('click', e => {
 let pageDessinee = '';
 function rendreVue() {
   const c = classeActive(), page = ui.vue + '|' + (c?.id || '');
+  if (c) justifierAbsencesDispenses(c.id); // (une absence saisie pendant une dispense est aussitôt justifiée)
   const defilements = page === pageDessinee ? [...document.querySelectorAll('#vue .grille-scroll')].map(z => [z.scrollLeft, z.scrollTop]) : [];
   pageDessinee = page;
   dessinerVue(c);
@@ -964,7 +1034,8 @@ function htmlNotes(c) {
   // (Mêmes boutons écrits deux fois : les data-action suffisent, l'aide prend le premier visible.)
   const actionsNotes = `<button data-action="excel-notes" title="Import de toutes ses notes d’École Directe ou de Pronote (l’export Excel des notes est aussi ici)">${pictoEcole('telecharger', '📥')} Importer mes notes</button>
       ${avecEcole() ? '' : '<button data-action="vers-ecole-directe" title="Copier les notes d’une évaluation pour les coller dans École Directe">📋 Reporter mes notes sur École Directe</button>'}
-      ${avecEcole() ? htmlBoutonsEcole(c) : `<button data-action="appreciations" title="Appréciations du trimestre proposées par l’appli, d’après les notes et les ${motMin('lecons')}">✍ Appréciations</button>`}${typeof htmlBoutonsBilansSvt === 'function' ? htmlBoutonsBilansSvt(c) : ''}`;
+      ${avecEcole() ? htmlBoutonsEcole(c) : `<button data-action="appreciations" title="Appréciations du trimestre proposées par l’appli, d’après les notes et les ${motMin('lecons')}">✍ Appréciations</button>
+      <button data-action="bilan-pp" title="Feuille à remettre au professeur principal quand tu ne peux pas aller au conseil de classe">${iconeEcole('bilanPP')} Bilan pour le PP</button>`}${typeof htmlBoutonsBilansSvt === 'function' ? htmlBoutonsBilansSvt(c) : ''}`;
   const noteDegre = sansNotes || avecEcole() ? '' : `<button data-modif-classe="${c.id}" title="Régler la correspondance note → degré de maîtrise pour cette classe">${pictoEcole('reglages', '⚙')} Note → degré
         <span class="aide">(${seuilsClasse(c).map(fmt).join(' / ')})</span></button>`;
   return `
@@ -1345,8 +1416,10 @@ function htmlEleves(c) {
                     title="${esc(el.adaptation || 'Aucune particularité saisie')} — cliquer pour voir ou modifier">${el.adaptation ? '✎ Détails' : '+ Détails'}</button>` : ''}
                 ${el.dispense && !datesDispenseOuvertes(el) ? `
                   <button class="badge-disp ${s.code}" data-editer-dispense="${el.id}"
-                    title="Du ${esc(el.dispDebut ? dateCourte(el.dispDebut) : '?')} au ${esc(dateCourte(el.dispFin))} — cliquer pour modifier les dates">${esc(s.texte)} ✎</button>` : ''}
+                    title="Du ${esc(el.dispDebut ? dateCourte(el.dispDebut) : '?')} au ${esc(dateCourte(el.dispFin))} — cliquer pour modifier les dates">${esc(s.texte)} ✎</button>
+                  ${s.code === 'finie' ? `<button class="lien" data-nouvelle-dispense="${el.id}" title="La dispense terminée reste dans l’historique (fiche bilan)">+ Nouvelle dispense</button>` : ''}` : ''}
               </div>
+              ${(el.dispensesPassees || []).length ? `<span class="aide">${el.dispensesPassees.length} ancienne${el.dispensesPassees.length > 1 ? 's' : ''} : ${el.dispensesPassees.map(d => `${esc(dateCourte(d.debut))} → ${esc(dateCourte(d.fin))}`).join(', ')}</span>` : ''}
               ${el.dispense && datesDispenseOuvertes(el) ? `
                 <div class="dates-disp">
                   <label>du <input type="date" data-champ="dispDebut" value="${esc(el.dispDebut || '')}" aria-label="Début de la dispense"></label>
@@ -2254,6 +2327,8 @@ function migrerTout() {
   completerExemplesPP(); // (classes exemples d'avant l'espace professeur principal : exemple.js)
   completerPortraitsExemple(); // (et d'avant leur trombinoscope dessiné)
   migrerReglagePP(); // (anciens réglages de base de l'appréciation générale : pp.js)
+  reparerDatesDispense();
+  justifierAbsencesDispenses(); // (absences pendant une dispense → « Dispensé », aussi celles venues de l'autre appareil)
 }
 
 // Déchiffre un fichier de la clé et le fusionne avec le carnet de cet appareil.
@@ -2979,6 +3054,22 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.33.1', titre: 'Dispenses : dates et historique', points: [
+    'Dans la <b>fiche bilan</b> (toucher le nom d’un élève dans Notes), ses <b>dispenses</b> apparaissent avec leurs dates, même s’il y en a eu plusieurs.',
+    'Liste des élèves : quand une dispense est terminée, <b>« + Nouvelle dispense »</b> en ouvre une autre ; l’ancienne est gardée.',
+    'Dispense de <b>plus d’un trimestre</b> : les <b>absences</b> pendant la dispense deviennent aussitôt <b>« Dispensé »</b> et ne comptent plus dans la vie scolaire (aussi celles notées avant la saisie de la dispense). Dispense plus courte : l’élève doit être présent, ses absences comptent.',
+    'Correction : les <b>dates de dispense</b> se tapent enfin au clavier sans que le champ perde la main.',
+  ] },
+  { version: '1.32.0', titre: 'Bilan pour le PP : aperçu et vrai PDF', points: [
+    'Le bouton <b>« Aperçu et PDF »</b> montre les pages telles qu’elles seront, puis <b>« Télécharger le PDF »</b> l’enregistre directement dans tes téléchargements (sans passer par l’impression), ou « Imprimer ».',
+  ] },
+  { version: '1.31.0', titre: 'Bilan pour le PP : les élèves à valoriser', points: [
+    'Nouvelle partie <b>« Élèves à valoriser au conseil »</b> : l’appli coche ceux qui ont un point fort (en progrès, excellents résultats, très investi, comportement exemplaire) ; tu coches qui tu veux et tu ajoutes une remarque, comme pour les élèves à signaler.',
+  ] },
+  { version: '1.30.0', titre: 'Bilan pour le PP', points: [
+    'Tu ne peux pas aller au conseil de classe ? Notes › <b>Bilan pour le PP</b> prépare une feuille à lui remettre : la classe en un coup d’œil (moyenne, présence, oublis, activités), tes propositions de mentions, les élèves à signaler, ton message, et, si tu coches « Appréciations en annexe », une page avec les appréciations du bulletin.',
+    'L’appli propose tout d’après ton carnet ; tu corriges, puis <b>Imprimer / PDF</b>. PAI et BEP ne sont jamais écrits sur la feuille.',
+  ] },
   { version: '1.29.0', titre: 'Plus d’émojis : des icônes partout', points: [
     'Tout le carnet passe aux <b>icônes dessinées</b>, du même style que l’appel et les outils : barre du haut, onglets, fenêtres, outils de séance, aide.',
     'Les pastilles de couleur (orange, rouge, jaune, bleu) restent des pastilles de couleur : elles gardent leur sens.',
@@ -3342,7 +3433,7 @@ document.addEventListener('keydown', e => {
 });
 
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-action],[data-classe],[data-modif-classe],[data-eval-entete],[data-supprimer-eleve],button[data-vue],[data-editer-dispense],[data-replier-dispense],[data-editer-adaptation],[data-editer-besoin],[data-voir-besoin],[data-monter],[data-descendre],[data-seance-entete],[data-contacts],[data-carte-eleve]');
+  const t = e.target.closest('[data-action],[data-classe],[data-modif-classe],[data-eval-entete],[data-supprimer-eleve],button[data-vue],[data-editer-dispense],[data-replier-dispense],[data-nouvelle-dispense],[data-editer-adaptation],[data-editer-besoin],[data-voir-besoin],[data-monter],[data-descendre],[data-seance-entete],[data-contacts],[data-carte-eleve]');
   if (!t || t.closest('dialog')) return;
   const ds = t.dataset;
   if (ds.carteEleve) return lancer(() => ficheNotes(ds.carteEleve)); // carte de l'onglet Élèves (eleves.js)
@@ -3353,7 +3444,16 @@ document.addEventListener('click', e => {
   if (ds.editerBesoin) return lancer(() => editerBesoin(ds.id, ds.editerBesoin));
   if (ds.voirBesoin) return lancer(() => voirBesoin(ds.id, ds.voirBesoin));
   if (ds.editerAdaptation) return lancer(() => editerAdaptation(ds.editerAdaptation));
-  if (ds.replierDispense) { dispensesEnEdition.delete(ds.replierDispense); return rendreVue(); }
+  if (ds.replierDispense) { conclureDatesDispense(ds.replierDispense); dispensesEnEdition.delete(ds.replierDispense); return rendreVue(); }
+  if (ds.nouvelleDispense) {
+    // L'ancienne dispense (terminée) va dans l'historique ; la nouvelle commence aujourd'hui, dates à corriger si besoin.
+    const el = Donnees.get('eleves', ds.nouvelleDispense);
+    Donnees.ecrire('eleves', { ...el, dispensesPassees: dispensesAvecActuelle(el), dispDebut: aujourdhui(), dispFin: '' });
+    absencesDispenseAvecMessage(el.id);
+    rendreClasses();
+    rendreVue();
+    return $(`tr[data-eleve="${el.id}"] [data-champ="dispDebut"]`)?.focus();
+  }
   if (ds.editerDispense) {
     dispensesEnEdition.add(ds.editerDispense);
     rendreVue();
@@ -3388,6 +3488,7 @@ document.addEventListener('click', e => {
     case 'excel-notes': return lancer(echangeExcelNotes);
     case 'vers-ecole-directe': return lancer(versEcoleDirecte);
     case 'appreciations': return lancer(() => ouvrirAppreciations());
+    case 'bilan-pp': return lancer(ouvrirBilanPP);
     case 'ajout-eleve': return lancer(ajouterEleve);
     case 'coller-liste': return lancer(collerListe);
     case 'import-ed': return ListeClasse.choisirFichier(classeActive());
@@ -3413,22 +3514,64 @@ document.addEventListener('change', e => {
     if (champ === 'amenagement') {
       // Dispensé et Adapté s'excluent : on choisit l'un, l'autre, ou rien.
       const modif = { ...el, dispense: t.value === 'dispense', adapte: t.value === 'adapte' };
-      if (modif.dispense && !el.dispDebut) modif.dispDebut = aujourdhui();
+      if (el.dispense && !modif.dispense) {
+        // Dispense levée : elle rejoint l'historique ; la prochaine repartira de dates vides.
+        modif.dispensesPassees = dispensesAvecActuelle(el);
+        modif.dispDebut = modif.dispFin = '';
+      }
+      if (modif.dispense && !modif.dispDebut) modif.dispDebut = aujourdhui();
       Donnees.ecrire('eleves', modif);
+      absencesDispenseAvecMessage(el.id);
       rendreClasses();
       rendreVue();
       if (modif.adapte && !el.adaptation) lancer(() => editerAdaptation(el.id)); // on saisit tout de suite les particularités
       return;
     }
+    if (champ === 'dispDebut' || champ === 'dispFin') {
+      // Dates de dispense : le navigateur signale un changement à chaque chiffre tapé (« 0002 », « 0020 »… pour l'année).
+      // On enregistre sans redessiner (le champ garderait sinon la frappe perdue) ; tout est conclu en quittant les dates.
+      if (t.value && +t.value.slice(0, 4) < 2000) return;
+      if (!datesDispenseAvant.has(el.id)) datesDispenseAvant.set(el.id, { debut: el.dispDebut || '', fin: el.dispFin || '' });
+      Donnees.ecrire('eleves', { ...el, [champ]: t.value });
+      return;
+    }
     const modif = { ...el, [champ]: t.type === 'checkbox' ? t.checked : champ === 'nom' ? majuscules(t.value) : t.value.trim() };
     if (champ === 'dispense' && t.checked && !el.dispDebut) modif.dispDebut = aujourdhui();
-    if (champ === 'dispFin' && modif.dispFin) dispensesEnEdition.delete(el.id); // date de fin saisie : on replie
     Donnees.ecrire('eleves', modif);
     // Sexe corrigé : les points des barèmes filles / garçons sont recalculés.
     if (champ === 'sexe') for (const ev of evalsDe(el.classeId).filter(x => x.bareme)) recalculerBareme(ev, el.id);
     rendreClasses();
-    if (['dispense', 'dispDebut', 'dispFin'].includes(champ)) rendreVue(); // met à jour le statut affiché
+    if (champ === 'dispense') rendreVue(); // met à jour le statut affiché
   }
+});
+
+// Dates de dispense conclues quand on quitte les deux champs (ou « OK ») : nouvelle dispense si le début passe après
+// l'ancienne fin (l'ancienne est gardée), absences de la période justifiées, liste redessinée.
+const datesDispenseAvant = new Map(); // élève → dates avant la saisie
+function conclureDatesDispense(id) {
+  const avant = datesDispenseAvant.get(id);
+  if (!avant) return false;
+  datesDispenseAvant.delete(id);
+  const el = Donnees.get('eleves', id);
+  if (!el) return false;
+  const modif = { ...el };
+  if (el.dispense && dateDispenseValable(avant.debut) && dateDispenseValable(avant.fin) && avant.fin >= avant.debut
+    && el.dispDebut && el.dispDebut > avant.fin) {
+    modif.dispensesPassees = [...(el.dispensesPassees || []), { debut: avant.debut, fin: avant.fin }];
+    if (el.dispFin === avant.fin) modif.dispFin = '';
+  }
+  if (modif.dispFin) dispensesEnEdition.delete(id); // date de fin saisie : on replie
+  Donnees.ecrire('eleves', modif);
+  absencesDispenseAvecMessage(id);
+  rendreClasses();
+  rendreVue();
+  return true;
+}
+document.addEventListener('focusout', e => {
+  const zone = e.target.closest?.('.dates-disp');
+  if (!zone || zone.contains(e.relatedTarget)) return;
+  const id = zone.closest('tr[data-eleve]')?.dataset.eleve;
+  if (id) setTimeout(() => conclureDatesDispense(id)); // (après le clic qui a fait quitter le champ)
 });
 
 // Évaluation liée à un barème : degré d'un critère (toucher : vide → 1 → 2 → 3 → 4 → vide), case à cocher, palier.
