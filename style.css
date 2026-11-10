@@ -17,6 +17,8 @@
   --nn: #ececec; --nn-t: #5f5f5f;
   /* Degrés de maîtrise 1 à 4 et champs d'apprentissage : réglables aussi */
   --n1: #d62828; --n2: #f28c18; --n3: #6dbb3f; --n4: #1b7a3d;
+  /* Chiffre posé sur chaque couleur de degré : foncé sur les couleurs claires (calculé par reglages.js pour les palettes) */
+  --n1-texte: #ffffff; --n2-texte: #1c1a17; --n3-texte: #1c1a17; --n4-texte: #ffffff;
   --ca1: #d64545; --ca2: #2e9e5b; --ca3: #8e5bd0; --ca4: #2f78d6; --ca5: #e8891a;
   --zoom: 1;
   color-scheme: light;
@@ -336,15 +338,15 @@ body[data-disposition="bas"] .notif-auto { bottom: calc(16px + var(--bas) + env(
 .niveau {
   display: inline-grid; place-items: center; width: 36px; height: 36px; min-height: 0; padding: 0; margin: 4px;
   border-radius: calc(9px * var(--arrondi, 1)); border: 2px dashed var(--bord); background: transparent;
-  font-weight: 800; font-size: 15px; color: #fff;
+  font-weight: 700; font-size: 15px; color: #fff;
 }
 .niveau:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
-.niveau.n1 { background: var(--n1); border: 0; }
-.niveau.n2 { background: var(--n2); border: 0; }
-.niveau.n3 { background: var(--n3); border: 0; }
-.niveau.n4 { background: var(--n4); border: 0; }
+.niveau.n1 { background: var(--n1); color: var(--n1-texte, #fff); border: 0; }
+.niveau.n2 { background: var(--n2); color: var(--n2-texte, #fff); border: 0; }
+.niveau.n3 { background: var(--n3); color: var(--n3-texte, #fff); border: 0; }
+.niveau.n4 { background: var(--n4); color: var(--n4-texte, #fff); border: 0; }
 /* Degré pré-rempli d'après la note : contour pointillé, un peu plus clair */
-.niveau.auto { border: 2px dashed rgba(255, 255, 255, .75); opacity: .82; }
+.niveau.auto { border: 2px dashed color-mix(in srgb, currentColor 60%, transparent); opacity: .82; }
 /* Médailles (leçons, outil ASNS) : bronze, argent, or */
 .niveau.medaille { font-size: 20px; }
 .niveau.m-bronze, .medaille-asns.m-bronze { background: #e9c3a0; border: 0; }
@@ -379,7 +381,7 @@ body[data-disposition="bas"] .notif-auto { bottom: calc(16px + var(--bas) + env(
 .lignes-rep { display: flex; flex-direction: column; gap: 0; }
 .ligne-rep {
   display: flex; align-items: center; justify-content: center; gap: 3px;
-  font-size: 10px; line-height: 1.25; font-weight: 700; color: var(--texte); font-variant-numeric: tabular-nums;
+  font-size: 10px; line-height: 1.25; font-weight: 600; color: var(--texte); font-variant-numeric: tabular-nums;
 }
 .ligne-rep.rep-zero { color: var(--texte2); font-weight: 400; opacity: .5; }
 .pastille-rep { display: inline-block; width: 7px; height: 7px; border-radius: 50%; font-size: 0; flex: none; }
@@ -402,7 +404,7 @@ body[data-disposition="bas"] .notif-auto { bottom: calc(16px + var(--bas) + env(
 .modale input[readonly] { opacity: .75; }
 .total-parties-eval { align-self: center; font-weight: 600; }
 .grille .sous-partie { white-space: normal; line-height: 1.2; max-width: 110px; }
-.grille .total-parties { text-align: center; font-weight: 700; font-size: 16px; padding: 0 8px; background: var(--surface2); }
+.grille .total-parties { text-align: center; font-weight: 600; font-size: 16px; padding: 0 8px; background: var(--surface2); }
 .grille .moy-partie { color: var(--texte2); }
 .zone-competences { display: flex; flex-direction: column; gap: 6px; }
 .modale input[type=checkbox] { min-height: 0; padding: 0; width: 20px; height: 20px; }
@@ -421,11 +423,13 @@ body[data-disposition="bas"] .notif-auto { bottom: calc(16px + var(--bas) + env(
   position: sticky; bottom: 0; background: var(--surface2); font-weight: 600; text-align: center; padding: 10px 8px;
 }
 .grille tfoot .col-nom { z-index: 3; font-weight: 600; }
-.grille .col-moy { text-align: center; font-weight: 700; min-width: 80px; padding: 0 10px; background: var(--surface2); }
+.grille .col-moy { text-align: center; font-weight: 500; min-width: 80px; padding: 0 10px; background: var(--surface2); }
 .grille thead .col-moy { padding: 8px 10px; }
 .grille thead .col-moy .eval-info { font-weight: 400; white-space: nowrap; }
 /* Vue « Toute l'année » : la moyenne annuelle se détache des moyennes de période. */
 .grille .moy-annee { border-left: 2px solid var(--bord); }
+/* Seule la moyenne de l'année reste en gras : c'est elle qu'on cherche du regard. */
+.grille td.moy-annee { font-weight: 700; }
 .cellule {
   display: block; width: 100%; height: 44px; border: 0; background: transparent;
   text-align: center; font-size: 16px; /* 16px : évite le zoom automatique sur iPad */
@@ -575,7 +579,7 @@ body[data-onglet="entrainement"] .saisie .notes-seul { display: none; }
 .tableau-eleves .c-num:has(.deplacer) { width: 76px; }
 .grille .num-eleve {
   display: inline-block; min-width: 22px; margin-right: 6px; color: var(--texte2);
-  font-size: 12px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums;
+  font-size: 12px; font-weight: 400; text-align: right; font-variant-numeric: tabular-nums;
 }
 @media (max-width: 700px) { .grille .num-eleve { min-width: 16px; margin-right: 4px; font-size: 11px; } }
 .tableau-eleves .case-pai, .tableau-eleves .case-bep { width: 46px; text-align: center; }
@@ -736,8 +740,8 @@ button.badge-disp:hover { filter: brightness(1.1); }
   font-size: 13px; font-weight: 700; color: #fff; background: var(--bord); vertical-align: middle;
 }
 .degre-fiche:not(.n1):not(.n2):not(.n3):not(.n4) { color: var(--texte2); background: transparent; border: 1px dashed var(--bord); }
-.degre-fiche.n1 { background: var(--n1); } .degre-fiche.n2 { background: var(--n2); }
-.degre-fiche.n3 { background: var(--n3); } .degre-fiche.n4 { background: var(--n4); }
+.degre-fiche.n1 { background: var(--n1); color: var(--n1-texte, #fff); } .degre-fiche.n2 { background: var(--n2); color: var(--n2-texte, #fff); }
+.degre-fiche.n3 { background: var(--n3); color: var(--n3-texte, #fff); } .degre-fiche.n4 { background: var(--n4); color: var(--n4-texte, #fff); }
 .parcours-fiche { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 4px; margin-bottom: 4px; }
 .etape-fiche { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--texte2); cursor: help; }
 .tableau-fiche { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -987,7 +991,7 @@ ul.nouveautes li { margin: 6px 0; }
   min-height: 0; margin-left: 6px; padding: 2px 7px; border: 0; border-radius: calc(6px * var(--arrondi, 1)); cursor: pointer;
   font: 700 11px/1.4 inherit; color: #fff; vertical-align: middle; white-space: nowrap;
 }
-.alerte-abs.orange { background: #f28c18; }
+.alerte-abs.orange { background: #f28c18; color: #1c1a17; }
 .alerte-abs.rouge { background: #d62828; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .grille .col-nom.alerte-orange .nom-eleve { color: #ffb15c; }
@@ -1310,6 +1314,8 @@ body[data-densite="aeree"] .tableau-eleves input, body[data-densite="aeree"] .ta
 /* Choix de la discipline du carnet (premier lancement, ⚙ Réglages) */
 .choix-discipline { flex-wrap: wrap; }
 .choix-discipline small { font-weight: 400; color: var(--texte2); margin-left: 4px; }
+/* Discipline choisie : la description prend la couleur du texte de l'étiquette (le gris disparaissait sur l'accent). */
+.choix-discipline .segment input:checked + span small { color: inherit; }
 /* Compétences rangées par compétence travaillée (référentiels SVT : on coche dans plusieurs à la fois) */
 .groupe-competences { margin-bottom: 8px; }
 .groupe-competences > b { display: block; margin: 6px 0 2px; color: var(--accent); }
@@ -1850,7 +1856,7 @@ body.infos-cachees .pastille-appel:not(.present, .ABS, .RET, .TEN), body.infos-c
 body.infos-cachees .ligne-appel:is(.etat-DISP, .etat-BLE, .etat-MAL) { border-left: 1px solid var(--bord); background: var(--surface); }
 body.infos-cachees .carte-eleve[class*="lisere-"] { border-left-width: 1px; border-left-color: var(--bord); }
 /* Dispensé, blessé, malade et observations écrites dans les cases : case vide à l'écran, valeur intacte. */
-body.infos-cachees :is(input.cellule:is(.code-DISP, .code-BLE, .code-MAL, .cellule-texte, [value="DISP"], [value="BLE"], [value="MAL"]), td:is(.code-DISP, .code-BLE, .code-MAL), .code-fiche:is(.code-DISP, .code-BLE, .code-MAL)) {
+body.infos-cachees :is(input.cellule:is(.code-DISP, .code-BLE, .code-MAL, .cellule-texte, [value="DISP"], [value="BLE"], [value="MAL"]), td:is(.code-DISP, .code-BLE, .code-MAL), .code-fiche:is(.code-DISP, .code-BLE, .code-MAL), #vue button.niveau:is(.code-DISP, .code-BLE, .code-MAL)) {
   color: transparent !important; -webkit-text-fill-color: transparent; background: none !important; border-color: var(--bord) !important;
 }
 body.infos-cachees .grille .col-nom:is(.alerte-orange, .alerte-rouge) { box-shadow: none; }
@@ -2019,7 +2025,7 @@ body.infos-cachees .grille .col-nom:is(.alerte-orange, .alerte-rouge) .nom-eleve
 .ligne-appel.etat-TEN { border-left: 6px solid #8e24aa; background: color-mix(in srgb, #8e24aa 8%, var(--surface)); }
 .pastille-appel.RET { background: color-mix(in srgb, #f59e0b 22%, var(--surface)); }
 .ligne-appel.etat-RET { border-left: 6px solid #f59e0b; background: color-mix(in srgb, #f59e0b 8%, var(--surface)); }
-.bouton-appel.b-RET.choisi { background: #d97706; border-color: #d97706; color: #fff; }
+.bouton-appel.b-RET.choisi { background: #b45d04; border-color: #b45d04; color: #fff; }
 .pastille-appel.MAL { background: color-mix(in srgb, #d81b60 18%, var(--surface)); }
 .pastille-appel.BLE { background: color-mix(in srgb, #ef6c00 18%, var(--surface)); }
 .pastille-appel.AUT { background: color-mix(in srgb, #3f6ea8 18%, var(--surface)); }
@@ -2030,13 +2036,28 @@ body.infos-cachees .grille .col-nom:is(.alerte-orange, .alerte-rouge) .nom-eleve
 .boutons-appel { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .bouton-appel { min-height: 44px; min-width: 52px; padding: 4px 10px; border-radius: calc(10px * var(--arrondi, 1)); font-size: 18px; display: inline-flex; align-items: center; gap: 6px; touch-action: manipulation; }
 .bouton-appel .libelle-appel { font-size: 13px; font-weight: 600; }
-.bouton-appel.b-present.choisi { background: #2e9d4a; border-color: #2e9d4a; color: #fff; }
-.bouton-appel.b-ABS.choisi { background: #e53935; border-color: #e53935; color: #fff; }
+.bouton-appel.b-present.choisi { background: #23803b; border-color: #23803b; color: #fff; }
+.bouton-appel.b-ABS.choisi { background: #d32f2f; border-color: #d32f2f; color: #fff; }
 .bouton-appel.b-TEN.choisi { background: #8e24aa; border-color: #8e24aa; color: #fff; }
-.bouton-appel.b-MAL.choisi { background: #d81b60; border-color: #d81b60; color: #fff; }
-.bouton-appel.b-BLE.choisi { background: #ef6c00; border-color: #ef6c00; color: #fff; }
+.bouton-appel.b-MAL.choisi { background: #c8175a; border-color: #c8175a; color: #fff; }
+.bouton-appel.b-BLE.choisi { background: #b85200; border-color: #b85200; color: #fff; }
 .bouton-appel.b-AUT.choisi { background: #3f6ea8; border-color: #3f6ea8; color: #fff; }
 @media (max-width: 560px) { .bouton-appel .libelle-appel { display: none; } }
+/* Icônes au trait (v1.27.0) : colorées selon leur sens tant que le bouton n'est pas choisi. */
+.bouton-appel .libelle-court { display: none; }
+.bouton-appel.b-present:not(.choisi) .ic-ecole { color: var(--ec-present); }
+.bouton-appel.b-RET:not(.choisi) .ic-ecole { color: var(--attention); }
+.bouton-appel:is(.b-TEN, .b-MAL, .b-BLE, .b-AUT):not(.choisi) .ic-ecole { color: var(--texte2); }
+.bilan-appel .pastille-appel { display: inline-flex; align-items: center; gap: 4px; }
+.bilan-appel .pastille-appel .ic-ecole { width: 16px; height: 16px; margin: 0; }
+[data-appel="tous"] .ic-ecole { margin-right: 0; }
+/* Téléphone : l'icône et un nom court dessous, sur une grille de 4 ; le mot reste toujours visible. */
+@media (max-width: 560px) {
+  .boutons-appel:has(.libelle-court) { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; width: 100%; }
+  .bouton-appel:has(.libelle-court) { flex-direction: column; justify-content: center; gap: 2px; min-width: 0; min-height: 52px; padding: 4px 2px; }
+  .bouton-appel .libelle-appel { display: none; }
+  .bouton-appel .libelle-court { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; line-height: 1.2; }
+}
 /* Leçons : case « Présence » de l'appel (verte quand l'élève est présent) */
 .cellule-presence { display: block; width: 100%; min-width: 92px; height: 44px; border: 0; border-radius: 0; background: transparent; color: var(--texte2); font-size: 14px; font-weight: 700; cursor: pointer; }
 .cellule-presence.oui { background: #d6f2dc; color: #17692e; }
@@ -2314,7 +2335,7 @@ body.mode-eleve .bandeau-recup { display: none; }
 /* Tri des colonnes de la grille de notes : ▲ ▼ sous le titre */
 .tri-col { display: flex; justify-content: center; gap: 2px; margin-top: 3px; }
 .grille th .tri-col button {
-  min-height: 0; min-width: 0; padding: 1px 5px; border: 1px solid var(--bord); border-radius: calc(6px * var(--arrondi, 1));
+  min-height: 0; min-width: 0; padding: 1px 5px; border: 1px solid var(--bord); border-radius: calc(6px * var(--arrondi, 1)); font-weight: 400;
   background: var(--surface); color: var(--texte2); font-size: 10px; line-height: 1.3; cursor: pointer;
 }
 .grille th .tri-col button:hover { color: var(--texte); border-color: var(--texte2); }
@@ -2770,16 +2791,20 @@ body.mode-eleve #hugo-bouton, body.mode-eleve #hugo-panneau, body.mode-eleve #hu
 /* Choisir un degré d'un seul geste (choixdegre.js) */
 .grille .niveau { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .niveau.degre-appuye { outline: 2px solid var(--accent); outline-offset: 2px; }
-#choix-degre { position: fixed; z-index: 150; display: flex; gap: 6px; padding: 6px; background: var(--surface); border: 1px solid var(--bord);
+/* Deux rangées : les degrés au-dessus de la case, les statuts (dispensé, absent, malade, blessé, vide) en dessous. */
+#choix-degre > div { position: fixed; z-index: 150; display: flex; gap: 6px; padding: 6px; background: var(--surface); border: 1px solid var(--bord);
   border-radius: calc(14px * var(--arrondi, 1)); box-shadow: 0 6px 20px rgba(0, 0, 0, .35); touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 #choix-degre[hidden] { display: none; }
+#choix-degre .statut-appui { width: 62px; border: 1px solid var(--bord); }
+#choix-degre .statut-appui span { font-size: 11px !important; }
+#choix-degre .statut-appui.actuel { box-shadow: inset 0 0 0 2px currentColor; }
 #choix-degre .niveau { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 68px; height: 62px; margin: 0; padding: 2px; line-height: 1.1; touch-action: none; }
 #choix-degre .niveau b { font-size: 19px; }
 #choix-degre .niveau span { font-size: 11px; font-weight: 600; text-align: center; }
 #choix-degre .degre-vider { width: 52px; background: var(--surface2); border: 1px solid var(--bord); color: var(--texte2); }
 #choix-degre .niveau.actuel { box-shadow: inset 0 0 0 2px #fff; }
 #choix-degre .niveau.vise { outline: 3px solid var(--texte); outline-offset: 1px; transform: scale(1.08); }
-@media (max-width: 400px) { #choix-degre { gap: 3px; padding: 4px; } #choix-degre .niveau { width: 58px; } #choix-degre .degre-vider { width: 44px; } }
+@media (max-width: 400px) { #choix-degre > div { gap: 3px; padding: 4px; } #choix-degre .niveau { width: 58px; } #choix-degre .statut-appui { width: 54px; } #choix-degre .degre-vider { width: 44px; } }
 /* Volley-ball : plusieurs ateliers ou un seul pour toute la classe */
 .types-ateliers-volley { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 10px; }
 .type-atelier-volley { min-height: 60px; padding: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; line-height: 1.2; border: 2px solid var(--bord); border-radius: calc(12px * var(--arrondi, 1)); }
@@ -2894,6 +2919,8 @@ body.classes-repliees :is(#classes, #btn-menu, #voile) { display: none !importan
 .ic-ecole { display: inline-block; width: 1.2em; height: 1.2em; flex: none; vertical-align: -0.24em; margin-right: 0.4em; }
 /* Dans une bulle d'outil, l'icône est seule : sans la marge prévue pour un texte, elle reste au centre. */
 .bulle .ic-ecole { margin: 0; }
+/* EPS, SVT, PC (v1.27.0) : icône au trait dans la couleur de la famille, foncée juste assez pour rester nette. */
+html:not(.carnet-ecole) .bulle { color: color-mix(in srgb, var(--fam) 72%, var(--texte)); }
 /* Icônes posées à la place des émojis (ecole.js › iconesPourEmojis) : seule dans un bouton, sans marge ;
    la couleur ne sert que quand elle a un sens (comme sur l'appel). */
 .ic-ecole.ic-emoji.seule { margin-right: 0; }
@@ -3226,3 +3253,21 @@ html.carnet-ecole .bulle { color: var(--texte); }
 @media (max-width: 600px) { .liste-metiers li { grid-template-columns: 1fr auto; } .liste-metiers li select { grid-column: 1 / -1; grid-row: 2; } .liste-journee li { grid-template-columns: 1fr auto; font-size: 16px; } .heure-journee { grid-column: 1 / -1; } }
 /* Carnet École, onglet Notes : « Réglages des notes » toujours collé à droite, même seul sur sa ligne (ecole.js). */
 .outils .btn-reglages-notes { margin-left: auto; }
+
+/* ---------- Onglet Notes sur téléphone : boutons secondaires rangés dans « Plus » (v1.27.0) ---------- */
+.actions-larges { display: contents; }
+.menu-plus-notes { display: none; position: relative; }
+.menu-plus-notes > summary { list-style: none; cursor: pointer; user-select: none; }
+.menu-plus-notes > summary::-webkit-details-marker { display: none; }
+.menu-plus-notes > summary .ic-ecole { margin-right: 0; }
+.menu-plus-notes[open] > summary { background: var(--surface2); border-color: var(--texte2); }
+.menu-plus-liste {
+  position: absolute; z-index: 30; top: calc(100% + 4px); right: 0; display: flex; flex-direction: column; gap: 4px;
+  width: max-content; max-width: calc(100vw - 32px); padding: 6px; background: var(--surface); border: 1px solid var(--bord);
+  border-radius: calc(12px * var(--arrondi, 1)); box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+}
+.menu-plus-liste > button { justify-content: flex-start; width: 100%; text-align: left; }
+@media (max-width: 560px) {
+  .actions-larges { display: none; }
+  .menu-plus-notes { display: inline-block; }
+}

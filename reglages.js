@@ -131,7 +131,8 @@ function variablesApparence(a) {
       '--accent-doux-clair': melanger(t.clair, '#ffffff', 0.15), '--accent-doux-sombre': melanger(t.sombre, '#1a2220', 0.22),
     });
   }
-  a.degres.forEach((c, i) => { if (estCouleur(c)) v['--n' + (i + 1)] = c; });
+  // Chiffre du degré : blanc sur les couleurs foncées, presque noir sur les claires (le plus lisible des deux).
+  a.degres.forEach((c, i) => { if (estCouleur(c)) { v['--n' + (i + 1)] = c; v['--n' + (i + 1) + '-texte'] = luminance(c) > 0.2 ? '#1c1a17' : '#ffffff'; } });
   for (const [ca, c] of Object.entries(a.ca)) if (estCouleur(c) && COULEURS_CA[ca]) v['--' + ca.toLowerCase()] = c;
   return { v, mode: a.mode, clair: t.clair, sombre: t.sombre };
 }

@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.25.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.27.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -920,6 +920,14 @@ const flechesTri = col => `<span class="tri-col">${[[1, '▲', 'croissant (du pl
   .map(([s, f, t]) => `<button type="button"${triNotes?.col === col && triNotes.sens === s ? ' class="actif"' : ''} data-tri-notes="${esc(col)}" data-sens="${s}"
     title="Trier : ordre ${t}" aria-label="Trier : ordre ${t}">${f}</button>`).join('')}</span>`;
 
+// Menu « Plus » de l'onglet Notes (téléphone) : se referme après un choix ou un toucher ailleurs.
+document.addEventListener('click', e => {
+  const ici = e.target.closest('.menu-plus-notes');
+  document.querySelectorAll('.menu-plus-notes[open]').forEach(d => {
+    if (d !== ici || e.target.closest('.menu-plus-liste button')) d.open = false;
+  });
+});
+
 // (capture : passe avant l'ouverture de l'évaluation quand on touche son titre)
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-tri-notes]');
@@ -952,21 +960,27 @@ function htmlNotes(c) {
   }
   // Largeur de chaque colonne de notes selon ce qui y est écrit (« 12 », « 15,5 », « ABS »…).
   const taillesNotes = new Map(evals.map(e => [e.id, Math.min(12, Math.max(4, ...eleves.map(el => affichage(Donnees.note(e.id, el.id)).length)) + 1)]));
+  // Boutons secondaires : en ligne sur un grand écran ; sur téléphone, rangés dans « Plus » pour que la grille remonte.
+  // (Mêmes boutons écrits deux fois : les data-action suffisent, l'aide prend le premier visible.)
+  const actionsNotes = `<button data-action="excel-notes" title="Import de toutes ses notes d’École Directe ou de Pronote (l’export Excel des notes est aussi ici)">${pictoEcole('telecharger', '📥')} Importer mes notes</button>
+      ${avecEcole() ? '' : '<button data-action="vers-ecole-directe" title="Copier les notes d’une évaluation pour les coller dans École Directe">📋 Reporter mes notes sur École Directe</button>'}
+      ${avecEcole() ? htmlBoutonsEcole(c) : `<button data-action="appreciations" title="Appréciations du trimestre proposées par l’appli, d’après les notes et les ${motMin('lecons')}">✍ Appréciations</button>`}${typeof htmlBoutonsBilansSvt === 'function' ? htmlBoutonsBilansSvt(c) : ''}`;
+  const noteDegre = sansNotes || avecEcole() ? '' : `<button data-modif-classe="${c.id}" title="Régler la correspondance note → degré de maîtrise pour cette classe">${pictoEcole('reglages', '⚙')} Note → degré
+        <span class="aide">(${seuilsClasse(c).map(fmt).join(' / ')})</span></button>`;
   return `
     <div class="outils">
       <h2>${esc(c.nom)}</h2>
       <button class="primaire" data-action="ajout-eval">+ Évaluation</button>
-      <button data-action="excel-notes" title="Import de toutes ses notes d’École Directe ou de Pronote (l’export Excel des notes est aussi ici)">${pictoEcole('telecharger', '📥')} Importer mes notes</button>
-      ${avecEcole() ? '' : '<button data-action="vers-ecole-directe" title="Copier les notes d’une évaluation pour les coller dans École Directe">📋 Reporter mes notes sur École Directe</button>'}
-      ${avecEcole() ? htmlBoutonsEcole(c) : `<button data-action="appreciations" title="Appréciations du trimestre proposées par l’appli, d’après les notes et les ${motMin('lecons')}">✍ Appréciations</button>`}${typeof htmlBoutonsBilansSvt === 'function' ? htmlBoutonsBilansSvt(c) : ''}
+      <span class="actions-larges">${actionsNotes}</span>
+      <details class="menu-plus-notes"><summary class="bouton" aria-label="Plus d’actions">${iconeEcole('menu')}Plus</summary>
+        <div class="menu-plus-liste">${actionsNotes}${noteDegre}</div></details>
       <label class="choix-tri">Période
         <select data-periode>
           <option value="annee">Toute l’année</option>
           ${periodes.map(p => `<option value="${p.id}" ${p.id === vue ? 'selected' : ''}>${p.code} (${esc(p.texte)})</option>`).join('')}
         </select></label>
       <button class="icone-petit" data-action="periodes" title="Régler les trimestres / semestres" aria-label="Régler les périodes">${pictoEcole('reglages', '⚙')}</button>
-      ${sansNotes ? '' : `${avecEcole() ? '' : `<button data-modif-classe="${c.id}" title="Régler la correspondance note → degré de maîtrise pour cette classe">${pictoEcole('reglages', '⚙')} Note → degré
-        <span class="aide">(${seuilsClasse(c).map(fmt).join(' / ')})</span></button>`}
+      ${sansNotes ? '' : `${noteDegre ? `<span class="actions-larges">${noteDegre}</span>` : ''}
       <span class="aide aide-saisie">Saisie : note, ou ${aideCodes()} — Entrée = élève suivant</span>`}
       ${avecEcole() ? htmlBoutonReglagesNotesEcole(c) : ''}
     </div>
@@ -1069,12 +1083,14 @@ const nbSousColonnes = e => partiesEval(e).length + competencesEval(e).length;
 // Cases des degrés de maîtrise d'un élève sur une évaluation (col() : numéro de colonne suivant, pour le clavier).
 function celluleDegres(e, el, i, col) {
   const nomEleve = el.nom + ' ' + el.prenom;
+  const code = codeEval(e, el.id); // (ABS, DISP… : montré dans les cases sans degré)
   return competencesEval(e).map(a => {
     const n = Donnees.note(e.id, el.id, a.id);
     const auto = n && Donnees.noteComplete(e.id, el.id, a.id)?.auto;
-    return `<td class="td-niveau"><button class="niveau${n ? ' n' + n : ''}${auto ? ' auto' : ''}" data-niveau data-eval="${e.id}" data-eleve="${el.id}" data-attendu="${esc(a.id)}"
-      data-ligne="${i}" data-col="${col()}" title="${esc(a.code + (n ? ' — ' + nomNiveau(n) + (auto ? ' (pré-rempli d’après la note)' : '') : ' — non évalué'))}"
-      aria-label="${esc(nomEleve + ' — ' + a.code + ' — ' + (n ? nomNiveau(n) : 'non évalué'))}">${n}</button></td>`;
+    const c = !n && CODES[code] ? code : '';
+    return `<td class="td-niveau"><button class="niveau${n ? ' n' + n : ''}${auto ? ' auto' : ''}${classeCode(c)}" data-niveau data-eval="${e.id}" data-eleve="${el.id}" data-attendu="${esc(a.id)}"
+      data-ligne="${i}" data-col="${col()}" title="${esc(a.code + (n ? ' — ' + nomNiveau(n) + (auto ? ' (pré-rempli d’après la note)' : '') : c ? ' — ' + CODES[c] : ' — non évalué'))}"
+      aria-label="${esc(nomEleve + ' — ' + a.code + ' — ' + (n ? nomNiveau(n) : c ? CODES[c] : 'non évalué'))}">${n || c}</button></td>`;
   }).join('');
 }
 
@@ -1108,8 +1124,31 @@ function changerNiveau(bouton, valeur) {
   const avant = Donnees.note(evalId, eleve, attendu);
   if (valeur === undefined) valeur = avant === '4' ? '' : String(+avant + 1); // vide → 1 → 2 → 3 → 4 → vide
   if (valeur !== avant || Donnees.noteComplete(evalId, eleve, attendu)?.auto) Donnees.ecrireNote(evalId, eleve, valeur, attendu);
+  // École (degrés seulement, pas de case de note) : un degré posé enlève le code (ABS…) affiché dans les cases.
+  const ev = Donnees.get('evals', evalId);
+  if (valeur && ev && sansNoteEval(ev) && codeEval(ev, eleve)) { Donnees.ecrireNote(evalId, eleve, ''); return rafraichirNotes(bouton); }
   afficherNiveau(bouton, valeur, false);
   majBilans();
+}
+
+// Appui long sur une case de degré (Notes) : code (ABS, DISP…) pour toute l'évaluation, comme tapé dans la case de note ;
+// code vide = « Vide » : la case est vidée et le code de l'évaluation enlevé.
+function poserCodeCaseNotes(bouton, code) {
+  const ev = Donnees.get('evals', bouton.dataset.eval), eleveId = bouton.dataset.eleve;
+  if (!ev) return;
+  if (bouton.dataset.degreBareme !== undefined && !code) return saisieBoutonBareme(bouton, '');
+  if (code) {
+    if (ev.bareme) effacerParties(ev, eleveId);
+    if (bouton.dataset.attendu !== undefined && Donnees.note(ev.id, eleveId, bouton.dataset.attendu)) Donnees.ecrireNote(ev.id, eleveId, '', bouton.dataset.attendu);
+    if (Donnees.note(ev.id, eleveId) !== code) Donnees.ecrireNote(ev.id, eleveId, code);
+    preremplirDegres(ev, eleveId); // (les degrés pré-remplis d'après la note s'en vont)
+  } else {
+    // (Vidée à la main : la case n'est plus pré-remplie d'après la note, comme avec la touche 0.)
+    if (Donnees.note(ev.id, eleveId, bouton.dataset.attendu) || Donnees.noteComplete(ev.id, eleveId, bouton.dataset.attendu)?.auto) Donnees.ecrireNote(ev.id, eleveId, '', bouton.dataset.attendu);
+    if (codeEval(ev, eleveId)) Donnees.ecrireNote(ev.id, eleveId, '');
+  }
+  majMoyennes();
+  rafraichirNotes(bouton);
 }
 
 function afficherNiveau(bouton, valeur, auto) {
@@ -2940,6 +2979,15 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.27.0', titre: 'Un carnet plus lisible', points: [
+    'Les <b>degrés 2 et 3</b> s’écrivent maintenant en foncé : on les lit bien, même au soleil. Les couleurs ne changent pas.',
+    '<b>Appel</b> et <b>Outils</b> : des icônes dessinées, toutes du même style. Sur téléphone, chaque bouton de l’appel garde son nom (Présent, Absent, Retard…).',
+    'Sur téléphone, onglet <b>Notes</b> : les boutons Importer, Reporter, Appréciations et Note → degré sont rangés dans <b>Plus</b> ; le tableau des notes remonte.',
+    'Moins de gras dans le tableau des notes : la moyenne de l’année ressort mieux.',
+  ] },
+  { version: '1.26.0', titre: 'Absent ou dispensé d’un seul geste', points: [
+    '👆 Reste appuyé sur une case de degré (Notes, Leçons) : les degrés s’affichent au-dessus, et <b>en dessous</b> : dispensé, absent, malade, blessé et vide. <b>Glisse vers le bas</b> et relâche sur le bon statut.',
+  ] },
   { version: '1.25.0', titre: 'Des appréciations qui se suivent et qui apprennent', discipline: 'ecole', points: [
     'Fiche d’un élève › Appréciation : <b>plus de pastilles</b> (gentil, calme, réfléchi, créatif, bon camarade, aime lire… ; timide à l’oral, leçons pas apprises, gère mal ses émotions, conflits… ; arrivé en cours d’année, prêt pour le collège…) et plus de tournures.',
     '<b>Lien avec la période précédente</b> : quand tu retires une pastille « À surveiller », l’appli le dit (« Elle a pris confiance en elle depuis le premier trimestre ») ; si elle reste, « Comme au premier trimestre, il bavarde encore… ». Une participation, un comportement ou une matière qui change nettement est aussi relevé. Case dans ⚙ réglages.',

@@ -14,6 +14,15 @@ const ETATS_APPEL = [['present', '✅', 'Présent'], ['ABS', '❌', 'Absent'], [
 const etatsAppel = () => ETATS_APPEL.filter(([k]) => k !== 'BLE' || codeDeLaDiscipline('BLE'))
   .map(x => (x[0] === 'TEN' ? ['TEN', mot('iconeTenue'), 'O' + oubliTenue().slice(1)] : x));
 const nomEtatAppel = ([k, , nom]) => nom || STATUTS_ENT[k] || k;
+// Icônes au trait de l'appel (jeu d'ecole.js) ; l'émoji d'ETATS_APPEL ne sert plus que de secours.
+// (TEN : un t-shirt pour l'oubli de tenue, un cartable pour l'oubli de matériel.)
+const ICONES_APPEL = { present: 'present', ABS: 'absent', RET: 'retard', MAL: 'thermometre', BLE: 'pansement', AUT: 'autre' };
+const pictoAppel = (k, emoji) => {
+  const nom = k === 'TEN' ? (mot('iconeTenue') === '👕' ? 'tenue' : 'cartable') : ICONES_APPEL[k];
+  return nom && TRACES_ECOLE[nom] ? iconeEcole(nom) : emoji;
+};
+// Nom court sous l'icône, sur téléphone (« Oubli de tenue » → « Tenue »).
+const nomCourtAppel = nom => (/^Oubli d(e |’|')/i.test(nom) ? nom.replace(/^Oubli d(e |’|')/i, '').replace(/^./, c => c.toUpperCase()) : nom);
 // Statuts de toute la leçon posés depuis l'appel (les autres, DISP…, viennent de l'onglet Leçons).
 // (« Retard » n'en est pas un : l'élève est présent, arrivé en retard → « Retard » dans la colonne Présence.)
 const CODES_APPEL = ETATS_APPEL.map(x => x[0]).filter(k => !['present', 'RET'].includes(k));
@@ -56,21 +65,21 @@ function htmlAppel(c) {
   const autres = [...etats.values()].filter(x => x && !['present', 'RET', ...CODES_APPEL].includes(x)).length, reste = nb('');
   return `
     <div class="outils">
-      <h2>✅ Appel — ${esc(c.nom)}</h2>
+      <h2>${iconeEcole('appel')}Appel — ${esc(c.nom)}</h2>
       <label class="choix-tri">Jour<input type="date" data-date-appel value="${date}"></label>
       ${date !== aujourdhui() ? '<button data-appel="aujourdhui">Aujourd’hui</button>' : ''}
       <span class="espace"></span>
-      <button class="primaire" data-appel="tous" ${reste ? '' : 'disabled'} title="Marquer présents tous les élèves pas encore pointés">✅ Tous les autres présents${reste ? ` (${reste})` : ''}</button>
+      <button class="primaire" data-appel="tous" ${reste ? '' : 'disabled'} title="Marquer présents tous les élèves pas encore pointés">${iconeEcole('coche')}Tous les autres présents${reste ? ` (${reste})` : ''}</button>
     </div>
     <div class="bilan-appel">
-      <span class="pastille-appel present">✅ <b>${nb('present')}</b> présent${nb('present') > 1 ? 's' : ''}</span>
-      <span class="pastille-appel ABS">❌ <b>${nb('ABS')}</b> absent${nb('ABS') > 1 ? 's' : ''}</span>
-      <span class="pastille-appel RET">⏰ <b>${nb('RET')}</b> retard${nb('RET') > 1 ? 's' : ''}</span>
-      <span class="pastille-appel TEN">${mot('iconeTenue')} <b>${nb('TEN')}</b> ${oubliTenue(nb('TEN'))}</span>
+      <span class="pastille-appel present">${pictoAppel('present', '✅')}<b>${nb('present')}</b> présent${nb('present') > 1 ? 's' : ''}</span>
+      <span class="pastille-appel ABS">${pictoAppel('ABS', '❌')}<b>${nb('ABS')}</b> absent${nb('ABS') > 1 ? 's' : ''}</span>
+      <span class="pastille-appel RET">${pictoAppel('RET', '⏰')}<b>${nb('RET')}</b> retard${nb('RET') > 1 ? 's' : ''}</span>
+      <span class="pastille-appel TEN">${pictoAppel('TEN', mot('iconeTenue'))}<b>${nb('TEN')}</b> ${oubliTenue(nb('TEN'))}</span>
       ${etatsAppel().filter(([k]) => ['MAL', 'BLE', 'AUT'].includes(k) && nb(k)).map(x =>
-        `<span class="pastille-appel ${x[0]}">${x[1]} <b>${nb(x[0])}</b> ${esc(nomEtatAppel(x).toLocaleLowerCase('fr'))}</span>`).join('')}
+        `<span class="pastille-appel ${x[0]}">${pictoAppel(x[0], x[1])}<b>${nb(x[0])}</b> ${esc(nomEtatAppel(x).toLocaleLowerCase('fr'))}</span>`).join('')}
       ${autres ? `<span class="pastille-appel">${autres} autre${autres > 1 ? 's' : ''} statut${autres > 1 ? 's' : ''} (dispensé…)</span>` : ''}
-      ${reste ? `<span class="aide">${reste} à pointer</span>` : '<span class="aide">✔ Appel terminé</span>'}
+      ${reste ? `<span class="aide">${reste} à pointer</span>` : `<span class="aide appel-fini">${iconeEcole('coche')}Appel terminé</span>`}
     </div>
     <p class="aide">${s ? `Enregistré dans la ${esc(motMin('lecon'))} <b>« ${esc(s.titre)} »</b> du ${esc(dateCourte(date))} (onglet ${esc(mot('lecons'))}).`
     : `Au premier toucher, une ${esc(motMin('lecon'))} « ${esc(mot('lecon')[0].toUpperCase() + mot('lecon').slice(1))} du ${esc(dateCourte(date))} » est créée (ou celle de ce jour est complétée).`}</p>
@@ -82,7 +91,7 @@ function htmlAppel(c) {
           ${e &&!['present', 'RET', ...CODES_APPEL].includes(e) ? `<span class="aide">· ${esc(STATUTS_ENT[e] || e)}</span>` : ''}</span>
         <span class="boutons-appel" role="group" aria-label="Appel de ${esc(el.nom)} ${esc(el.prenom)}">${boutons.map(x => {
           const [k, icone] = x, nom = esc(nomEtatAppel(x));
-          return `<button class="bouton-appel b-${k}${e === k ? ' choisi' : ''}" data-appel="marquer" data-arg="${el.id}|${k}" aria-pressed="${e === k}" title="${nom}">${icone}<span class="libelle-appel">${nom}</span></button>`;
+          return `<button class="bouton-appel b-${k}${e === k ? ' choisi' : ''}" data-appel="marquer" data-arg="${el.id}|${k}" aria-pressed="${e === k}" title="${nom}">${pictoAppel(k, icone)}<span class="libelle-appel">${nom}</span><span class="libelle-court">${esc(nomCourtAppel(nomEtatAppel(x)))}</span></button>`;
         }).join('')}</span>
       </li>`;
     }).join('')}</ul>`;

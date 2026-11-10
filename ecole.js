@@ -251,6 +251,19 @@ const TRACES_ECOLE = {
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/>',
   image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.75"/><path d="m4 18 5-5 3.5 3.5 2.5-2.5 5 4.5"/>',
   aide: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.5v.7M12 17h.01"/>',
+  // (Appel et outils de toutes les disciplines, à la place des émojis : v1.27.0)
+  tenue: '<path d="M9 3.5 4 6 2.5 10.5l3 1.2v8.8h13v-8.8l3-1.2L20 6l-5-2.5a3 3 0 0 1-6 0z"/>',
+  thermometre: '<path d="M10 14.5V5a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z"/><path d="M12 9v8"/>',
+  pansement: '<rect x="2.5" y="8.5" width="19" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="M10.6 10.6h.01M13.4 13.4h.01M10.6 13.4h.01M13.4 10.6h.01" stroke-width="2.25"/>',
+  autre: '<circle cx="12" cy="12" r="9"/><path d="M8 12h.01M12 12h.01M16 12h.01" stroke-width="2.5"/>',
+  camera: '<rect x="2.5" y="6.5" width="13.5" height="11" rx="2"/><path d="m16 10.5 5.5-3v9l-5.5-3z"/>',
+  medaille: '<circle cx="12" cy="15" r="5.5"/><path d="M8.6 10.7 5.5 3h4l2.5 6M15.4 10.7 18.5 3h-4L12 9M12 13v4"/>',
+  natation: '<circle cx="16.5" cy="6" r="2"/><path d="m5 12 4.5-4 3 2.5 3-1"/><path d="M2.5 16c1.6 0 1.6-1.3 3.2-1.3s1.6 1.3 3.2 1.3 1.6-1.3 3.1-1.3 1.6 1.3 3.2 1.3 1.6-1.3 3.2-1.3 1.6 1.3 3.1 1.3M2.5 20c1.6 0 1.6-1.3 3.2-1.3s1.6 1.3 3.2 1.3 1.6-1.3 3.1-1.3 1.6 1.3 3.2 1.3 1.6-1.3 3.2-1.3 1.6 1.3 3.1 1.3"/>',
+  podium: '<path d="M8.5 20.5V10h7v10.5M2.5 20.5V14h6M15.5 16.5h6v4M1.5 20.5h21M12 4v3"/>',
+  gant: '<path d="M7 20.5h9.5v-4l2.5-3V8.5A4.5 4.5 0 0 0 14.5 4h-4A4.5 4.5 0 0 0 6 8.5v3a2 2 0 0 0 2 2h3.5"/><path d="M7 16.5h9.5"/>',
+  ballon: '<circle cx="12" cy="12" r="9"/><path d="M12 3c-2.5 3-2.5 6 0 9s6 3.5 8.5 2.5M12 12c-3 1.5-6.5 1-8.6-1.5M12 12c2.5-3 6-4 8.4-2.7"/>',
+  microscope: '<path d="M4.5 20.5h15M8 17.5h8M12 17.5v-2.5M9 3.5l3.8 1.4-2.6 7.1-3.8-1.4z"/><path d="M14.3 9.2a5 5 0 0 1 .7 8.3"/>',
+  fiole: '<path d="M9 3h6M10 3v6l-5.2 9.2A1.9 1.9 0 0 0 6.5 21h11a1.9 1.9 0 0 0 1.7-2.8L14 9V3"/><path d="M7.2 15h9.6"/>',
 };
 // Icône décorative (le texte à côté porte le sens) ; avec un libellé, elle est lue par les lecteurs d'écran.
 // (traces : le dessin ; par défaut celui du jeu.)
@@ -289,8 +302,13 @@ const DEUX_ENCRES_OUTILS = {
 };
 // Les dessins des outils ajoutés servent aussi ailleurs (titres, aide) : le jeu les reçoit en entier.
 for (const n of ['metiers', 'coupons', 'biblio', 'minuteur', 'journee', 'parole', 'sonore', 'consignes']) TRACES_ECOLE[n] ||= DEUX_ENCRES_OUTILS[n].join('');
+// Autres disciplines (EPS, SVT, PC) : même jeu d'icônes au trait, d'une seule couleur (celle de la famille de l'outil).
+// Un outil absent de la liste garde son émoji.
+const ICONES_OUTILS = { ...ICONES_OUTILS_ECOLE, tableau: 'consignes', video: 'camera', combine: 'medaille', natation: 'natation',
+  asns: 'podium', boxe: 'gant', volley: 'ballon', ece: 'microscope', ecepc: 'microscope', schema: 'modifier', gestes: 'fiole',
+  resultats: 'bilan', securite: 'alerte', binomes: 'eleves', tp: 'notes' };
 const iconeOutil = o => {
-  if (!avecEcole()) return o.icone;
+  if (!avecEcole()) { const nom = ICONES_OUTILS[o.id]; return nom && TRACES_ECOLE[nom] ? iconeEcole(nom) : o.icone; }
   const nom = ICONES_OUTILS_ECOLE[o.id] || 'outils', deux = DEUX_ENCRES_OUTILS[nom];
   return deux ? iconeEcole(nom, '', `${deux[0]}<g class="trait-rouge">${deux[1]}</g>`) : iconeEcole(nom);
 };

@@ -174,7 +174,7 @@ const ETAPES_PP = {
 };
 // Appréciations de la matière (onglet Notes) : la fenêtre « ✍ Appréciations » de la classe.
 const fenetreAppr = fenetreAvec('[data-appr-liste]');
-const ETAPE_OUVRIR_APPR = etapeBouton('#vue [data-action="appreciations"]', 'Touche « ✍ Appréciations ».', () => !!fenetreAppr());
+const ETAPE_OUVRIR_APPR = etapeBouton('#vue [data-action="appreciations"], #vue .menu-plus-notes:not([open]) > summary', 'Touche « ✍ Appréciations ».', () => !!fenetreAppr());
 
 // Agenda : l'onglet et ses fenêtres (séquence, conseils, événement, année et vacances, emploi du temps).
 const fenetreSequence = fenetreAvec('[list="liste-apsa-ag"]');
@@ -271,7 +271,7 @@ function etapesVisite() {
     ...si('notes', [onglet('notes', 'suivi', 'Évaluations, notes et compétences.'),
       avecEcole() ? etapeZonePage('#vue [data-ecole="livret"]', '« 📘 Livret » : l’appli propose les positionnements et les appréciations de la période. Tu ajustes comme tu veux.',
         'Reviens dans l’onglet « Notes » pour voir le bouton « 📘 Livret ».')
-        : etapeZonePage('#vue [data-action="appreciations"]', `« ✍ Appréciations » : l’appli en propose une par élève, d’après ses notes et les ${motMin('lecons')}. Tu ajustes comme tu veux.`,
+        : etapeZonePage('#vue [data-action="appreciations"], #vue .menu-plus-notes:not([open]) > summary', `« ✍ Appréciations » : l’appli en propose une par élève, d’après ses notes et les ${motMin('lecons')}. Tu ajustes comme tu veux.`,
           'Reviens dans l’onglet « Notes » pour voir le bouton « ✍ Appréciations ».')]),
     ...si('entrainement', [onglet('entrainement', 'suivi', avecEcole() ? 'Le déroulé de ta journée, séance par séance.' : `Ce que tu relèves à chaque ${motMin('lecon')}.`)]),
     ...si('outils', [onglet('outils', null, mot('outilsVisite'))]),
@@ -1110,7 +1110,7 @@ function rubriquesAideBase() {
               'Descends jusqu’à <b>« Compétences travaillées »</b>.',
               `Choisis le <b>référentiel</b>${eps ? ' et le <b>champ</b>' : ''}, puis <b>coche</b> les compétences. Tu peux aussi en écrire d’autres, une par ligne.`,
               'Touche <b>« Enregistrer »</b> : une colonne par compétence apparaît sous la note, avec un degré de 1 à 4.',
-              'Pour mettre un degré : un toucher le fait avancer ; ou <b>reste appuyé</b> sur la case, <b>glisse</b> vers le degré voulu et relâche.'],
+              'Pour mettre un degré : un toucher le fait avancer ; ou <b>reste appuyé</b> sur la case, <b>glisse</b> vers le degré voulu et relâche ; <b>vers le bas</b> : dispensé, absent, malade, blessé ou vide.'],
             guide: [ETAPES_HUGO.ongletNotes, ETAPES_HUGO.classe, ETAPES_HUGO.ouvrirEval,
               zoneEval('fieldset.competences', `Voici « Compétences travaillées ». Choisis le référentiel${eps ? ' et le champ' : ''}, puis coche les compétences.`),
               zoneEval('[name="competencesLibres"]', 'Une compétence qui n’est pas dans la liste ? Écris-la ici, une par ligne.'),
@@ -1147,7 +1147,7 @@ function rubriquesAideBase() {
               'Dans l’onglet <b>Notes</b>, choisis la classe (ou le groupe), puis touche <b>« 📥 Importer mes notes »</b> et choisis le fichier.',
               'Relis ce que l’appli a compris (élèves reconnus, vérification des moyennes), puis touche <b>« Importer »</b>.'],
             guide: [ETAPES_HUGO.ongletNotes, ETAPES_HUGO.classe,
-              etapeBouton('#vue [data-action="excel-notes"]', 'Touche « 📥 Importer mes notes ».', () => !!fenetreExcelLecons()),
+              etapeBouton('#vue [data-action="excel-notes"], #vue .menu-plus-notes:not([open]) > summary', 'Touche « 📥 Importer mes notes ».', () => !!fenetreExcelLecons()),
               etapeZone(fenetreExcelLecons, '.bloc-excel', 'Choisis le relevé exporté d’École Directe ou de Pronote. Tu verras la vérification des moyennes avant de valider.')],
           },
           {
@@ -1160,7 +1160,7 @@ function rubriquesAideBase() {
               '<b>Relevé ou trimestre</b> : l’appli dit lequel elle a lu. Pour un trimestre, elle prévient si des évaluations tombent hors de ce trimestre dans le carnet (dates des périodes dans ⚙ Réglages).',
               'Les évaluations <b>déjà dans le carnet</b> ne sont pas recopiées : tu peux réimporter le relevé en cours d’année, seules les nouvelles sont ajoutées. Une case vide ne supprime rien.'],
             guide: [ETAPES_HUGO.ongletNotes, ETAPES_HUGO.classe,
-              etapeBouton('#vue [data-action="excel-notes"]', 'Touche « 📥 Importer mes notes », puis choisis le relevé : la fenêtre montre la vérification des moyennes avant de valider.', () => !!fenetreExcelLecons())],
+              etapeBouton('#vue [data-action="excel-notes"], #vue .menu-plus-notes:not([open]) > summary', 'Touche « 📥 Importer mes notes », puis choisis le relevé : la fenêtre montre la vérification des moyennes avant de valider.', () => !!fenetreExcelLecons())],
           },
           {
             id: 'modifier', titre: 'Modifier ou supprimer une évaluation',
