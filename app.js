@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.33.1'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.36.2'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -100,6 +100,7 @@ function rendreDeplacable(d) {
   const placer = () => { d.style.translate = x || y ? `${x}px ${y}px` : ''; };
   titre.addEventListener('pointerdown', e => {
     if (!ECRAN_DEPLACABLE.matches || e.button !== 0) return;
+    if (e.target.closest('button, a, input, select, label')) return; // (bouton dans le titre, ex. ⚙ du bilan PP : reste cliquable)
     const r = d.getBoundingClientRect(), t = titre.getBoundingClientRect();
     depart = { px: e.clientX, py: e.clientY, x, y, r, t };
     titre.setPointerCapture(e.pointerId);
@@ -783,6 +784,7 @@ function rendreVue() {
   pageDessinee = page;
   dessinerVue(c);
   document.querySelectorAll('#vue .grille-scroll').forEach((z, i) => { if (defilements[i]) [z.scrollLeft, z.scrollTop] = defilements[i]; });
+  appliquerRechGrille(false); // (garde la recherche dans la grille après un nouveau dessin)
 }
 
 function dessinerVue(c) {
@@ -1066,7 +1068,7 @@ function htmlNotes(c) {
     <div class="grille-scroll">
       <table class="grille grille-notes">
         <thead><tr>
-          <th class="col-nom" rowspan="2">Élève</th>
+          <th class="col-nom" rowspan="2">Élève${champRechercheGrille()}</th>
           ${evals.map(e => {
             const comp = resumeCompetences(e);
             const nb = nbSousColonnes(e);
@@ -3054,6 +3056,25 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.36.2', titre: 'Passerelle : noms reconnus sur toutes les pages', points: [
+    'L’extension <b>Passerelle</b> (version 0.16.1) reconnaît les élèves même quand École Directe <b>coupe le nom</b> (« Etien… »), ajoute la <b>classe ou le groupe</b> entre parenthèses, inverse nom et prénom, ou affiche un 2e prénom. Si deux élèves restent possibles, elle bloque toujours. Pense à remplacer le dossier de l’extension.',
+  ] },
+  { version: '1.36.1', titre: 'Passerelle : modèles de messages', points: [
+    'L’extension <b>Passerelle</b> (version 0.16, bouton puzzle) propose des <b>modèles de messages</b> dans la messagerie d’École Directe, d’après l’objet que tu tapes : oubli de tenue, dispense, absences, blessure, attitude, félicitations, natation, sortie, AS, évaluation, réponse aux parents, collègues.',
+    'Chaque modèle existe en <b>mail</b> et en <b>mot dans le carnet</b> ; tu complètes les cases (prénom, date…), tu copies, puis tu colles. Rien n’est envoyé à ta place. Pense à remplacer le dossier de l’extension.',
+  ] },
+  { version: '1.36.0', titre: 'Bilan pour le PP : tes seuils, classe par classe', points: [
+    'Dans <b>Bilan pour le PP</b>, le bouton <b>Réglages</b> en haut de la fenêtre règle, pour la classe : résultats fragiles sous… (ex. 14 pour une bonne classe), baisse ou progrès d’au moins…, absences et oublis à partir de…, excellents résultats, félicitations et compliments à partir de…',
+    'Tu choisis aussi ce que les <b>séances</b> font remonter (absences, investissement et sérieux, performances). Les propositions se refont aussitôt ; « Valeurs de départ » remet tout comme avant.',
+  ] },
+  { version: '1.35.0', titre: 'Bilan pour le PP : ce que montrent les séances', points: [
+    'Dans <b>Bilan pour le PP</b>, les élèves à signaler tiennent compte des <b>leçons du trimestre</b>, comparées à la classe : <b>absences</b> aux séances, <b>investissement</b> ou <b>sérieux</b> insuffisants (données relevées sur 1 à 4 ou en liste), <b>performances</b> nettement sous la classe (temps, distances, points, degrés).',
+    'Une phrase l’explique sous l’élève, sur la feuille aussi : « Pendant les séances du T1 : Temps 2:24,9 (classe 2:08,2)… ». Tu peux toujours décocher.',
+  ] },
+  { version: '1.34.1', titre: 'Chercher un élève dans la grille', points: [
+    'Dans <b>Notes</b> et <b>Leçons</b>, un petit champ <b>« Chercher… »</b> sous « Élève » : tape quelques lettres (par exemple « am ») : il ne reste que les élèves dont le <b>nom ou le prénom</b> les contient.',
+    '<b>Échap</b> (ou effacer le texte) fait revenir toute la classe.',
+  ] },
   { version: '1.33.1', titre: 'Dispenses : dates et historique', points: [
     'Dans la <b>fiche bilan</b> (toucher le nom d’un élève dans Notes), ses <b>dispenses</b> apparaissent avec leurs dates, même s’il y en a eu plusieurs.',
     'Liste des élèves : quand une dispense est terminée, <b>« + Nouvelle dispense »</b> en ouvre une autre ; l’ancienne est gardée.',
@@ -3402,6 +3423,46 @@ function allerAEleve(id) {
   ligne.classList.add('surbrillance');
   setTimeout(() => ligne.classList.remove('surbrillance'), 4000);
 }
+
+/* ---------- 🔍 Recherche d'un élève dans la grille (Notes, Leçons) ----------
+   Petit champ sous « Élève » dans l'en-tête : ne laisse que les élèves de la classe affichée dont le nom ou le prénom
+   contient le texte tapé (sans accents ni majuscules ; plusieurs mots = tous présents) ; Échap = effacer.
+   Jamais de nouveau dessin pendant la frappe. */
+const rechGrille = { texte: '', classeId: null };
+
+function champRechercheGrille() {
+  if (rechGrille.classeId !== (classeActive()?.id || null)) rechGrille.texte = '';
+  return `<div class="cherche-grille"><input type="search" data-cherche-grille placeholder="Chercher…" aria-label="Chercher un élève de la classe" autocomplete="off" spellcheck="false" value="${esc(rechGrille.texte)}"><span class="cherche-grille-info" aria-live="polite"></span></div>`;
+}
+
+function appliquerRechGrille(defiler) {
+  const champ = $('#vue [data-cherche-grille]');
+  if (!champ) return;
+  rechGrille.classeId = classeActive()?.id || null;
+  const mots = sansAccent(rechGrille.texte).split(/\s+/).filter(Boolean);
+  let nb = 0;
+  document.querySelectorAll('#vue .grille tbody [data-nom-eleve]').forEach(th => {
+    const n = sansAccent(th.querySelector('.nom-eleve')?.textContent || '');
+    const ok = !mots.length || mots.every(m => n.includes(m));
+    th.closest('tr').classList.toggle('cache-recherche', !ok); // les autres élèves disparaissent le temps de la recherche
+    if (ok) nb++;
+  });
+  const info = champ.parentElement.querySelector('.cherche-grille-info');
+  champ.classList.toggle('sans-resultat', mots.length > 0 && !nb);
+  info.textContent = !mots.length ? '' : !nb ? 'Aucun élève' : nb === 1 ? '1 élève' : `${nb} élèves`;
+  if (defiler) champ.closest('.grille-scroll')?.scrollTo({ top: 0 }); // (les élèves trouvés en haut de la grille)
+}
+
+document.addEventListener('input', e => {
+  if (!e.target.matches?.('[data-cherche-grille]')) return;
+  rechGrille.texte = e.target.value;
+  appliquerRechGrille(true);
+});
+document.addEventListener('keydown', e => {
+  if (!e.target.matches?.('[data-cherche-grille]')) return;
+  if (e.key === 'Enter') e.preventDefault();
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); e.target.value = ''; rechGrille.texte = ''; appliquerRechGrille(false); e.target.blur(); }
+});
 
 $('#recherche-eleve').addEventListener('input', () => { choixRecherche = 0; majRecherche(); });
 $('#recherche-eleve').addEventListener('keydown', e => {

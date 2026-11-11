@@ -313,7 +313,7 @@ function htmlEntrainement(c) {
       <table class="grille grille-ent">
         <colgroup><col>${seances.map(s => `<col span="${s.indicateurs.length}" class="col-act${classeAct(s)}">`).join('')}${suivi ? '<col span="2">' : ''}</colgroup>
         <thead><tr>
-          <th class="col-nom" rowspan="2">Élève</th>
+          <th class="col-nom" rowspan="2">Élève${champRechercheGrille()}</th>
           ${seances.map(s => `
             <th class="col-eval${classeAct(s)}" data-seance-entete="${s.id}" colspan="${s.indicateurs.length}" title="Modifier la séance">
               ${s.ca ? `<span class="chip-ca ca-${s.ca}">${s.ca}</span>` : ''}

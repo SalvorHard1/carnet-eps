@@ -5,7 +5,7 @@
 const EXTENSIONS = [
   {
     nom: 'Passerelle',
-    texte: 'Prépare les notes et les appréciations du carnet pour École Directe, face aux bons élèves. C’est toi qui colles et qui enregistres.',
+    texte: 'Prépare les notes et les appréciations du carnet pour École Directe, face aux bons élèves, et propose des modèles de messages d’après l’objet. C’est toi qui colles, enregistres et envoies.',
     fichier: 'passerelle.zip',
     guide: 'guide-passerelle.pdf',
   },

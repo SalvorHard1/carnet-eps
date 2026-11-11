@@ -3310,6 +3310,7 @@ button > .ic-emoji.seule:only-child { width: 1.3em; height: 1.3em; }
 .bpp-eleves .case { display: flex; align-items: center; gap: 6px; }
 .bpp-signaux { display: flex; flex-wrap: wrap; gap: 3px; }
 .bpp-pil { display: inline-block; padding: 1px 7px; border-radius: calc(6px * var(--arrondi, 1)); font-size: 11px; font-weight: 600; background: var(--surface2); color: var(--texte2); }
+.bpp-detail { flex-basis: 100%; font-size: 12px; line-height: 1.35; color: var(--texte2); margin-top: 2px; } /* (ce que les séances ont montré, sous les pastilles) */
 .bpp-pil.bpp-alerte { background: #fde2e1; color: #9b1c1c; }
 .bpp-pil.bpp-attention { background: #fdf0d5; color: #8a5300; }
 .bpp-pil.bpp-ok { background: #dcefdc; color: #1e6a2c; }
@@ -3322,3 +3323,29 @@ button > .ic-emoji.seule:only-child { width: 1.3em; height: 1.3em; }
   :root:not([data-theme="light"]) .bpp-pil.bpp-ok { background: #1d3b24; color: #a8dcb3; }
 }
 .modale-bpp .bpp-annexe-choix { font-weight: 600; white-space: nowrap; }
+
+/* Recherche d'un élève dans la grille (sous « Élève », Notes et Leçons) */
+.grille thead .col-nom .cherche-grille { margin: 6px 0 4px; font-weight: 400; }
+.grille thead .col-nom .cherche-grille input {
+  width: 100%; box-sizing: border-box; min-height: 0; height: 28px; padding: 0 8px; font-size: 13px;
+  border: 1px solid var(--bord); border-radius: calc(8px * var(--arrondi, 1)); background: var(--surface); color: var(--texte);
+}
+.grille thead .col-nom .cherche-grille input.sans-resultat { border-color: var(--danger); }
+.grille thead .col-nom .cherche-grille-info { display: block; min-height: 15px; margin-top: 2px; font-size: 11px; color: var(--texte2); white-space: normal; }
+.grille tbody tr.cache-recherche { display: none; }
+
+/* Bilan pour le PP : roue des réglages (à droite du titre) et panneau des seuils, propres à la classe */
+.modale h2.titre-bpp { display: flex; align-items: center; gap: 10px; }
+.modale h2.titre-bpp .bpp-roue { margin-left: auto; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.modale h2.titre-bpp .bpp-roue.actif { background: var(--accent-doux); border-color: var(--accent); color: var(--accent-texte, var(--accent)); }
+.bpp-reglages { border: 1px solid var(--bord); border-radius: calc(12px * var(--arrondi, 1)); background: var(--surface2); padding: 12px 14px; margin: 0 0 14px; }
+.bpp-reglages[hidden] { display: none; }
+.bpp-reglages > p.aide { margin: 0 0 8px; }
+.bpp-reglages h4 { margin: 10px 0 6px; font-size: 14px; }
+.bpp-reglages-grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 14px; }
+.bpp-reglage { display: flex; flex-direction: column; gap: 3px; font-size: 13px; font-weight: 600; }
+.bpp-reglage .aide { font-weight: 400; font-size: 11.5px; }
+.bpp-reglage-champ { display: flex; align-items: center; gap: 6px; font-weight: 400; color: var(--texte2); }
+.bpp-reglage-champ input { width: 80px; min-height: 0; height: 34px; }
+.bpp-reglages-cases { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 10px; font-size: 13px; }
+.bpp-reglages > button { margin-top: 10px; }
