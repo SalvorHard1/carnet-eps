@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.36.2'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.38.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -3056,6 +3056,24 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.38.0', titre: 'Appréciations : des textes variés dans une même classe', points: [
+    'Le style <b>Liées</b> est maintenant proposé par défaut (EPS). Tu peux toujours choisir « Phrases » dans ✍ Appréciations › Réglages.',
+    'Les élèves d’une même classe se partagent les tournures : deux élèves au même profil (mêmes notes, mêmes compétences) n’ont plus la même appréciation, et une formule revient le moins souvent possible.',
+    'Banque enrichie : synonymes (capacités, qualités, aptitudes ; résultats, performances…), nouveaux débuts de phrase, objectifs et fins de phrase plus variés.',
+  ] },
+  { version: '1.37.1', titre: 'Appréciations : une rubrique décochée n’est plus jamais dite', points: [
+    'Dans ✍ Appréciations › Réglages, décocher une rubrique (progression, comportement, méthodologie…) la retire de toutes les appréciations de la classe, aussitôt. Avant, elle revenait quand le carnet y signalait une difficulté.',
+    'Le point de vigilance (⚠) reste pour les rubriques cochées : elles passent alors en priorité.',
+  ] },
+  { version: '1.37.0', titre: 'Appréciations : un nouveau style « Liées »', points: [
+    'Dans ✍ Appréciations › Réglages, le style <b>Liées</b> rédige des phrases reliées entre elles au lieu d’une phrase par rubrique : « Volontaire et appliquée, Léa s’appuie sur de bonnes capacités motrices pour progresser régulièrement. Qu’elle garde cette dynamique : bravo ! »',
+    'L’engagement et les résultats sont dits dans la même phrase ; les progrès, les rôles, le comportement ou les absences viennent ensuite avec un mot de liaison ; l’objectif et les félicitations sont rattachés à la fin. Le style « Phrases » reste disponible.',
+    'Il faut que le sexe de l’élève soit renseigné (accords) et que la motricité soit mentionnée ; sinon, l’appli écrit en style « Phrases ».',
+  ] },
+  { version: '1.36.4', titre: 'Passerelle te prévient de ses mises à jour', points: [
+    'L’extension <b>Passerelle</b> (version 0.17) t’indique quand le Carnet en contient une version plus récente, avec les 3 gestes pour la mettre à jour : télécharger, extraire au même endroit, cliquer sur <b>Recharger</b>. Plus besoin de la retirer puis de la remettre.',
+    'La fenêtre du bouton puzzle affiche le numéro de version et ces 3 gestes. Cette fois encore, remplace le dossier de l’extension.',
+  ] },
   { version: '1.36.2', titre: 'Passerelle : noms reconnus sur toutes les pages', points: [
     'L’extension <b>Passerelle</b> (version 0.16.1) reconnaît les élèves même quand École Directe <b>coupe le nom</b> (« Etien… »), ajoute la <b>classe ou le groupe</b> entre parenthèses, inverse nom et prénom, ou affiche un 2e prénom. Si deux élèves restent possibles, elle bloque toujours. Pense à remplacer le dossier de l’extension.',
   ] },

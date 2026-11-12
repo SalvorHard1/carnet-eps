@@ -21,6 +21,8 @@ const RUBRIQUES_APPR = {
 };
 const TONS_APPR = { bienveillant: 'Bienveillant', neutre: 'Neutre', exigeant: 'Exigeant' };
 const STYLES_APPR = { phrases: 'Phrases (« Léa s’investit… Elle… »)', telegraphique: 'Télégraphique (« Investissement sérieux. »)' };
+// Style « Liées » (phrases reliées, voir redigerLieesAppr) : EPS seulement (ses phrases parlent de capacités motrices).
+const stylesAppr = () => (profil().appreciations ? STYLES_APPR : { ...STYLES_APPR, liees: 'Liées (« Volontaire et appliquée, Léa s’appuie sur… »)' });
 const NOMS_NIV_APPR = { 0: 'non mentionné', 1: 'insuffisant', 2: 'fragile', 3: 'satisfaisant', 4: 'très bien' };
 const NOMS_NIV_PROG = { 0: 'non mentionnée', 1: 'en baisse', 2: 'stable', 3: 'en progrès', 4: 'nets progrès' };
 const idAppr = (eleveId, periode) => idSuivi(eleveId, 'appréciation ' + periode);
@@ -196,7 +198,7 @@ function reglageAppr() {
   r.ordre = [...new Set([...r.ordre.filter(k => connues.includes(k)), ...connues])];
   r.actives = r.actives.filter(k => connues.includes(k));
   if (!TONS_APPR[r.ton]) r.ton = 'bienveillant';
-  if (!STYLES_APPR[r.style]) r.style = 'phrases';
+  if (!stylesAppr()[r.style]) r.style = 'phrases';
   // (Anciens défauts, 400 puis 300 caractères : ils passent à 250, la limite d'École Directe ; une autre valeur choisie est gardée.)
   r.longueur = Math.max(80, Math.min(2000, +r.longueur === 400 || +r.longueur === 300 || !+r.longueur ? 250 : +r.longueur));
   return r;
@@ -206,7 +208,7 @@ function htmlReglageAppr(r) {
   return `
     <p class="aide">Coche les rubriques à aborder, et range-les dans l’ordre voulu (↑ ↓). Si la place manque,
       les dernières rubriques sont laissées de côté (l’objectif est gardé jusqu’au bout).
-      Si ce que tu as rempli (observations, mots-clés…) signale une difficulté, la rubrique passe en priorité (⚠), même décochée (ex. comportement) ; touche-la jusqu’à « non mentionné » pour l’écarter.</p>
+      Une rubrique décochée n’est jamais mentionnée. Si ce que tu as rempli (observations, mots-clés…) signale une difficulté dans une rubrique cochée, elle passe en priorité (⚠) ; touche-la jusqu’à « non mentionné » pour l’écarter.</p>
     <ol class="rubriques-appr">${r.ordre.map((k, i) => `<li>
       <label class="case"><input type="checkbox" name="appr-${k}" ${r.actives.includes(k) ? 'checked' : ''}>
         <b>${esc(rubriqueAppr(k).nom)}</b> <span class="aide">${esc(rubriqueAppr(k).aide)}</span></label>
@@ -221,7 +223,7 @@ function htmlReglageAppr(r) {
     ${htmlApprisAppr(r)}
     <div class="ligne">
       <label>Ton<select name="appr-ton">${Object.entries(TONS_APPR).map(([v, n]) => `<option value="${v}" ${r.ton === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-      <label>Style<select name="appr-style">${Object.entries(STYLES_APPR).map(([v, n]) => `<option value="${v}" ${r.style === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label>Style<select name="appr-style">${Object.entries(stylesAppr()).map(([v, n]) => `<option value="${v}" ${r.style === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="etroit">Longueur max.<input type="number" name="appr-longueur" min="80" max="2000" step="10" value="${r.longueur}"></label>
       <span class="aide">caractères (limite du bulletin)</span>
     </div>`;
@@ -343,6 +345,14 @@ function seancesPeriode(classeId, periode) {
 }
 
 // → { niveaux: {rubrique: 1..4 | null}, sources: {rubrique: texte}, defaut: {rubrique: true}, details: {...} }
+// Ids des élèves dans l'ordre alphabétique (nom, prénom, id) ; gardé pour chaque liste (appelé pour chaque élève).
+const ordresAlphaAppr = new WeakMap();
+function ordreAlphaAppr(eleves) {
+  if (!ordresAlphaAppr.has(eleves)) ordresAlphaAppr.set(eleves, [...eleves]
+    .sort((x, y) => `${x.nom} ${x.prenom}`.localeCompare(`${y.nom} ${y.prenom}`, 'fr') || String(x.id).localeCompare(String(y.id))).map(x => x.id));
+  return ordresAlphaAppr.get(eleves);
+}
+
 function analyserAppr(el, periode, eleves, sansAvant = false) {
   const c = Donnees.get('classes', el.classeId);
   const evals = evalsPeriode(el.classeId, periode), seances = seancesPeriode(el.classeId, periode);
@@ -594,7 +604,10 @@ function analyserAppr(el, periode, eleves, sansAvant = false) {
 
   // École : place de l'élève dans la liste de la classe (les élèves se partagent les tournures, voir redigerAppr),
   // et ce que disait la période précédente (lien entre les périodes : niveaux des rubriques, matière fragile).
-  details.rang = profilAppr.textesDifferents && Array.isArray(eleves) ? eleves.findIndex(x => x.id === el.id) : -1;
+  // Ailleurs (depuis la v1.38.0), même partage, d'après l'ordre alphabétique de la classe : il ne dépend pas de la liste
+  // transmise (fenêtre, fiche, bilan PP…), donc chaque élève garde la même proposition partout.
+  details.rang = !Array.isArray(eleves) ? -1 : profilAppr.textesDifferents ? eleves.findIndex(x => x.id === el.id)
+    : ordreAlphaAppr(eleves).indexOf(el.id);
   if (profilAppr.liens && !sansAvant && periode !== 'annee') {
     const ps = periodesAnnee(), kp = ps.findIndex(p => p.id === periode);
     if (kp > 0) {
@@ -688,12 +701,16 @@ const STABLE_BON_APPR = { p: ['{S} maintient son bon niveau.', 'Les résultats r
 
 // (Le bilan ouvre l'appréciation : il commence par le prénom.)
 const BILANS_APPR = {
-  periode: { 4: ['{S} réalise un excellent {per}.', '{S} réalise un très bon {per}.'], 3: ['{S} réalise un bon {per}.', '{S} réalise un {per} satisfaisant.', '{S} réalise un {per} d’un bon niveau.'],
-    2: { b: ['{S} réalise un {per} encourageant, mais encore inégal.', '{S} réalise un {per} encourageant, à confirmer.', '{S} réalise un {per} en demi-teinte, avec des points encourageants.'], n: ['{S} réalise un {per} inégal.', '{S} réalise un {per} moyen.'], x: ['{S} réalise un {per} trop juste.', '{S} réalise un {per} en dessous de ses possibilités.'] },
-    1: { b: ['{S} traverse un {per} difficile.'], n: ['{S} traverse un {per} difficile.', '{S} réalise un {per} décevant.'], x: ['{S} réalise un {per} très insuffisant.', '{S} réalise un {per} nettement insuffisant.', '{S} réalise un {per} préoccupant.'] } },
-  annee: { 4: ['{S} réalise une excellente année.', '{S} réalise une très bonne année.'], 3: ['{S} réalise une bonne année.', '{S} réalise une année satisfaisante.', '{S} réalise une année d’un bon niveau.'],
-    2: { b: ['{S} réalise une année encourageante, mais inégale.', '{S} réalise une année encourageante, qui reste à confirmer.', '{S} réalise une année en demi-teinte, avec des points encourageants.'], n: ['{S} réalise une année mitigée.'], x: ['{S} réalise une année trop juste.', '{S} réalise une année en dessous de ses possibilités.'] },
-    1: { b: ['{S} traverse une année difficile.'], n: ['{S} traverse une année difficile.'], x: ['{S} réalise une année très insuffisante.', '{S} réalise une année nettement insuffisante.', '{S} réalise une année préoccupante.'] } },
+  periode: { 4: ['{S} réalise un excellent {per}.', '{S} réalise un très bon {per}.', '{S} signe un excellent {per}.', '{S} réussit pleinement son {per}.', '{S} livre un {per} remarquable.', '{S} accomplit un très bon {per}.'],
+    3: ['{S} réalise un bon {per}.', '{S} réalise un {per} satisfaisant.', '{S} réalise un {per} d’un bon niveau.', '{S} signe un bon {per}.', '{S} réussit son {per}.', '{S} dresse un bilan positif de ce {per}.', '{S} mène un {per} sérieux et réussi.'],
+    2: { b: ['{S} réalise un {per} encourageant, mais encore inégal.', '{S} réalise un {per} encourageant, à confirmer.', '{S} réalise un {per} en demi-teinte, avec des points encourageants.', '{S} signe un {per} contrasté, avec de réels points d’appui.', '{S} connaît un {per} inégal, mais prometteur.'],
+      n: ['{S} réalise un {per} inégal.', '{S} réalise un {per} moyen.', '{S} signe un {per} en demi-teinte.', '{S} connaît un {per} irrégulier.'], x: ['{S} réalise un {per} trop juste.', '{S} réalise un {per} en dessous de ses possibilités.', '{S} signe un {per} insuffisant au regard de ses moyens.'] },
+    1: { b: ['{S} traverse un {per} difficile.', '{S} connaît un {per} compliqué.', '{S} vit un {per} difficile.'], n: ['{S} traverse un {per} difficile.', '{S} réalise un {per} décevant.', '{S} connaît un {per} difficile.'], x: ['{S} réalise un {per} très insuffisant.', '{S} réalise un {per} nettement insuffisant.', '{S} réalise un {per} préoccupant.'] } },
+  annee: { 4: ['{S} réalise une excellente année.', '{S} réalise une très bonne année.', '{S} signe une excellente année.', '{S} réussit pleinement son année.', '{S} livre une année remarquable.'],
+    3: ['{S} réalise une bonne année.', '{S} réalise une année satisfaisante.', '{S} réalise une année d’un bon niveau.', '{S} signe une bonne année.', '{S} réussit son année.', '{S} mène une année sérieuse et réussie.'],
+    2: { b: ['{S} réalise une année encourageante, mais inégale.', '{S} réalise une année encourageante, qui reste à confirmer.', '{S} réalise une année en demi-teinte, avec des points encourageants.', '{S} signe une année contrastée, avec de réels points d’appui.'],
+      n: ['{S} réalise une année mitigée.', '{S} signe une année en demi-teinte.', '{S} connaît une année irrégulière.'], x: ['{S} réalise une année trop juste.', '{S} réalise une année en dessous de ses possibilités.', '{S} signe une année insuffisante au regard de ses moyens.'] },
+    1: { b: ['{S} traverse une année difficile.', '{S} connaît une année compliquée.'], n: ['{S} traverse une année difficile.', '{S} connaît une année décevante.'], x: ['{S} réalise une année très insuffisante.', '{S} réalise une année nettement insuffisante.', '{S} réalise une année préoccupante.'] } },
 };
 // Bilan d'ensemble correct d'un élève en retrait par rapport à sa classe (jamais « satisfaisant » sans nuance),
 // ou bon bilan d'un élève parmi les meilleurs de la classe (voir positionClasse).
@@ -712,16 +729,22 @@ const RETRAIT_DIT_APPR = { p: ['{S} obtient des résultats honorables{apsa}.', '
 // Objectifs (verbe à l'infinitif) : un axe de progrès général, selon la rubrique la plus faible
 // (pas une compétence précise : « maintenir ses efforts », « fournir davantage de travail pour consolider ses acquis »…).
 const OBJECTIFS_APPR = {
-  attitude: ['s’investir plus régulièrement', 'fournir davantage d’efforts en cours', 'trouver davantage d’envie et d’engagement', 'se montrer plus volontaire'],
-  absences: ['gagner en assiduité', 'venir en cours plus régulièrement'],
-  comportement: ['continuer ses efforts vis-à-vis de son comportement', 'mieux respecter les consignes et les camarades', 'adopter une attitude plus constructive en cours'],
-  methodo: ['s’impliquer davantage dans les rôles (arbitre, juge, observateur)', 'gagner en rigueur et en méthode', 'mieux s’organiser dans le travail de groupe'],
+  attitude: ['s’investir plus régulièrement', 'fournir davantage d’efforts en cours', 'trouver davantage d’envie et d’engagement', 'se montrer plus volontaire',
+    's’impliquer pleinement dans chaque séance', 'montrer plus d’envie en cours', 's’engager avec constance'],
+  absences: ['gagner en assiduité', 'venir en cours plus régulièrement', 'ne manquer aucune séance'],
+  comportement: ['continuer ses efforts vis-à-vis de son comportement', 'mieux respecter les consignes et les camarades', 'adopter une attitude plus constructive en cours',
+    'travailler dans le calme et le respect des autres', 'se concentrer davantage en cours'],
+  methodo: ['s’impliquer davantage dans les rôles (arbitre, juge, observateur)', 'gagner en rigueur et en méthode', 'mieux s’organiser dans le travail de groupe',
+    'tenir les rôles confiés avec plus de sérieux', 'mieux organiser son travail'],
   securite: ['respecter et faire respecter les règles de sécurité'],
-  moteur: ['persévérer pour améliorer ses performances', 'fournir davantage de travail pour progresser', 'gagner en efficacité par un entraînement régulier', 'chercher à se dépasser dans les activités'],
-  competences: ['fournir davantage de travail pour consolider ses acquis', 'consolider ses acquis par un travail régulier', 'mieux fixer ses apprentissages', 'approfondir les savoir-faire travaillés'],
-  progression: ['se remobiliser pour retrouver son meilleur niveau', 'maintenir ses efforts pour retrouver de la régularité', 'se remobiliser dans la durée'],
-  regularite: ['retrouver de la régularité dans ses résultats', 'maintenir ses efforts dans la durée'],
-  haut: ['maintenir ses efforts', 'conserver cette belle dynamique', 'viser l’excellence', 'garder ce niveau d’investissement'],
+  moteur: ['persévérer pour améliorer ses performances', 'fournir davantage de travail pour progresser', 'gagner en efficacité par un entraînement régulier', 'chercher à se dépasser dans les activités',
+    'travailler avec plus d’intensité', 'oser davantage dans les activités', 's’entraîner avec régularité'],
+  competences: ['fournir davantage de travail pour consolider ses acquis', 'consolider ses acquis par un travail régulier', 'mieux fixer ses apprentissages', 'approfondir les savoir-faire travaillés',
+    'réinvestir les conseils donnés en cours', 'mieux mémoriser les savoir-faire'],
+  progression: ['se remobiliser pour retrouver son meilleur niveau', 'maintenir ses efforts pour retrouver de la régularité', 'se remobiliser dans la durée',
+    'retrouver son niveau habituel'],
+  regularite: ['retrouver de la régularité dans ses résultats', 'maintenir ses efforts dans la durée', 'gagner en constance'],
+  haut: ['maintenir ses efforts', 'conserver cette belle dynamique', 'viser l’excellence', 'garder ce niveau d’investissement', 'continuer sur cette lancée', 'garder cette exigence'],
 };
 
 // Petit hasard reproductible : la même graine donne toujours la même formulation.
@@ -783,8 +806,10 @@ function objectifAppr(niv, a, actives) {
   // (Une progression « stable » n'est pas une faiblesse ; des résultats corrects mais en retrait par rapport à la classe, si.)
   const poids = k => (k === 'progression' && niv[k] === 2 ? 3 : k === 'moteur' && niv[k] === 3 && a.details.position?.cle === 'retrait' ? 2.5 : niv[k]);
   const pire = notes.length ? Math.min(...notes.map(poids)) : 3;
-  if (pire >= 3 && !(a.details.absences >= 3)) return { cle: 'haut' };
-  if (a.details.absences >= 3 && (niv.attitude || 3) <= 2) return { cle: 'absences' };
+  // (Absences : seulement si l'attitude est abordée.)
+  const absences = a.details.absences >= 3 && actives.includes('attitude');
+  if (pire >= 3 && !absences) return { cle: 'haut' };
+  if (absences && (niv.attitude || 3) <= 2) return { cle: 'absences' };
   const k = notes.find(x => poids(x) === pire) || 'competences';
   // Seule la progression faiblit, chez un élève par ailleurs solide : on parle de régularité.
   if (k === 'progression' && notes.filter(x => x !== 'progression').every(x => niv[x] >= 3)) return { cle: 'regularite' };
@@ -805,25 +830,25 @@ function difficulteSaisieAppr(a, k) {
   return a.niveaux[k] <= (k === 'progression' ? 1 : 2);
 }
 
-// Rubriques abordées : celles cochées dans les réglages, plus les rubriques décochées où le carnet signale une difficulté
-// (point de vigilance : ex. observation « bavarde, insolent » → comportement). 0 choisi à la main = ne pas en parler.
+// Rubriques abordées : celles cochées dans les réglages, et elles seules (une rubrique décochée n'est jamais dite, même
+// si le carnet y signale une difficulté : choix de l'enseignant). 0 choisi à la main = ne pas en parler.
 function rubriquesAppr(r, a, perso = {}) {
   perso ||= {};
   return r.ordre.filter(k => {
-    if (!r.actives.includes(k) && !difficulteSaisieAppr(a, k)) return false;
+    if (!r.actives.includes(k)) return false;
     return k === 'objectif' || !(k in perso) || !!perso[k];
   });
 }
 
-// Points de vigilance : rubriques abordées où le carnet signale une difficulté (en priorité dans le texte et l'objectif).
+// Points de vigilance : rubriques cochées où le carnet signale une difficulté (en priorité dans le texte et l'objectif).
 function vigilanceAppr(r, a, perso = {}) {
   return new Set(rubriquesAppr(r, a, perso).filter(k => difficulteSaisieAppr(a, k)));
 }
 
-// Niveaux choisis à la main encore utiles : ceux d'une rubrique décochée dont la difficulté a disparu
-// (observation supprimée) sont oubliés.
+// Niveaux choisis à la main encore utiles : ceux des rubriques cochées (gardés dans le carnet : ils reviennent si
+// la rubrique est recochée).
 function persoUtileAppr(r, a, perso) {
-  return Object.fromEntries(Object.entries(perso || {}).filter(([k]) => r.actives.includes(k) || difficulteSaisieAppr(a, k)));
+  return Object.fromEntries(Object.entries(perso || {}).filter(([k]) => r.actives.includes(k)));
 }
 
 /* ---------- Relecture (faite par l'appli, sur l'appareil, sans internet) ----------
@@ -995,6 +1020,11 @@ const htmlRelectureAppr = (texte, el, autres, manuel) => {
 };
 
 function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
+  // Style « Liées » : rédigé à part ; sans il / elle connu (accords impossibles) ou sans résultats, style « Phrases ».
+  if (r.style === 'liees') {
+    if (stylesAppr().liees) { const t = redigerLieesAppr(el, periode, a, niveauxPerso, r, graine); if (t) return t; }
+    r = { ...r, style: 'phrases' };
+  }
   niveauxPerso = persoUtileAppr(r, a, niveauxPerso);
   const niv = { ...a.niveaux };
   for (const [k, v] of Object.entries(niveauxPerso)) niv[k] = v || null; // 0 = ne pas en parler
@@ -1140,7 +1170,8 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
       const varie = dejaNomme && dernierPronom ? tout.filter(x => !x.startsWith('{S}')) : [];
       const liste = premiere.length ? premiere : sansSujet.length ? sansSujet : varie.length ? varie : tout;
       const min = Math.min(...liste.map(x => x.length));
-      const choix = court ? tirer(liste.filter(x => x.length <= min + marge), graine) : tirer(liste, graine);
+      // (court = 1 : parmi les phrases à 15 caractères près de la plus courte, partagées dans la classe ; court = 2 (ou true) : les plus courtes.)
+      const choix = court ? tirer(liste.filter(x => x.length <= min + (court === 1 ? Math.max(marge, 15) : marge)), graine) : tirer(liste, graine);
       const enPronom = dejaNomme && sexe && choix.startsWith('{S}');
       if (enPronom && dernierPronom) { rappelPrenom = true; dernierPronom = false; } // (pas d'autre tournure : on redit le prénom)
       else dernierPronom = enPronom;
@@ -1256,7 +1287,8 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
       const buts = att ? att.buts : objectifsAppr()[o.cle];
       // (Sans répéter un mot déjà écrit : « Pour progresser, il faudra fournir davantage de travail pour progresser ».)
       const butsOk = moinsDeRepetitions(buts);
-      const but = o.texte || (court ? butsOk.reduce((x, y) => (y.length < x.length ? y : x)) : tirer(butsOk, g('but')));
+      const lmBut = Math.min(...butsOk.map(x => x.length));
+      const but = o.texte || (court === 1 ? tirer(butsOk.filter(x => x.length <= lmBut + 15), g('but')) : court ? butsOk.reduce((x, y) => (y.length < x.length ? y : x)) : tirer(butsOk, g('but')));
       // (Plusieurs tournures, dont certaines adressées à l'élève : « Je te conseille… », « Afin de progresser, consolide… ».)
       const modeles = tele ? (o.cle === 'haut' ? ['Objectif : {but}.', 'Pour la suite : {but}.'] : ['Objectif : {but}.', 'À travailler : {but}.', 'Pour la suite : {but}.', 'Axe de progrès : {but}.'])
         : o.cle === 'haut' ? (ton === 'bienveillant' ? ['Bravo ! Il faut maintenant {but}.', 'Bravo, il faut {but} !', 'Bravo ! {Suite}, {imp}.', 'Bravo ! Je te conseille maintenant {deTu}.']
@@ -1335,6 +1367,7 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   let morceaux = construire(false);
   const retirees = [];
   const longueur = () => finir(morceaux).length;
+  if (longueur() > r.longueur) morceaux = construire(1);
   if (longueur() > r.longueur) morceaux = construire(true);
   // Le moins important d'abord (à importance égale, le plus loin dans l'ordre ; entre points de vigilance, la difficulté
   // la moins grave, et le comportement en dernier : il vient des observations écrites par l'enseignant) ;
@@ -1376,6 +1409,376 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   // (École : remplacements appris des corrections de l'enseignant, faits sur le texte final ; texteBrut : sans eux, la
   // base gardée quand l'enseignant réécrit, pour que la comparaison montre toujours ses remplacements.)
   return { texte: appliquerApprisAppr(meilleur.texte, r, el.id), texteBrut: meilleur.texte, niveaux: niv, retirees: meilleur.retirees };
+}
+
+/* ---------- Style « Liées » (EPS) ----------
+   Au lieu d'une phrase par rubrique (rythme haché), deux ou trois phrases reliées :
+    1. une phrase qui relie l'engagement et les résultats (« Volontaire et appliquée, Léa s’appuie sur de bonnes
+       capacités motrices pour progresser régulièrement. ») ;
+    2. au plus deux compléments, introduits par une liaison (progrès, rôles, comportement, absences, place dans la classe) ;
+    3. une fin qui rattache l'objectif ou les félicitations (« Qu’elle garde cette dynamique : bravo ! »).
+   Modèles : {P} prénom, {Il} / {il} il ou elle, {masculin|féminin}, {Adj} / {adj} portrait d'engagement, {capa}
+   (« de bonnes capacités motrices »), {res} (« de bons résultats »), {trav}, {eng}, {irreg}, {justes}, {apsa}, {ce}
+   (« ce trimestre »), {duPer} (« du trimestre »), {suite} / {Suite} (« au prochain trimestre »), {but} (objectif à
+   l'infinitif), {deBut} (« de » / « d’ » + objectif). Une liste peut dépendre du ton : { b, n, x }. */
+const LIEES_APPR = {
+  // Portrait d'engagement (attitude 3 ou 4), en tête de phrase.
+  adj: {
+    4: ['{très sérieux|très sérieuse} et volontaire', '{pleinement investi|pleinement investie}', '{consciencieux|consciencieuse} et {rigoureux|rigoureuse}',
+      '{pertinent|pertinente} et {rigoureux|rigoureuse}', '{appliqué|appliquée} et toujours volontaire', '{engagé|engagée} et {exigeant|exigeante} envers {lui-même|elle-même}',
+      '{motivé|motivée} et {rigoureux|rigoureuse}', '{remarquablement investi|remarquablement investie}', '{investi|investie} et {exemplaire|exemplaire}',
+      '{assidu|assidue} et {exigeant|exigeante}', '{impliqué|impliquée} et {déterminé|déterminée}'],
+    3: ['{sérieux|sérieuse} et {appliqué|appliquée}', 'volontaire et {appliqué|appliquée}', '{investi|investie} et {sérieux|sérieuse}', '{sérieux|sérieuse} et volontaire',
+      '{appliqué|appliquée} et {engagé|engagée}', '{consciencieux|consciencieuse} et volontaire', '{motivé|motivée} et {sérieux|sérieuse}', '{impliqué|impliquée} et volontaire',
+      '{assidu|assidue} et {appliqué|appliquée}', '{attentif|attentive} et {investi|investie}', '{régulier|régulière} dans ses efforts'],
+  },
+  capa: { 4: ['d’excellentes capacités motrices', 'de très bonnes capacités motrices', 'de très bonnes qualités physiques', 'd’excellentes aptitudes physiques', 'de remarquables qualités motrices'],
+    3: ['de bonnes capacités motrices', 'de réelles capacités motrices', 'de bonnes qualités motrices', 'de solides aptitudes physiques', 'de belles qualités physiques'] },
+  res: { 4: ['d’excellents résultats', 'de très bons résultats', 'des résultats remarquables', 'des performances de très bon niveau'],
+    3: ['de bons résultats', 'des résultats solides', 'des résultats satisfaisants', 'de bonnes performances'] },
+  capaDe: { 4: ['de ses excellentes capacités motrices', 'de ses très bonnes qualités physiques', 'de ses excellentes aptitudes physiques'],
+    3: ['de ses bonnes capacités motrices', 'de ses réelles qualités motrices', 'de ses solides aptitudes physiques'] },
+  // ([période, année] ; {per} : trimestre ou semestre.)
+  unBon: { 4: [['un excellent {per}', 'un très bon {per}'], ['une excellente année', 'une très bonne année']],
+    3: [['un bon {per}', 'un {per} réussi'], ['une bonne année', 'une année réussie']] },
+  justesSans: { 2: ['perfectibles', 'fragiles', 'justes'], 1: ['fragiles', 'modestes'] },
+  trav: { 4: ['rigoureux et toujours pertinent', 'exigeant et pertinent', 'très rigoureux', 'précis et exigeant'], 3: ['sérieux et régulier', 'appliqué et régulier', 'sérieux', 'consciencieux', 'soigné et régulier'] },
+  eng: { 4: ['sans faille', 'exemplaire', 'remarquable', 'de tous les instants'], 3: ['sérieux', 'régulier', 'constant', 'soutenu', 'assidu'] },
+  irreg: { 2: { b: ['encore irrégulier', 'irrégulier', 'trop inégal', 'en dents de scie'], n: ['irrégulier', 'inégal', 'en dents de scie'], x: ['trop irrégulier', 'insuffisant', 'bien trop inégal'] },
+    1: { b: ['encore trop timide', 'encore hésitant', 'trop discret'], n: ['trop faible', 'insuffisant', 'très limité'], x: ['nettement insuffisant', 'bien trop faible', 'quasi inexistant'] } },
+  justes: { 2: { b: ['encore perfectibles', 'encore justes', 'perfectibles', 'fragiles', 'en demi-teinte'], n: ['encore justes', 'moyens', 'justes', 'modestes'], x: ['insuffisants', 'trop justes', 'en deçà des attentes'] },
+    1: { b: ['encore fragiles', 'encore modestes'], n: ['faibles', 'fragiles'], x: ['très insuffisants'] },
+    // (Résultats corrects mais sous la moyenne de la classe.)
+    retrait: ['un peu en retrait par rapport à la classe'] },
+  // Phrase principale, selon l'engagement (A) et les résultats (M) : + (3 ou 4) ou − (1 ou 2).
+  principale: {
+    'A+M+': ['{Adj}, {P} s’appuie sur {capa}{apsa} pour progresser régulièrement.',
+      '{P} allie {capa}{apsa} à un travail {trav}, si bien qu’{il} réussit dans les activités proposées.',
+      '{Adj}, {P} met en valeur {capa}{apsa}, ce qui lui permet d’obtenir {res}.',
+      'Grâce à un engagement {eng} et à {capa}, {P} obtient {res}{apsa}.',
+      '{Adj}, {P} exploite pleinement {capa}{apsa}, si bien qu’{il} réussit dans chacune des activités.',
+      '{P} fait preuve d’un engagement {eng} qui, ajouté à {capa}, lui permet d’obtenir {res}{apsa}.',
+      '{Adj} tout au long {duPer}, {P} a su mettre en valeur {capa}{apsa}.',
+      '{Adj}, {P} réussit dans les activités proposées{apsa}, {porté|portée} par {capa}.',
+      'Toujours {adj}, {P} obtient {res}{apsa}, fruit d’un travail {trav}.',
+      '{Adj}, {P} réalise {unBon}{apsa}, grâce à {capa}.',
+      'Par son engagement {eng}, {P} tire le meilleur parti {capaDe}{apsa}, si bien qu’{il} réalise {unBon}.',
+      'Avec {capa} et un travail {trav}, {P} obtient {res}{apsa}.',
+      '{Adj}, {P} se distingue{apsa} par {capa} et un travail {trav}.',
+      '{P} obtient {res}{apsa}, grâce à {capa} et à un engagement {eng}.',
+      '{Adj}, {P} confirme {capa}{apsa} et obtient {res}.'],
+    'A+M-': ['Même si les résultats{apsa} restent {justes}, {P} s’investit avec sérieux, ce qui est un réel atout pour progresser.',
+      '{Adj}, {P} progresse à son rythme{apsa}, même si les résultats restent {justes}.',
+      '{P} fournit un travail {trav}, ce qui lui permettra de consolider des résultats{apsa} qui restent {justes}.',
+      '{Adj}, {P} ne ménage pas ses efforts, même si les résultats{apsa} restent {justes}.',
+      '{Adj}, {P} fait de son mieux{apsa} : même si les résultats restent {justes}, cet état d’esprit lui permettra de progresser.',
+      'Les résultats de {P}{apsa} restent {justes}, mais son engagement {eng} est un réel atout pour progresser.',
+      'Grâce à un engagement {eng}, {P} avance à son rythme{apsa}, même si les résultats restent {justes}.',
+      'Toujours {adj}, {P} fournit les efforts attendus, même si les résultats{apsa} restent {justes}.',
+      '{P} se montre {adj} : cet engagement l’aidera à améliorer des résultats{apsa} qui restent {justes}.',
+      '{P} aborde chaque activité avec sérieux ; cette attitude lui permettra d’améliorer des résultats{apsa} encore {justesSans}.',
+      '{Adj}, {P} s’investit pleinement{apsa}, ce qui lui permettra de consolider des résultats qui restent {justes}.',
+      '{Adj}, {P} ne se décourage jamais, même si les résultats{apsa} restent {justes}.',
+      '{P} fait preuve d’un engagement {eng}{apsa}, qui l’aidera à améliorer des résultats encore {justesSans}.',
+      'Par son attitude {adj}, {P} se donne les moyens de progresser{apsa}, même si les résultats restent {justes}.'],
+    'A+M1': ['Toujours volontaire, {P} ne ménage pas ses efforts malgré des difficultés réelles{apsa}, ce qui lui permet de progresser à son rythme.',
+      'Malgré des difficultés{apsa}, {P} reste {investi|investie} et {sérieux|sérieuse}, un état d’esprit qui lui permettra de progresser.',
+      '{Adj}, {P} affronte avec courage des difficultés réelles{apsa}, ce qui est un réel atout pour progresser.'],
+    'A-M+': { b: ['{Doté|Dotée} {capa}{apsa}, {P} gagnerait à s’investir plus régulièrement pour les exploiter pleinement.',
+      '{P} possède {capa}{apsa}, qu’un engagement plus constant lui permettrait de mieux exploiter.',
+      '{P} dispose {capa}{apsa}, mais un engagement {irreg} l’empêche d’en tirer pleinement parti.',
+      'Grâce à {capa}, {P} a les moyens de réussir{apsa}, à condition de s’investir plus régulièrement.',
+      'Avec {capa}{apsa}, {P} pourrait viser haut en s’engageant pleinement.',
+      '{P} a du potentiel{apsa}, mais doit s’investir plus régulièrement pour l’exprimer pleinement.'],
+    n: ['Grâce à {capa}, {P} a les moyens de réussir{apsa}, à condition de s’investir plus régulièrement.','{P} dispose {capa}{apsa}, mais un engagement {irreg} l’empêche d’en tirer pleinement parti.',
+      '{Doté|Dotée} {capa}{apsa}, {P} gagnerait à s’investir plus régulièrement pour les exploiter pleinement.',
+      'Avec {capa}{apsa}, {P} pourrait viser haut en s’engageant pleinement.', '{P} a du potentiel{apsa}, que son engagement {irreg} ne permet pas d’exprimer.'],
+    x: ['{P} se repose trop sur {capa}{apsa} : un engagement {irreg} limite ses résultats.',
+      '{P} dispose {capa}{apsa}, mais un engagement {irreg} l’empêche d’en tirer parti.',
+      'Malgré {capa}{apsa}, {P} reste en deçà de ses moyens, faute d’un engagement suffisant.', '{P} ne tire pas parti {capaDe}{apsa}, son engagement restant {irreg}.'] },
+    'A-M-': { b: ['Avec un engagement {irreg}, {P} peine à progresser{apsa}, alors qu’{il} en a les moyens.',
+      '{P} rencontre des difficultés{apsa}, qu’un engagement plus régulier l’aiderait à surmonter.',
+      '{P} obtient des résultats {justes}{apsa}, car son engagement reste {irreg} : {il} a pourtant les moyens de mieux faire.',
+      'Malgré des résultats {justes}{apsa}, {P} a les moyens de progresser, à condition de s’engager davantage en cours.',
+      'Malgré des difficultés{apsa}, {P} peut progresser, à condition de s’investir avec plus de régularité.',
+      'Les résultats de {P}{apsa} restent {justes} : un engagement plus soutenu l’aiderait à franchir un cap.',
+      '{P} dispose de réelles marges de progrès{apsa}, qu’un investissement plus régulier permettrait d’exploiter.',
+      '{P} connaît des difficultés{apsa}, mais peut redresser la barre en s’engageant davantage.',
+      // (Courtes : quand la place manque.)
+      '{P} peut mieux faire{apsa} en s’investissant davantage.', 'Les résultats de {P}{apsa} restent {justes}, faute de régularité.',
+      'Un engagement plus régulier aiderait {P} à progresser{apsa}.', '{P} a des marges de progrès{apsa}, à condition de s’impliquer.',
+      '{P} doit gagner en régularité pour progresser{apsa}.', 'Plus d’engagement permettrait à {P} de progresser{apsa}.', '{P} a les moyens de mieux faire{apsa}.',
+      'Avec plus d’implication, {P} pourrait progresser{apsa}.'],
+    n: ['{P} obtient des résultats {justes}{apsa}, en lien avec un engagement {irreg}.', '{P} peine à progresser{apsa}, faute d’un engagement suffisant.',
+      'Les difficultés de {P}{apsa} tiennent en partie à un engagement {irreg}.', 'Avec un engagement {irreg}, {P} obtient des résultats {justes}{apsa}.',
+      'Le manque de régularité dans l’engagement de {P} pèse sur ses résultats{apsa}.', '{P} reste en difficulté{apsa}, son investissement étant {irreg}.',
+      'Le travail de {P}{apsa} manque de régularité.', '{P} doit s’investir davantage{apsa}.', 'Les résultats de {P}{apsa} restent {justes}.',
+      '{P} peine à progresser{apsa}.', '{P} manque de régularité dans son travail{apsa}.'],
+    x: ['Les résultats de {P}{apsa} sont {justes}, à l’image d’un engagement {irreg}.',
+      '{P} obtient des résultats {justes}{apsa}, faute d’un engagement suffisant en cours.',
+      'Faute d’un engagement suffisant, {P} obtient des résultats {justes}{apsa}.', 'Les résultats de {P}{apsa} restent {justes}, son engagement étant {irreg}.',
+      '{P} ne s’investit pas assez{apsa}.', 'Le travail de {P}{apsa} reste insuffisant.', '{P} doit fournir bien plus d’efforts{apsa}.',
+      '{P} ne fournit pas les efforts attendus{apsa}.', 'L’engagement de {P}{apsa} est insuffisant.'] },
+    // Engagement non mentionné : les résultats seuls.
+    'M+': ['{P} dispose {capa}{apsa}, ce qui lui permet d’obtenir {res}.', '{P} met en valeur {capa}{apsa}, si bien qu’{il} réussit dans les activités proposées.',
+      'Grâce à {capa}, {P} obtient {res}{apsa}.', '{P} se distingue par {capa}{apsa}, qui lui permettent d’obtenir {res}.'],
+    'M-': { b: ['{P} obtient des résultats {justes}{apsa}, qui ne demandent qu’à s’améliorer.', 'Malgré des résultats {justes}{apsa}, {P} a les moyens de progresser.', 'Les résultats de {P}{apsa} restent {justes}, mais une marge de progrès existe.'],
+      n: ['{P} obtient des résultats {justes}{apsa}.', 'Les résultats de {P}{apsa} restent {justes}.'],
+      x: ['{P} obtient des résultats {justes}{apsa}.', 'Les résultats de {P}{apsa} sont {justes}.'] },
+  },
+  // Compléments : une proposition précédée d'une liaison, prise dans « meme » quand elle va dans le sens de la phrase
+  // principale, dans « contre » sinon. (Deux liaisons hors des familles de LIAISONS_APPR, « d’ailleurs », « qui plus
+  // est », « pour autant », pour que deux compléments ne répètent jamais une liaison de même sens.)
+  // (« D’ailleurs » appuie un point fort ; pour une difficulté de plus, « De plus », « En outre », « Qui plus est ».)
+  liens: { meme: ['De plus', 'En outre', 'D’ailleurs', 'Qui plus est', 'D’autre part'], memeNeg: ['De plus', 'En outre', 'Qui plus est', 'D’autre part'],
+    contre: ['Toutefois', 'Néanmoins', 'Cependant', 'Pour autant', 'Cela dit'] },
+  complements: {
+    progression: {
+      4: ['{il} a nettement progressé {ce}', 'ses progrès sont remarquables {ce}', '{il} a fait de nets progrès {ce}'],
+      3: ['{il} est en progrès {ce}', 'ses progrès sont réguliers et encourageants', '{il} progresse régulièrement'],
+      1: { b: ['{il} s’est {montré|montrée} moins {régulier|régulière} {ce}, d’où des résultats en baisse', 'le niveau a baissé {ce}, ce qui appelle un sursaut',
+        'les résultats ont fléchi {ce}', 'un léger recul est visible {ce}', '{il} a perdu un peu de régularité {ce}'],
+        n: ['les résultats sont en baisse {ce}', 'le niveau a baissé {ce}', 'les résultats ont reculé {ce}', 'un recul est visible {ce}'],
+        x: ['les résultats sont en net recul {ce}', 'le niveau est en net recul {ce}', 'les résultats ont nettement baissé {ce}'] },
+    },
+    methodo: {
+      4: ['son sérieux dans les rôles confiés (arbitre, juge, observateur) est un réel atout pour le groupe', 'sa méthode de travail est un réel atout', '{il} assume avec beaucoup de sérieux les rôles confiés'],
+      2: ['{il} doit gagner en rigueur dans les rôles et l’organisation', 'la tenue des rôles (arbitre, juge, observateur) reste à améliorer', 'la tenue des rôles reste fragile',
+        '{il} doit gagner en rigueur dans les rôles', 'les rôles confiés demandent plus de rigueur', 'son organisation reste à consolider'],
+      1: ['les rôles confiés (arbitre, juge, observateur) sont peu assumés', '{il} peine à s’organiser et à tenir les rôles confiés', 'les rôles confiés sont peu assumés'],
+    },
+    comportement: {
+      4: ['son comportement, respectueux de tous, est exemplaire', 'son comportement est exemplaire envers chacun'],
+      2: ['son attitude en cours, parfois dissipée, freine ses progrès', 'le respect des consignes doit s’améliorer', 'son attitude est parfois dissipée'],
+      1: { b: ['le respect des règles et des camarades doit devenir une priorité', 'son comportement doit s’améliorer pour progresser sereinement', 'son comportement doit s’améliorer'],
+        n: ['son comportement, qui nuit au travail de la classe, doit changer rapidement', 'son comportement pose problème et doit changer rapidement', 'son comportement pose problème'],
+        x: ['son comportement, inacceptable, nuit au travail de la classe', 'son comportement est inacceptable et perturbe le groupe', 'son comportement est inacceptable'] },
+    },
+    competences: {
+      4: ['les compétences travaillées sont très bien maîtrisées', 'la maîtrise des compétences travaillées est excellente'],
+      2: ['la maîtrise des compétences travaillées reste fragile', 'les compétences travaillées restent à consolider'],
+      1: ['les compétences travaillées ne sont pas encore acquises'],
+    },
+    absences: ['de nombreuses absences freinent ses progrès', 'des absences fréquentes nuisent à son travail', 'ses absences répétées pèsent sur ses résultats'],
+    // (Sans liaison : phrase complète.)
+    tete: ['{Il} se place ainsi parmi les meilleurs de la classe.', 'Cela {le|la} place parmi les meilleurs de la classe.',
+      'Ses résultats {le|la} placent parmi les meilleurs de la classe.', '{Il} figure ainsi parmi les meilleurs élèves de la classe.'],
+  },
+  // Fin : félicitations (« haut ») ou objectif rattaché ; selon le ton, et pour « haut » selon le niveau d'ensemble.
+  fin: {
+    haut: { b4: ['Qu’{il} garde cette exigence : félicitations !', 'Je l’encourage à poursuivre dans cette voie : félicitations !', 'Bravo pour ce travail, à poursuivre {suite} !',
+      'Félicitations pour cet état d’esprit, qu’{il} doit garder {suite} !',
+      // (Courtes : quand la place manque.)
+      'Toutes mes félicitations !', 'Qu’{il} continue ainsi : félicitations !', 'Excellent travail : félicitations !', 'Bravo pour cette belle réussite !',
+      'Félicitations, {il} peut être {fier|fière} de son travail !', 'Une réussite à poursuivre : bravo !'],
+    b: ['Je l’encourage à poursuivre dans cette voie : bravo !', 'C’est en gardant cet état d’esprit qu’{il} continuera de réussir : bravo !',
+      'Qu’{il} garde cette dynamique {suite} : bravo !', 'Bravo pour cet état d’esprit, à conserver {suite} !',
+      'Je {le|la} félicite pour ce travail et l’encourage à poursuivre {suite}.',
+      'Qu’{il} continue ainsi : bravo !', 'Un bon travail à poursuivre : bravo !', 'Bravo, et bonne continuation !', 'C’est un bon travail : bravo !',
+      'Je {le|la} félicite et l’encourage à continuer.'],
+    n: ['Je l’encourage à poursuivre dans cette voie.', 'Qu’{il} garde cette dynamique {suite}.', 'Il faudra {but} {suite}.', 'Ce travail est à poursuivre {suite}.',
+      'Qu’{il} continue ainsi.', 'Bon travail, à poursuivre.', 'Il faudra maintenir ce niveau {suite}.',
+      'Ce niveau est à maintenir.', 'Un travail sérieux, à poursuivre.', 'Qu’{il} poursuive dans cette voie.', 'Des résultats à consolider {suite}.'],
+    x: ['Qu’{il} garde cette exigence {suite}.', 'Il faudra {but} {suite}.', 'Ce niveau d’exigence doit être maintenu {suite}.', 'Ce niveau doit être confirmé {suite}.',
+      'Qu’{il} maintienne ce niveau.', 'Il faudra désormais {but}.'] },
+    but: { b: ['{Suite}, je l’encourage à {but} pour continuer de progresser. Courage !', 'Il reste maintenant à {but}, et les progrès suivront. Courage !',
+      'Je l’encourage à {but} : c’est à cette condition qu’{il} pourra progresser {suite}.', 'Je l’encourage à {but} {suite} : ses efforts finiront par payer.',
+      '{Suite}, {il} devra {but}, et je sais qu’{il} en est capable.', 'Je compte sur {lui|elle} pour {but} {suite} !', 'Je l’invite à {but} {suite} : courage !',
+      // (Courtes : quand la place manque.)
+      '{Il} devra {but} : courage !', 'Il faudra {but}. Bon courage !', 'À {lui|elle} de {but} {suite} !', 'Je l’invite à {but} : bon courage !',
+      'L’objectif sera de {but} {suite}.', '{Il} doit à présent {but} : je compte sur {lui|elle} !', 'Prochaine étape : {but}.',
+      'Pour aller plus loin, {il} devra {but}.', 'Je {le|la} sais capable de {but} : courage !'],
+    // (Bienveillant, niveau d'ensemble correct : les efforts sont salués.)
+    b3: ['Je l’encourage à {but} {suite} : bravo pour ses efforts !', 'Je salue ses efforts ; il faudra maintenant {but}.'],
+    n: ['{Suite}, il faudra {but} pour progresser.', 'Il faut maintenant {but} : c’est à cette condition qu’{il} progressera.', 'Je l’encourage à {but} {suite}.', '{Suite}, {il} devra {but}.',
+      '{Il} devra {but}.', 'Prochain objectif : {but}.', 'Pour progresser, {il} devra {but}.', 'L’objectif sera de {but}.'],
+    x: ['{Il} devra impérativement {but} {suite}.', 'Il est essentiel {deBut} {suite}.', '{Suite}, {il} devra {but} : c’est à cette condition qu’{il} progressera.',
+      '{Il} doit {but} sans attendre.', 'Il faudra désormais {but}.', 'J’attends {de lui|d’elle} qu’{il} parvienne à {but}.'] },
+  },
+};
+
+function redigerLieesAppr(el, periode, a, niveauxPerso, r, graine = 0) {
+  const sexe = ['F', 'G'].includes(el.sexe) ? el.sexe : '';
+  if (!sexe) return null;
+  niveauxPerso = persoUtileAppr(r, a, niveauxPerso);
+  const niv = { ...a.niveaux };
+  for (const [k, v] of Object.entries(niveauxPerso)) niv[k] = v || null; // 0 = ne pas en parler
+  const actives = rubriquesAppr(r, a, niveauxPerso), vigilance = vigilanceAppr(r, a, niveauxPerso);
+  const dit = k => (actives.includes(k) && niv[k] ? niv[k] : null);
+  const L = LIEES_APPR, fem = sexe === 'F', ton = r.ton[0] === 'b' ? 'b' : r.ton[0] === 'e' ? 'x' : 'n';
+  const prenom = (el.prenom || '').trim() || el.nom;
+  const selon = x => (Array.isArray(x) ? x : x[ton] || x.n || []);
+  // Les phrases parlent des capacités motrices : motricité non mentionnée → style « Phrases ».
+  const cleM = dit('moteur') ? 'moteur' : null;
+  if (!cleM) return null;
+  const A = dit('attitude'), M = niv[cleM];
+  // (Résultats corrects, mais sous la moyenne de la classe : dits « un peu en retrait », jamais « bons ».)
+  const retrait = M === 3 && a.details.position?.cle === 'retrait';
+  const Mp = M >= 3 && !retrait;
+  const p = periodesAnnee().find(x => x.id === periode), derniere = periode === 'annee' || periodesAnnee().at(-1)?.id === periode;
+  const per = periode === 'annee' ? 'année' : p?.code?.startsWith('S') ? 'semestre' : 'trimestre';
+  const ce = periode === 'annee' ? 'cette année' : `ce ${per}`, duPer = periode === 'annee' ? 'de l’année' : `du ${per}`;
+  // (Plusieurs façons de dire la suite : « au prochain trimestre » ne vient pas après « ce trimestre ».)
+  const suites = derniere ? ['l’an prochain', 'à l’avenir'] : [`au prochain ${per}`, 'pour la suite', 'dans les semaines à venir'];
+  const apsa = (() => {
+    const d = a.details, x = n => activiteDansPhrase(n);
+    if (d.apsaSeule) return x(d.apsaSeule);
+    if (Mp && d.apsaForte && x(d.apsaForte)) return ', notamment' + x(d.apsaForte);
+    if (!Mp && d.apsaFaible && x(d.apsaFaible)) return ', notamment' + x(d.apsaFaible);
+    return '';
+  })();
+  const maj = s => (s ? s[0].toLocaleUpperCase('fr') + s.slice(1) : s);
+  let essai = 0;
+  const g = cle => `${el.id}|${periode}|${graine}|${essai}|liees|${cle}`;
+  const kM = retrait ? 2 : M, kA = A || 3;
+  // Classe : les élèves se partagent les tournures (place dans l'ordre alphabétique, voir analyserAppr). Pour un même
+  // choix, chaque élève part d'une case de la liste décalée selon sa place : deux voisins n'ont jamais la même
+  // tournure, et toutes servent avant qu'une revienne (pas premier avec la longueur de la liste).
+  const rang = a.details.rang ?? -1;
+  const departClasse = (n, cle) => {
+    const commune = `${periode}|${graine}|${essai}|liees|${cle}`;
+    let pas = 1 + Math.floor(hasardAppr('pas|' + commune) * (n - 1));
+    const pgcd = (x, y) => (y ? pgcd(y, x % y) : x);
+    while (pas > 1 && pgcd(pas, n) !== 1) pas--;
+    // (+ un cran à chaque tour complet de la liste : deux élèves dont l’écart de place est un multiple de sa longueur
+    // ne tombent pas sur la même case.)
+    return (Math.floor(hasardAppr(commune) * n) + rang * pas + Math.floor(rang / n)) % n;
+  };
+  const tirer = (liste, cle) => (rang < 0 || liste.length < 2 ? choisirAppr(liste, g(cle)) : liste[departClasse(liste.length, cle)]);
+  // Valeurs des cases ({adj}, {capa}…) : tirées pour chaque modèle candidat.
+  const valeurs = n => ({
+    adj: tirer(L.adj[kA >= 4 ? 4 : 3], 'adj' + n), capa: tirer(L.capa[kM >= 4 ? 4 : 3], 'capa' + n),
+    res: tirer(L.res[kM >= 4 ? 4 : 3], 'res' + n), trav: tirer(L.trav[kA >= 4 ? 4 : 3], 'trav' + n),
+    eng: tirer(L.eng[kA >= 4 ? 4 : 3], 'eng' + n), irreg: tirer(selon(L.irreg[kA <= 1 ? 1 : 2]), 'irreg' + n),
+    justes: tirer(retrait ? L.justes.retrait : selon(L.justes[kM <= 1 ? 1 : 2]), 'justes' + n),
+    justesSans: tirer(retrait ? L.justes.retrait : L.justesSans[kM <= 1 ? 1 : 2], 'justesSans' + n),
+    capaDe: tirer(L.capaDe[kM >= 4 ? 4 : 3], 'capaDe' + n),
+    unBon: tirer(L.unBon[kM >= 4 ? 4 : 3][periode === 'annee' ? 1 : 0], 'unBon' + n).replace('{per}', per),
+  });
+  const but = (() => {
+    if (!actives.includes('objectif') || niv.objectif === null) return null;
+    const o = objectifAppr(niv, a, [...vigilance, ...actives.filter(k => !vigilance.has(k))]);
+    return { cle: o.cle, liste: objectifsAppr()[o.cle] || [] };
+  })();
+  const remplir = (t, v = {}) => t
+    .replace(/\{Adj\}/g, () => maj(v.adj)).replace(/\{(adj|capa|capaDe|res|trav|eng|irreg|justes|justesSans|unBon)\}/g, (x, k) => v[k] ?? '')
+    .replace(/\{([^{}|]*)\|([^{}]*)\}/g, (x, m, f) => (fem ? f : m))
+    .replace(/\{Il\}/g, fem ? 'Elle' : 'Il').replace(/\{il\}/g, fem ? 'elle' : 'il').replace(/\{P\}/g, prenom)
+    .replace(/\{apsa\}(?= [\p{L}])/gu, apsa + (apsa.startsWith(',') ? ',' : '')).replace(/\{apsa\}/g, apsa)
+    .replace(/\{ce\}/g, ce).replace(/\{duPer\}/g, duPer).replace(/\{Suite\}/g, () => maj(v.suite || suites[0])).replace(/\{suite\}/g, () => v.suite || suites[0])
+    .replace(/\{deBut\}/g, () => (/^[aeiouyâàéèêîôûh]/i.test(v.but || '') ? 'd’' : 'de ') + (v.but || '')).replace(/\{but\}/g, () => v.but || '');
+  const ignores = [prenom, ...prenom.split(/[\s-]+/)];
+  // Parmi des textes déjà remplis : ceux qui répètent le moins ce qui est écrit (et, en mode court, les plus courts).
+  const choisir = (textes, cle, ecrit, court) => {
+    if (!textes.length) return '';
+    const c = textes.map(t => conflitsAppr(ecrit, t, ignores)), min = Math.min(...c);
+    let l = textes.filter((t, i) => c[i] === min);
+    // (court = 1 : parmi les plus courtes, à 30 caractères près ; 2 : à 10 près ; 3 : la plus courte.)
+    if (court) { const lm = Math.min(...l.map(t => t.length)); l = l.filter(t => t.length <= lm + (court === 3 ? 0 : court === 2 ? 10 : 30)); }
+    if (rang < 0 || l.length < 2) return choisirAppr(l, g(cle));
+    // (Classe : la 1re des tournures permises en partant de la case de l'élève dans la liste complète.)
+    const permis = new Set(l), n = textes.length, d0 = departClasse(n, cle);
+    for (let k = 0; k < n; k++) { const t = textes[(d0 + k) % n]; if (permis.has(t)) return t; }
+    return l[0];
+  };
+
+  // 1. Phrase principale.
+  const cleP = !A ? (Mp ? 'M+' : 'M-') : A >= 3 ? (Mp ? 'A+M+' : M <= 1 ? 'A+M1' : 'A+M-') : (Mp ? 'A-M+' : 'A-M-');
+  let modelesP = selon(L.principale[cleP]);
+  if (cleP === 'A+M1') modelesP = [...modelesP, ...selon(L.principale['A+M-'])];
+  // (Sans activité ou sans {Adj} : pas de modèle qui laisse une case vide.)
+  // (Progression stable ou en baisse : pas de « pour progresser régulièrement ».)
+  const nProg = dit('progression');
+  if (nProg && nProg <= 2) modelesP = modelesP.filter(t => !/progress\S* régulièrement/.test(t));
+  // (Rangés modèle après modèle, trois fois : deux cases voisines de la liste sont deux modèles différents.)
+  const candidatsP = [0, 1, 2].flatMap(n => modelesP.map((t, i) => remplir(t, valeurs(i * 3 + n))));
+  const polP = A && A >= 3 && Mp ? 1 : !A && Mp ? 1 : -1;
+
+  // 2. Compléments possibles, du plus important au moins important.
+  const comps = [];
+  // (La liaison dépend de la phrase d'avant : voir construire.)
+  const ajouterComp = (cle, banque, prio, pol) => {
+    if (!banque) return;
+    const props = selon(banque);
+    if (props.length) comps.push({ cle, prio, pol, props });
+  };
+  // Chaque proposition, avec chaque liaison du bon sens par rapport à la phrase d'avant (polAvant) : la relecture
+  // garde celle qui ne répète rien.
+  const versionsComp = (c, polAvant) => {
+    if (c.cle === 'tete') return c.props;
+    const liens = L.liens[c.pol !== polAvant ? 'contre' : c.pol > 0 ? 'meme' : 'memeNeg'];
+    return c.props.flatMap(t => liens.map(l => `${l}, ${t}.`));
+  };
+  if (nProg && nProg !== 2) ajouterComp('progression', L.complements.progression[nProg], vigilance.has('progression') ? 5 : nProg === 3 ? 1 : 4, nProg >= 3 ? 1 : -1);
+  const nMeth = dit('methodo');
+  if (nMeth && nMeth !== 3) ajouterComp('methodo', L.complements.methodo[nMeth], vigilance.has('methodo') ? 5 : 3, nMeth >= 3 ? 1 : -1);
+  const nComp = dit('comportement');
+  if (nComp && nComp !== 3) ajouterComp('comportement', L.complements.comportement[nComp], vigilance.has('comportement') ? 5.1 : nComp === 4 ? 2 : 4, nComp >= 3 ? 1 : -1);
+  const nC = cleM === 'moteur' ? dit('competences') : null;
+  if (nC && nC !== 3 && !(nC === 4 && M === 4) && !(nC <= 2 && !Mp)) ajouterComp('competences', L.complements.competences[nC], vigilance.has('competences') ? 5 : 2, nC >= 3 ? 1 : -1);
+  if (a.details.absences >= 3 && A && A <= 2) ajouterComp('absences', L.complements.absences, 4.5, -1);
+  if (a.details.position?.cle === 'tete' && Mp && polP > 0) ajouterComp('tete', L.complements.tete, 1.5, 1);
+  comps.sort((x, y) => y.prio - x.prio);
+
+  // 3. Fin.
+  const kG = Math.round(moyenneListe([A, M, dit('competences')].filter(Boolean)));
+  const modelesFin = !but ? (polP > 0 && ton !== 'x' ? L.fin.haut[kG >= 4 && ton === 'b' ? 'b4' : ton].filter(m => !m.includes('{but}')) : [])
+    : but.cle === 'haut' ? L.fin.haut[kG >= 4 && ton === 'b' ? 'b4' : ton]
+      : [...L.fin.but[ton], ...(ton === 'b' && kG >= 3 && A >= 3 ? L.fin.but.b3 : [])]; // (« bravo pour ses efforts » : s'il en fait)
+
+  // court : formulations courtes des compléments et de la fin ; courtP : de la phrase principale (raccourcie en dernier,
+  // pour que les élèves d'une classe ne commencent pas tous par la même phrase courte).
+  const construire = (nbComp, court, sansFin = false, courtP = court) => {
+    let ecrit = '';
+    const morceaux = [];
+    const mettre = t => { if (t) { morceaux.push(t); ecrit += ' ' + t; } };
+    mettre(choisir(candidatsP, 'principale', '', courtP));
+    // (La phrase principale parle déjà de progrès : pas de « ses progrès sont réguliers » en plus.)
+    const utiles = comps.filter(c => !(c.cle === 'progression' && nProg >= 3 && /progress/.test(ecrit))), pris = utiles.slice(0, nbComp);
+    let polAvant = polP;
+    // (« Cela la place parmi les meilleurs… » suit directement la phrase principale.)
+    pris.sort((x, y) => (y.cle === 'tete') - (x.cle === 'tete'));
+    for (const c of pris) { mettre(choisir(versionsComp(c, polAvant).map(t => remplir(t)), 'comp-' + c.cle, ecrit, court)); polAvant = c.pol; }
+    if (sansFin) return fini(morceaux, utiles.slice(nbComp), true);
+    const avecSuite = m => (/\{[Ss]uite\}/.test(m) ? suites : [null]);
+    const finsRemplies = modelesFin.flatMap(m => avecSuite(m).flatMap(s => (m.includes('{but}') || m.includes('{deBut}') ? (but?.liste || []).map(b => remplir(m, { but: b, suite: s })) : [remplir(m, { suite: s })])))
+      // (Pas de « pour progresser pour la suite », ni de « pour … pour la suite ».)
+      .filter(t => !/\bpour [^.!:;]* pour la suite/.test(t));
+    mettre(choisir(finsRemplies, 'fin', ecrit, court));
+    return fini(morceaux, utiles.slice(nbComp), false);
+  };
+  const fini = (morceaux, laisses, sansFin) => ({ texte: corrigerAppr(morceaux.join(' '), { retirerAdverbes: true }),
+    retirees: [...laisses.map(c => c.cle).filter(k => RUBRIQUES_APPR[k]), ...(sansFin && modelesFin.length && but ? ['objectif'] : [])] });
+  // Le plus de compléments possible dans la longueur ; les formulations courtes avant de retirer un complément ;
+  // en dernier recours (longueur très courte), sans la fin.
+  // (Un texte qui tient mais garde une répétition : on essaie encore avec un complément de moins ; le plus juste gagne.)
+  const essayer = () => {
+    let res = null;
+    const noter = x => ({ ...x, remarques: relireAppr(x.texte, el).filter(y => y.grave).length });
+    // 1er passage : la phrase principale garde du choix (courtP 0 ou 1) ; un complément secondaire est laissé de côté
+    // plutôt que de prendre partout la même phrase courte (jamais un point de vigilance, prio ≥ 5).
+    // 2e passage : la phrase principale la plus courte, avec tous les compléments possibles.
+    const nbMax = Math.min(2, comps.length), nbVigil = Math.min(nbMax, comps.filter(c => c.prio >= 5).length);
+    for (const [paliers, nbMin] of [[[[0, 0], [1, 0], [2, 0], [1, 1], [2, 1], [2, 2], [3, 0], [3, 1]], nbVigil], [[[3, 2], [3, 3]], 0]]) {
+      for (let nb = nbMax; nb >= nbMin && !(res && !res.remarques); nb--) {
+        // (Compléments et fin raccourcis d'abord, la phrase principale ensuite.)
+        for (const [court, courtP] of paliers) {
+          const x = construire(nb, court, false, courtP);
+          if (x.texte.length <= r.longueur) { const n = noter(x); if (!res || n.remarques < res.remarques) res = n; break; }
+        }
+      }
+      if (res && !res.remarques) break;
+    }
+    if (!res) { const x = construire(0, 3, true); if (x.texte.length <= r.longueur) res = noter(x); }
+    return res || noter(construire(0, 3));
+  };
+  let meilleur = null;
+  for (essai = 0; essai < 4; essai++) {
+    const res = essayer();
+    if (!meilleur || res.remarques * 10 + res.retirees.length < meilleur.remarques * 10 + meilleur.retirees.length) meilleur = res;
+    if (!res.remarques) break;
+  }
+  return { texte: meilleur.texte, texteBrut: meilleur.texte, niveaux: niv, retirees: [...new Set(meilleur.retirees)] };
 }
 
 /* ---------- Appréciation d'un élève (texte gardé, ou proposé) ---------- */
@@ -1495,10 +1898,12 @@ async function ouvrirAppreciations(periodeVoulue, eleveVise) {
   };
   // Cartes des élèves (niveaux, formulation, texte réécrit, copier) : même fonctionnement que dans la fiche bilan.
   const { enregistrerTexte } = gererCartesAppr(d, { periode: () => periode, eleves, r: () => r });
+  // (Le texte en cours de frappe est enregistré AVANT de changer les réglages : comparé à la proposition faite avec les
+  // nouveaux réglages, il passerait pour réécrit à la main et ne suivrait plus les réglages.)
   const reglagesModifies = () => {
+    enregistrerTexte();
     r = { ...reglageAppr(), ...lireReglageAppr(form) };
     ecrireReglage('appreciations', lireReglageAppr(form));
-    enregistrerTexte();
     dessiner();
   };
 

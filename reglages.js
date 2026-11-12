@@ -45,11 +45,11 @@ const REGLAGES_DEFAUT = {
   perso: { ambiance: 'origine', clair: {}, sombre: {}, arrondi: 'normal', police: 'systeme' },
   // Appréciations proposées par l'appli (appreciations.js) : rubriques abordées et leur ordre, ton, style, longueur.
   appreciations: {
-    // Par défaut (choix de l'auteur) : attitude, compétences, motricité (performances, notes) et objectif ; les autres
-    // rubriques reviennent d'elles-mêmes quand le carnet signale un point de vigilance (voir rubriquesAppr).
+    // Par défaut (choix de l'auteur) : attitude, compétences, motricité (performances, notes) et objectif. Une rubrique
+    // décochée n'est jamais mentionnée (depuis la v1.37.1, voir rubriquesAppr).
     ordre: ['attitude', 'competences', 'moteur', 'methodo', 'comportement', 'progression', 'objectif'],
     actives: ['attitude', 'competences', 'moteur', 'objectif'],
-    bilan: true, ton: 'bienveillant', style: 'phrases', longueur: 250, // (limite d'École Directe ; 400 puis 300 auparavant : voir reglageAppr)
+    bilan: true, ton: 'bienveillant', style: 'liees', longueur: 250, // (limite d'École Directe ; 400 puis 300 auparavant : voir reglageAppr)
     oublis: [], // (remplacements appris que l'enseignant a décochés, carnet École)
     voix: true, fetes: true, liens: true, // (carnet École seulement : « Je le félicite » en fin d'appréciation, souhaits de fêtes en décembre, lien avec la période précédente)
   },
@@ -757,7 +757,7 @@ function nettoyerReglage(nom, brut) {
     const connues = [...REGLAGES_DEFAUT.appreciations.ordre, ...(DISCIPLINES.ecole?.appreciations?.rubriques || [])];
     for (const k of ['ordre', 'actives']) if (propre[k]) propre[k] = propre[k].filter(x => connues.includes(x));
     if (propre.ton && !['bienveillant', 'neutre', 'exigeant'].includes(propre.ton)) delete propre.ton;
-    if (propre.style && !['phrases', 'telegraphique'].includes(propre.style)) delete propre.style;
+    if (propre.style && !['phrases', 'telegraphique', 'liees'].includes(propre.style)) delete propre.style;
     if ('longueur' in propre && !(propre.longueur >= 80 && propre.longueur <= 2000)) delete propre.longueur;
   }
   if (nom === 'pp') {

@@ -26,7 +26,7 @@ function ouvrirExtensions() {
   const cartes = EXTENSIONS.map(ext => `
     <div class="extension-carte">
       <span class="extension-logo">${ICONE_PUZZLE}</span>
-      <div class="extension-texte"><b>${esc(ext.nom)}</b><span class="aide">${esc(ext.texte)}</span></div>
+      <div class="extension-texte"><b>${esc(ext.nom)}</b> <span class="aide">version ${esc(VERSION_PASSERELLE)}</span><span class="aide">${esc(ext.texte)}</span></div>
       <div class="extension-boutons">
         <a class="extension-telecharger primaire" href="${esc(ext.fichier)}" download>Télécharger</a>
         <a class="extension-telecharger extension-guide" href="${esc(ext.guide)}" download>Guide PDF</a>
@@ -40,6 +40,13 @@ function ouvrirExtensions() {
       <li>Active le <b>Mode développeur</b>.</li>
       <li>Clique sur <b>Charger l’extension décompressée</b> (ou « non empaquetée ») et choisis le dossier <b>passerelle</b>.</li>
       <li>Épingle <b>Passerelle</b> avec le puzzle du navigateur, en haut à droite.</li>
+    </ol>
+    <h3>Pour la mettre à jour</h3>
+    <p class="aide">Passerelle te prévient quand le Carnet contient une version plus récente. Tu n’as pas besoin de la retirer.</p>
+    <ol class="extension-etapes">
+      <li>Clique sur <b>Télécharger</b>.</li>
+      <li>Clic droit sur le fichier, <b>Extraire tout</b>, vers <b>le même dossier qu’avant</b> ; accepte de remplacer les fichiers.</li>
+      <li>Sur la page des extensions, clique sur <b>Recharger</b> sur Passerelle.</li>
     </ol>
     <p class="aide">Pour Edge, Chrome, Brave et Opera. Firefox et Safari ne sont pas pris en charge. Ne déplace pas le dossier ensuite : le navigateur en a besoin. Le <b>Guide PDF</b> détaille l’installation et l’utilisation.</p>`;
   const { d } = ouvrirModale('Extensions', cartes + guide, '<button type="button" data-fermer>Fermer</button>', 'modale-extensions');

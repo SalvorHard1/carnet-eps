@@ -309,7 +309,7 @@ function rubriquesAideBase() {
   // Ce que décrit un barème : l'APSA (EPS), le type d'épreuve (SVT).
   const ceQueDecrit = eps ? 'l’APSA' : 'le type d’épreuve', tonType = eps ? 'ton activité' : 'ton type d’épreuve';
   return {
-    titre: 'Sur quoi je peux t’aider ?',
+    titre: 'Comment puis-je t’aider ?',
     enfants: [
       {
         id: 'visite', icone: '🧭', titre: 'Visite guidée de l’appli',

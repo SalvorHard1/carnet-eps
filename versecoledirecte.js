@@ -15,9 +15,14 @@ function noteVersEcoleDirecte(v) {
 
 // Le texte copié est illisible à l'œil : un collage par erreur ne montre ni nom ni note.
 // (Simple codage, pas un chiffrement : l'extension le relit sans mot de passe.)
+// Version de l'extension Passerelle livrée avec cette version du Carnet (passerelle.zip).
+// Mise à jour toute seule par emballer.ps1. L'extension la compare à la sienne et signale qu'elle est en retard.
+const VERSION_PASSERELLE = '0.17.0';
+
 function coderVersEcoleDirecte(donnees) {
   let binaire = '';
-  for (const octet of new TextEncoder().encode(JSON.stringify(donnees))) binaire += String.fromCharCode(octet);
+  const avecVersion = { ...donnees, passerelle: VERSION_PASSERELLE };
+  for (const octet of new TextEncoder().encode(JSON.stringify(avecVersion))) binaire += String.fromCharCode(octet);
   return 'CARNET-EPS:' + btoa(binaire);
 }
 
