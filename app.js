@@ -2467,7 +2467,7 @@ async function synchroniser(dossier, { silencieux = false, copie = false, annexe
     + (supprimes ? `\n${supprimes} fichier${supprimes > 1 ? 's' : ''} de la tablette retiré${supprimes > 1 ? 's' : ''} du dossier (contenu gardé dans le carnet)` : '')
     + (ignores.length ? `\n⚠ Laissé de côté (autre mot de passe) : ${ignores.map(c => c.nom).join(', ')}` : '')
     + (reprise ? `\n⚠ Fichier abîmé gardé de côté : ${reprise.nomAbime}${reprise.copie ? ` · repris depuis la copie ${reprise.copie.nom}` : ''}` : '')
-    + (surCle && !annexes?.principalNonVerifie ? `\n✅ Fichier vérifié : éjecte la clé si possible, puis tu peux la retirer.` : '')
+    + (surCle && !annexes?.principalNonVerifie ? '\n✅ Fichier vérifié. ' + conseilEjecter() : '')
     + (annexes?.principalNonVerifie ? '\n⚠ La dernière écriture sur la clé n’a pas été vérifiée : ne la retire pas et touche à nouveau « Enregistrer ».' : ''),
   ignores.length || annexes?.principalNonVerifie ? 'erreur' : 'ok', surCle ? 10000 : null);
   return { ignores: ignores.map(c => c.nom) };
@@ -2649,6 +2649,10 @@ let etatAuto = null; // null | 'encours' | 'erreur'
 // Tablette dont le navigateur ouvre les dossiers (Chrome Android récent) : elle fonctionne comme un ordinateur,
 // mais la clé n'y reste pas branchée et l'autorisation du dossier se perd dès que l'appli est fermée.
 // L'enregistrement automatique y échoue donc souvent sans bruit : on la traite comme une tablette pour les rappels.
+// Une page web ne peut pas éjecter une clé (le navigateur l'interdit) : on dit où le faire, selon l'appareil.
+const conseilEjecter = () => (Cle.accesDirect && !tabletteDossier()
+  ? 'Pour la retirer : icône de la clé en bas à droite de Windows (près de l’heure) › « Éjecter », puis débranche-la.'
+  : 'Pour la retirer : sur Android, notification « Clé USB » (glisse depuis le haut de l’écran) › « Éjecter » ; sur iPad, débranche-la simplement.');
 let dernierAvisAutorisation = 0; // (avis « pas enregistré » : au plus un toutes les 10 min)
 const tabletteDossier = () => Cle.accesDirect && matchMedia('(hover: none) and (pointer: coarse)').matches;
 
@@ -2788,7 +2792,7 @@ async function exporterTablette({ secours = false } = {}) {
         : `📥 Fichier dans Téléchargements — il n’est PAS encore ${x.sur}.\nAvec l’appli Mes fichiers, déplace « ${nom} » ${x.sur}, dans le dossier du carnet (celui de carnet-eps.json).`
           + ' Puis menu Enregistrer › « Il est ' + x.sur + ' ».')
         + (envoye ? '\n⬆ Dans ce fichier : ' + envoye : '')
-        + (verifie ? '\n✅ Fichier vérifié : éjecte la clé si possible, puis tu peux la retirer.' : ''), 'ok', dest === 'cle' ? 10000 : null);
+        + (verifie ? '\n✅ Fichier vérifié. ' + conseilEjecter() : ''), 'ok', dest === 'cle' ? 10000 : null);
     }).catch(e => signalerErreur(e instanceof Cle.ErreurRelecture
       ? new Error('⚠ Le fichier écrit sur la clé n’est pas correct. Ne retire pas la clé et touche à nouveau « Enregistrer ».') : e));
   });
@@ -2824,16 +2828,14 @@ function ouvrirMenuCle(ouvrir) {
     const texte = cle => $(`[data-menu-texte="${cle}"]`, menu);
     const choisi = !!ui.destination; // (pas encore choisi : la question est posée au premier enregistrement)
     texte('enregistrer').textContent = !Cle.accesDirect ? 'Enregistrer' : choisi ? `Enregistrer / Récupérer ${x.depuis}` : 'Enregistrer / Récupérer';
-    // (Ordinateur : pour un fichier de la tablette rangé ailleurs que dans le dossier du carnet.)
-    texte('recuperer').textContent = Cle.accesDirect ? 'Fichier de la tablette' : 'Récupérer';
-    $('.gestes-cle', menu).classList.toggle('empile', Cle.accesDirect);
-    $('[data-menu-cle-fichier]', menu).classList.toggle('primaire', !Cle.accesDirect);
+    // (Ordinateur : un fichier de la tablette rangé ailleurs se reprend dans Aide et dépannage.)
+    $('[data-menu-cle-fichier]', menu).hidden = Cle.accesDirect;
     $('[data-menu-cle="enregistrer"] .choix-icone', menu).textContent = Cle.accesDirect ? '⇅' : '⬆';
     $('[data-menu-cle="enregistrer"] small', menu).textContent = !Cle.accesDirect ? (choisi ? x.sur : 'En partant')
       : tabletteDossier() ? 'Touche ici avant de débrancher la clé · récupère aussi le travail des autres appareils'
       : mdpSession ? 'Automatique ici · récupère aussi le travail des autres appareils' : 'Écrit ton carnet et récupère le travail des autres appareils';
-    $('[data-menu-cle-fichier] small', menu).innerHTML = Cle.accesDirect ? 'S’il n’est pas repris tout seul : choisis son <b>.json</b>, où qu’il soit'
-      : choisi ?`${esc(x.depuis)} · un ou plusieurs <b>.json</b>` : 'Choisis les <b>.json</b>, un ou plusieurs';
+    $('[data-menu-cle-fichier] small', menu).innerHTML =
+      choisi ? `${esc(x.depuis)} · un ou plusieurs <b>.json</b>` : 'Choisis les <b>.json</b>, un ou plusieurs';
     // Les trois endroits : celui choisi sur cet appareil est coloré.
     texte('dossier').textContent = Cle.accesDirect ? 'Ordinateur' : 'Tablette';
     texte('icone-dossier').textContent = Cle.accesDirect ? '💻' : '📱';
@@ -2893,8 +2895,7 @@ $('#menu-cle').addEventListener('change', e => {
   const fichiers = e.target.matches('[data-importer]') ? [...e.target.files] : [];
   e.target.value = ''; // pour pouvoir rechoisir le même fichier la fois suivante
   ouvrirMenuCle(false);
-  // Ordinateur : ce qui vient d'être repris est aussitôt écrit dans le carnet du dossier (clé, Drive…).
-  if (fichiers.length) lancer(() => actionCle(async () => { await importerFichiers(fichiers); if (Cle.accesDirect) await sauvegarder(); }));
+  if (fichiers.length) lancer(() => actionCle(() => importerFichiers(fichiers)));
 });
 // Fermeture : toucher ailleurs, ou Échap.
 document.addEventListener('click', e => {
@@ -2943,6 +2944,10 @@ async function panneauCle() {
         <button type="button" data-cle="destination">Changer d’endroit (clé, dossier, Drive)</button>
         ${dossier ? `<p class="aide">Dossier du carnet sur cet ordinateur : <b>${esc(dossier.name)}</b></p>
           <button type="button" data-cle="changer">Changer de dossier</button>` : ''}
+        ${Cle.accesDirect && destinationActive() === 'cle' ? `<label class="bouton">📱 Reprendre un fichier de la tablette
+          <input type="file" accept=".json,application/json" multiple data-fichier-tablette hidden></label>
+          <p class="aide">Si le fichier <b>carnet-eps-tablette_….json</b> n’est pas repris tout seul (rangé ailleurs sur la clé,
+            resté dans les Téléchargements…) : choisis-le, il est réuni au carnet puis écrit sur la clé.</p>` : ''}
         ${mdpSession || m.temoinMdp ? `<button type="button" data-cle="verrouiller">Oublier le mot de passe sur cet appareil</button>
           <p class="aide">Au prochain enregistrement, l’appli redemandera le mot de passe (à taper deux fois), sans le comparer à l’ancien.</p>` : ''}
         ${avantMaj ? `<button type="button" data-cle="avant-maj">🛟 Revenir à avant la mise à jour</button>
@@ -2970,7 +2975,14 @@ async function panneauCle() {
       // (Même enregistrement que « Enregistrer sur la clé » ; sur tablette, consignes simplifiées.)
       case 'secours': d.fermer(); return lancer(() => actionCle(() => (Cle.accesDirect ? sauvegarder() : exporterTablette({ secours: true }))));
       case 'maj-appli': return lancer(forcerMiseAJour);
-      case 'destination': d.fermer(); return lancer(choisirDestination);
+      // Changer d'endroit : sur ordinateur, on enchaîne sur le choix du dossier puis on y enregistre
+      // (avant, « Choisir » ne faisait rien de visible si l'endroit restait le même).
+      case 'destination': d.fermer(); return lancer(async () => {
+        const choix = await choisirDestination();
+        if (!choix) return;
+        if (!Cle.accesDirect) return toast(`${DESTINATIONS[choix].icone} Le carnet sera enregistré : ${DESTINATIONS[choix].nom}`, 'ok');
+        await actionCle(async () => synchroniser(await choisirDossierCle(), { copie: true }));
+      });
       case 'changer': return occupe(async () => synchroniser(await choisirDossierCle(), { copie: true }));
       case 'avant-maj': return occupe(async () => {
         if (!(await confirmer('Revenir à l’état du carnet d’avant la mise à jour, sur cet appareil ? Ce qui a été fait depuis sur cet appareil sera perdu (sauf s’il est enregistré ailleurs).', 'Revenir en arrière'))) return;
@@ -2987,6 +2999,11 @@ async function panneauCle() {
     }
   });
   d.addEventListener('change', ev => {
+    if (ev.target.matches('[data-fichier-tablette]') && ev.target.files.length) {
+      const fichiers = [...ev.target.files];
+      ev.target.value = '';
+      return occupe(async () => { await importerFichiers(fichiers); await actionCle(sauvegarder); });
+    }
     const f = ev.target.matches('[data-importer]') && ev.target.files[0];
     if (f) occupe(() => importerFichier(f, { sauvegarde: true }));
   });
@@ -3106,7 +3123,7 @@ async function boutonVersion() {
 const NOUVEAUTES = [
   { version: '1.39.0', titre: 'Tablette Android : le carnet arrive bien sur l’ordinateur', points: [
     'Sur Android, « Enregistrer » ne pose le fichier que dans <b>Téléchargements</b> : il faut le déplacer sur la clé. L’appli disait pourtant « Tout est enregistré sur la clé ». Maintenant le bouton reste orange (« À déplacer ») jusqu’à ce que tu touches « C’est fait : il est sur la clé » dans le menu Enregistrer.',
-    'Sur l’ordinateur, menu Enregistrer › <b>Fichier de la tablette</b> : choisis le .json de la tablette où qu’il soit (racine de la clé, Téléchargements…). Il est réuni au carnet puis écrit sur la clé.',
+    'Sur l’ordinateur avec la clé, Enregistrer › Aide et dépannage › Plus d’options › <b>Reprendre un fichier de la tablette</b> : choisis le .json de la tablette où qu’il soit (racine de la clé, Téléchargements…). Il est réuni au carnet puis écrit sur la clé.',
     'Un fichier de la tablette rangé dans un sous-dossier du dossier du carnet est aussi repris tout seul.',
     'Tablette qui ouvre directement le dossier de la clé (Chrome Android récent) : elle enregistre comme un ordinateur, mais l’autorisation se perd quand on ferme l’appli. Le bouton clignote donc en orange tant que ce n’est pas enregistré, un message prévient si l’enregistrement automatique n’a pas pu se faire, et l’appli enregistre tout de suite quand tu passes à une autre appli (si la clé est branchée et autorisée).',
   ] },
