@@ -686,6 +686,11 @@ button.badge-disp:hover { filter: brightness(1.1); }
 .gestes-cle { display: flex; gap: 8px; }
 .gestes-cle .choix-cle { flex: 1; min-width: 0; }
 .gestes-cle .choix-cle + .choix-cle:not([hidden]) { padding: 10px; gap: 8px; }
+/* Ordinateur : « Fichier de la tablette » sous Enregistrer, plus discret */
+.gestes-cle.empile { flex-direction: column; }
+.gestes-cle.empile .choix-cle + .choix-cle { min-height: 44px; padding: 6px 14px; gap: 12px; }
+.gestes-cle.empile .choix-cle + .choix-cle .choix-icone { font-size: 18px; }
+.menu-cle-deplace { align-self: stretch; min-height: 44px; font-weight: 600; background: #fdecc8; color: #5c3b00; border-color: #e0b85c; }
 .endroits-cle { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .endroit-cle { flex-direction: column; gap: 2px; min-height: 58px; padding: 6px 4px; border-radius: calc(12px * var(--arrondi, 1)); font-size: 13px; font-weight: 600; }
 .endroit-cle span[aria-hidden] { font-size: 22px; line-height: 1; }

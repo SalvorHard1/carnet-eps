@@ -154,10 +154,14 @@ const Cle = (() => {
   // Les autres carnets du dossier de la clé et de « Sauvegardes » (ex. « carnet-eps (1).json » venu de la tablette) :
   // [{ nom, texte, date }]. Sont laissés de côté : les fichiers qui ne sont pas des carnets, et les copies datées
   // faites par l'ordinateur (simples doubles de carnet-eps.json).
+  // Les fichiers de la tablette posés par erreur dans un sous-dossier (ex. « Download » copié tel quel depuis
+  // la tablette) sont repris aussi (un niveau de sous-dossier, seulement les carnet-eps-tablette_….json).
   async function autresCarnets(dossier) {
-    const trouves = [];
-    const parcourir = async (rep, prefixe) => {
+    const trouves = [], sousDossiers = [];
+    const parcourir = async (rep, prefixe, seulementTablette = false) => {
       for await (const [nom, h] of rep.entries()) {
+        if (!prefixe && h.kind === 'directory' && nom.toLowerCase() !== 'sauvegardes') { sousDossiers.push([nom, h]); continue; }
+        if (seulementTablette && !estFichierTablette(nom)) continue;
         if (h.kind !== 'file' || !/\.json$/i.test(nom) || (!prefixe && nom === NOM_FICHIER) || MOTIF_COPIE.test(nom) || MOTIF_ABIME.test(nom)) continue;
         try {
           const f = await h.getFile();
@@ -171,6 +175,9 @@ const Cle = (() => {
     let sous = null;
     try { sous = await dossier.getDirectoryHandle('Sauvegardes'); } catch { /* pas encore de dossier « Sauvegardes » */ }
     if (sous) await parcourir(sous, 'Sauvegardes/');
+    for (const [nom, h] of sousDossiers) {
+      try { await parcourir(h, nom + '/', true); } catch { /* dossier illisible : ignoré */ }
+    }
     return trouves;
   }
 
@@ -352,6 +359,6 @@ const Cle = (() => {
 
   return {
     NOM_FICHIER, accesDirect, ErreurMdp, ErreurVersion, ErreurRelecture, ErreurCarnetAbime, carnetLisible, ecrireVerifie, mettreDeCote, derniereCopieLisible, compareVersions, chiffrer, dechiffrer, creerTemoin, verifierTemoin, memoriser, dossierMemorise, choisirDossier, contientCarnet, estDossierCopies,
-    fichierCarnet, dateCarnet, autresCarnets, copieDatee, copiesDatees, rechiffrer, nettoyerCopies, autoriser, lire, ecrire, partagerOuTelecharger, enregistrerSurCle, estFichierTablette, modeTablette, modeTablettePour,
+    fichierCarnet, dateCarnet, autresCarnets, copieDatee, copiesDatees, rechiffrer, nettoyerCopies, autoriser, lire, ecrire, partagerOuTelecharger, enregistrerSurCle, estFichierTablette, nomFichierTablette, modeTablette, modeTablettePour,
   };
 })();

@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.38.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.39.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1480,12 +1480,13 @@ function majPastille() {
   const m = Donnees.meta(), x = destEnr();
   const [etat, texte, info] =
     etatAuto === 'encours' ? ['encours', 'Enregistrement…', `Enregistrement ${x.sur} en cours`]
-    : !m.dernierEnvoi ? ['jamais', 'Enregistrer', `Ce carnet n’est encore que dans ce navigateur — cliquer pour l’enregistrer (${ui.destination ? x.nom : 'clé, dossier ou Drive'}) ou récupérer un carnet`]
+    : aDeplacerTablette() && m.modifieLe <= m.dernierEnvoi ? ['attente', 'À déplacer', `Le fichier est dans Téléchargements : déplace-le ${x.sur}, puis dis-le dans le menu Enregistrer`]
+    : !m.dernierEnvoi ?['jamais', 'Enregistrer', `Ce carnet n’est encore que dans ce navigateur — cliquer pour l’enregistrer (${ui.destination ? x.nom : 'clé, dossier ou Drive'}) ou récupérer un carnet`]
     : m.modifieLe <= m.dernierEnvoi ? ['ok', 'Enregistré', `Tout est enregistré ${x.sur} — dernier enregistrement : ` + dateHeure(m.dernierEnvoi)]
     : etatAuto === 'erreur' ? ['erreur', x.introuvable, `Enregistrement impossible : ${x.verifier}, puis clique ici`]
     : ['attente', 'Enregistrer', `Des modifications ne sont pas encore enregistrées ${x.sur} — cliquer pour enregistrer`];
   const b = $('#btn-sauver');
-  b.className = 'sauver etat-' + etat + (etat === 'attente' && !Cle.accesDirect ? ' rappel' : '');
+  b.className = 'sauver etat-' + etat + (etat === 'attente' && (!Cle.accesDirect || tabletteDossier()) ? ' rappel' : '');
   b.title = info;
   // (Carnet École : l'icône au trait du jeu d'ecole.js, quel que soit l'endroit choisi.)
   if (typeof avecEcole === 'function' && avecEcole()) $('.sauver-icone', b).innerHTML = iconeEcole('enregistrer');
@@ -1502,6 +1503,8 @@ function majPastille() {
    au lancement et à chaque retour dans l'appli, un petit message le rappelle en plus. */
 
 const aEnregistrer = () => { const m = Donnees.meta(); return m.modifieLe > m.dernierEnvoi; };
+// Android : dernier fichier téléchargé, pas encore déplacé sur la clé / le Drive (exporterTablette).
+const aDeplacerTablette = () => !Cle.accesDirect && !!ui.aDeplacer && ui.destination !== 'dossier';
 
 // Modifications faites sur cet appareil depuis le dernier envoi (Donnees.enAttente), en clair :
 // « 3 nouveaux élèves, 18 notes, 1 leçon modifiée, 2 supprimés ».
@@ -1536,10 +1539,13 @@ function rappelerCle() {
     && Date.now() - (ui.copieAilleurs || Donnees.meta().dernierEnvoi) > JOURS_COPIE_AILLEURS * 86400000) {
     return notifAuto('📦 Ton carnet n’est que sur cette tablette : fais une copie sur ta clé ou ton Drive (Enregistrer › Aide et dépannage › Copie de secours).');
   }
+  if (aDeplacerTablette() && !aEnregistrer()) {
+    return notifAuto(`📥 Ton dernier fichier est encore dans Téléchargements : déplace-le ${destEnr().sur} (menu Enregistrer).`);
+  }
   if (!aEnregistrer()) return;
   const m = Donnees.meta(), x = destEnr();
   const jours = m.dernierEnvoi ? Math.floor((Date.now() - m.dernierEnvoi) / 86400000) : null;
-  if (!Cle.accesDirect) notifAuto(`${x.icone} Pense à enregistrer ${x.sur} : bouton « Enregistrer » en haut.`);
+  if (!Cle.accesDirect || tabletteDossier()) notifAuto(`${x.icone} Pense à enregistrer ${x.sur} : bouton « Enregistrer » en haut.`);
   else if (jours !== null && jours >= JOURS_RAPPEL) notifAuto(`${x.icone} Rien enregistré ${x.sur} depuis ${jours} jours : bouton « Enregistrer » en haut.`);
   else if (jours === null && classesTriees().some(c => !c.exemple)) notifAuto('💾 Ton carnet n’est que dans ce navigateur : bouton « Enregistrer » en haut.');
 }
@@ -2640,13 +2646,25 @@ async function choisirDossierCle() {
 // (une fois le carnet déverrouillé dans la session et l'accès au fichier autorisé).
 let minuteurAuto = null;
 let etatAuto = null; // null | 'encours' | 'erreur'
-function planifierSauvegardeAuto() {
+// Tablette dont le navigateur ouvre les dossiers (Chrome Android récent) : elle fonctionne comme un ordinateur,
+// mais la clé n'y reste pas branchée et l'autorisation du dossier se perd dès que l'appli est fermée.
+// L'enregistrement automatique y échoue donc souvent sans bruit : on la traite comme une tablette pour les rappels.
+let dernierAvisAutorisation = 0; // (avis « pas enregistré » : au plus un toutes les 10 min)
+const tabletteDossier = () => Cle.accesDirect && matchMedia('(hover: none) and (pointer: coarse)').matches;
+
+// immediat : sans attendre les 4 s (l'appli passe en arrière-plan : elle peut être arrêtée juste après).
+function planifierSauvegardeAuto({ immediat = false } = {}) {
   const m = Donnees.meta();
   if (!Cle.accesDirect || !mdpSession || etatAuto === 'encours' || m.modifieLe <= m.dernierEnvoi) return;
   clearTimeout(minuteurAuto);
   minuteurAuto = setTimeout(async () => {
     const dossier = await Cle.dossierMemorise(cleDossierDest());
-    if (!dossier || Cle.estDossierCopies(dossier) || (await dossier.queryPermission({ mode: 'readwrite' })) !== 'granted') return;
+    if (!dossier || Cle.estDossierCopies(dossier)) return;
+    if ((await dossier.queryPermission({ mode: 'readwrite' })) !== 'granted') {
+      // (autorisation perdue : rien n'est écrit — sur tablette, on le dit au lieu de se taire)
+      if (tabletteDossier() && Date.now() - dernierAvisAutorisation > 10 * 60000) dernierAvisAutorisation = Date.now(), notifAuto(`${destEnr().icone} Pas enregistré ${destEnr().sur} : touche « Enregistrer » avant de débrancher la clé.`, true);
+      return;
+    }
     etatAuto = 'encours';
     majPastille();
     try {
@@ -2661,7 +2679,7 @@ function planifierSauvegardeAuto() {
     }
     majPastille();
     planifierSauvegardeAuto(); // des modifications faites pendant l'enregistrement
-  }, 4000);
+  }, immediat ? 0 : 4000);
 }
 
 // sauvegarde : fichier choisi dans « Aide et dépannage » (ex. ancienne copie datée) — voir importerTexte.
@@ -2750,7 +2768,8 @@ async function exporterTablette({ secours = false } = {}) {
     `<span class="espace"></span><button type="button" data-fermer>Annuler</button><button type="button" class="primaire" data-partager>${libelle}</button>`);
   $('[data-partager]', d).addEventListener('click', () => {
     const verifie = dest === 'cle' && mode === 'enregistrer'; // (clé USB : fichier relu quand la tablette y donne accès)
-    Cle.enregistrerSurCle(texte, mode, nomFixe, { verifier: verifie }).then(fait => {
+    const nom = nomFixe || Cle.nomFichierTablette();
+    Cle.enregistrerSurCle(texte, mode, nom, { verifier: verifie }).then(fait => {
       if (!fait) return; // fenêtre fermée sans enregistrer : on peut réessayer
       d.fermer();
       if (ailleurs) { // (copie hors de la tablette : ne change pas l'état « enregistré » du carnet)
@@ -2759,9 +2778,16 @@ async function exporterTablette({ secours = false } = {}) {
         return toast('📦 Copie de secours faite ✔ (garde-la sur ta clé ou ton Drive)', 'ok');
       }
       const envoye = texteChangements(Donnees.marquerEnvoi());
-      toast((mode !== 'telecharger' || dest === 'dossier' ? `Fichier enregistré ${x.sur} ✔`
-        : `Fichier dans Téléchargements ✔ — pense à le mettre ${x.sur} (voir la consigne).`)
-        + (envoye ? '\n⬆ Envoyé : ' + envoye : '')
+      // Android : le fichier n'est que dans Téléchargements. Tant qu'on ne nous dit pas qu'il est déplacé,
+      // le bouton reste orange (sinon « Tout est enregistré sur la clé » alors que l'ordinateur ne verra rien).
+      const aDeplacer = mode === 'telecharger' && dest !== 'dossier';
+      if (aDeplacer) ui.aDeplacer = { nom, date: Date.now() }; else delete ui.aDeplacer;
+      memoriserUi();
+      majPastille();
+      toast((!aDeplacer ? `Fichier enregistré ${x.sur} ✔`
+        : `📥 Fichier dans Téléchargements — il n’est PAS encore ${x.sur}.\nAvec l’appli Mes fichiers, déplace « ${nom} » ${x.sur}, dans le dossier du carnet (celui de carnet-eps.json).`
+          + ' Puis menu Enregistrer › « Il est ' + x.sur + ' ».')
+        + (envoye ? '\n⬆ Dans ce fichier : ' + envoye : '')
         + (verifie ? '\n✅ Fichier vérifié : éjecte la clé si possible, puis tu peux la retirer.' : ''), 'ok', dest === 'cle' ? 10000 : null);
     }).catch(e => signalerErreur(e instanceof Cle.ErreurRelecture
       ? new Error('⚠ Le fichier écrit sur la clé n’est pas correct. Ne retire pas la clé et touche à nouveau « Enregistrer ».') : e));
@@ -2784,15 +2810,30 @@ function ouvrirMenuCle(ouvrir) {
       : aEnregistrer() ? `🟠 Pas encore enregistré ${x.sur}${attente ? ' : ' + attente : ' : des modifications.'}`
         : `✅ Tout est enregistré ${x.sur} (${dateHeure(m.dernierEnvoi)})${dernier ? `\nDernier envoi : ${dernier}` : ''}`;
     etat.className = 'menu-cle-etat ' + (m.dernierEnvoi && !aEnregistrer() ? 'ok' : 'attente');
+    const deplacer = aDeplacerTablette();
+    if (deplacer) {
+      etat.textContent = `📥 Ton dernier fichier (« ${ui.aDeplacer.nom} ») est dans Téléchargements, PAS ${x.sur}.`
+        + `\nDéplace-le ${x.sur} avec l’appli Mes fichiers, dans le dossier du carnet (celui de carnet-eps.json) : sinon l’ordinateur ne le verra pas.`
+        + (aEnregistrer() ? `\n🟠 Et des modifications faites depuis : touche Enregistrer.` : '');
+      etat.className = 'menu-cle-etat attente';
+    }
+    const boutonDeplace = $('[data-menu-cle="deplace"]', menu);
+    boutonDeplace.hidden = !deplacer;
+    boutonDeplace.textContent = `✔ C’est fait : il est ${x.sur}`;
     // Ordinateur : « Enregistrer » lit aussi le dossier (ce qui vient des autres appareils) ; tablette : « Récupérer » à part.
     const texte = cle => $(`[data-menu-texte="${cle}"]`, menu);
     const choisi = !!ui.destination; // (pas encore choisi : la question est posée au premier enregistrement)
     texte('enregistrer').textContent = !Cle.accesDirect ? 'Enregistrer' : choisi ? `Enregistrer / Récupérer ${x.depuis}` : 'Enregistrer / Récupérer';
-    $('[data-menu-cle-fichier]', menu).hidden = Cle.accesDirect;
+    // (Ordinateur : pour un fichier de la tablette rangé ailleurs que dans le dossier du carnet.)
+    texte('recuperer').textContent = Cle.accesDirect ? 'Fichier de la tablette' : 'Récupérer';
+    $('.gestes-cle', menu).classList.toggle('empile', Cle.accesDirect);
+    $('[data-menu-cle-fichier]', menu).classList.toggle('primaire', !Cle.accesDirect);
     $('[data-menu-cle="enregistrer"] .choix-icone', menu).textContent = Cle.accesDirect ? '⇅' : '⬆';
     $('[data-menu-cle="enregistrer"] small', menu).textContent = !Cle.accesDirect ? (choisi ? x.sur : 'En partant')
+      : tabletteDossier() ? 'Touche ici avant de débrancher la clé · récupère aussi le travail des autres appareils'
       : mdpSession ? 'Automatique ici · récupère aussi le travail des autres appareils' : 'Écrit ton carnet et récupère le travail des autres appareils';
-    $('[data-menu-cle-fichier] small', menu).innerHTML = choisi ? `${esc(x.depuis)} · un ou plusieurs <b>.json</b>` : 'Choisis les <b>.json</b>, un ou plusieurs';
+    $('[data-menu-cle-fichier] small', menu).innerHTML = Cle.accesDirect ? 'S’il n’est pas repris tout seul : choisis son <b>.json</b>, où qu’il soit'
+      : choisi ?`${esc(x.depuis)} · un ou plusieurs <b>.json</b>` : 'Choisis les <b>.json</b>, un ou plusieurs';
     // Les trois endroits : celui choisi sur cet appareil est coloré.
     texte('dossier').textContent = Cle.accesDirect ? 'Ordinateur' : 'Tablette';
     texte('icone-dossier').textContent = Cle.accesDirect ? '💻' : '📱';
@@ -2838,6 +2879,12 @@ $('#menu-cle').addEventListener('click', e => {
     return lancer(() => choisirDestination(endroit));
   }
   if (!choix) return;
+  if (choix === 'deplace') { // (tablette Android : le fichier téléchargé est maintenant sur la clé / le Drive)
+    delete ui.aDeplacer;
+    memoriserUi();
+    majPastille();
+    return ouvrirMenuCle(true);
+  }
   ouvrirMenuCle(false);
   if (choix === 'aide') return lancer(panneauCle);
   lancer(() => actionCle(sauvegarder));
@@ -2846,7 +2893,8 @@ $('#menu-cle').addEventListener('change', e => {
   const fichiers = e.target.matches('[data-importer]') ? [...e.target.files] : [];
   e.target.value = ''; // pour pouvoir rechoisir le même fichier la fois suivante
   ouvrirMenuCle(false);
-  if (fichiers.length) lancer(() => actionCle(() => importerFichiers(fichiers)));
+  // Ordinateur : ce qui vient d'être repris est aussitôt écrit dans le carnet du dossier (clé, Drive…).
+  if (fichiers.length) lancer(() => actionCle(async () => { await importerFichiers(fichiers); if (Cle.accesDirect) await sauvegarder(); }));
 });
 // Fermeture : toucher ailleurs, ou Échap.
 document.addEventListener('click', e => {
@@ -3056,6 +3104,12 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.39.0', titre: 'Tablette Android : le carnet arrive bien sur l’ordinateur', points: [
+    'Sur Android, « Enregistrer » ne pose le fichier que dans <b>Téléchargements</b> : il faut le déplacer sur la clé. L’appli disait pourtant « Tout est enregistré sur la clé ». Maintenant le bouton reste orange (« À déplacer ») jusqu’à ce que tu touches « C’est fait : il est sur la clé » dans le menu Enregistrer.',
+    'Sur l’ordinateur, menu Enregistrer › <b>Fichier de la tablette</b> : choisis le .json de la tablette où qu’il soit (racine de la clé, Téléchargements…). Il est réuni au carnet puis écrit sur la clé.',
+    'Un fichier de la tablette rangé dans un sous-dossier du dossier du carnet est aussi repris tout seul.',
+    'Tablette qui ouvre directement le dossier de la clé (Chrome Android récent) : elle enregistre comme un ordinateur, mais l’autorisation se perd quand on ferme l’appli. Le bouton clignote donc en orange tant que ce n’est pas enregistré, un message prévient si l’enregistrement automatique n’a pas pu se faire, et l’appli enregistre tout de suite quand tu passes à une autre appli (si la clé est branchée et autorisée).',
+  ] },
   { version: '1.38.0', titre: 'Appréciations : des textes variés dans une même classe', points: [
     'Le style <b>Liées</b> est maintenant proposé par défaut (EPS). Tu peux toujours choisir « Phrases » dans ✍ Appréciations › Réglages.',
     'Les élèves d’une même classe se partagent les tournures : deux élèves au même profil (mêmes notes, mêmes compétences) n’ont plus la même appréciation, et une formule revient le moins souvent possible.',
@@ -3810,7 +3864,10 @@ function alerteFermeture() {
 }
 
 // Tablette : retour dans l'appli (après être passé à une autre appli) → rappel si besoin.
-document.addEventListener('visibilitychange', () => { if (!document.hidden) rappelerCle(); });
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) return rappelerCle();
+  planifierSauvegardeAuto({ immediat: true }); // on quitte l'appli : on enregistre tout de suite si c'est possible
+});
 
 /* ---------- Démarrage ---------- */
 
