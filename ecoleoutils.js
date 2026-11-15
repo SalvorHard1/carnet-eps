@@ -164,7 +164,7 @@ function degreBesoin(el, c, cle, periode) {
   const [ca, code] = cle.split('|'), v = [];
   for (const [id, d] of degresEleve(el, c, periode).res) {
     const a = REFERENTIEL.attendu(id);
-    if (a && a.ca === ca && (!code || a.code === code)) v.push(d);
+    if (a && !a.objectif && a.ca === ca && (!code || a.code === code)) v.push(d); // (objectifs : déjà comptés dans leur domaine, degresEleve)
   }
   return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null;
 }

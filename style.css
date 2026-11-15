@@ -447,6 +447,9 @@ body[data-disposition="bas"] .notif-auto { bottom: calc(16px + var(--bas) + env(
 .grille td.total-parties.non-signif:not(.td-total-bareme):not(:empty)::before { content: '('; }
 .grille td.total-parties.non-signif:not(.td-total-bareme):not(:empty)::after { content: ')'; }
 .eval-non-signif { font-style: italic; }
+.eval-facultative { font-style: italic; color: var(--accent); }
+.modale .choix-facultatif { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 0 28px; }
+.modale .choix-facultatif[hidden] { display: none; }
 .code-ABS { background: var(--abs) !important; color: var(--abs-t) !important; font-weight: 600; font-size: 13px !important; }
 .code-DISP { background: var(--disp) !important; color: var(--disp-t) !important; font-weight: 600; font-size: 13px !important; }
 .code-BLE { background: #ffe2c6 !important; color: #9a4a00 !important; font-weight: 600; font-size: 13px !important; }
@@ -789,6 +792,11 @@ button.badge-disp:hover { filter: brightness(1.1); }
 .carte-appr { border: 1px solid var(--bord); border-radius: calc(10px * var(--arrondi, 1)); padding: 8px 10px; margin-bottom: 10px; background: var(--surface); }
 .tete-appr { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 .tete-appr button { min-height: 34px; padding: 2px 10px; font-size: 14px; }
+/* Indicateur « Apprentissage » (bas de ✍ Appréciations et de la fiche bilan) */
+.indicateur-appris { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--texte2); border-radius: calc(16px * var(--arrondi, 1)); }
+.indicateur-appris b { font-weight: 700; color: var(--texte); }
+.indicateur-appris.actif { background: var(--accent-doux); color: var(--texte); }
+.indicateur-appris small { font-size: 11px; color: var(--texte2); }
 .badge-appr { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: calc(10px * var(--arrondi, 1)); background: var(--accent-doux); color: var(--texte); }
 .puces-appr { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; align-items: center; }
 .puce-appr {
@@ -805,8 +813,17 @@ button.badge-disp:hover { filter: brightness(1.1); }
 /* Carnet École : portrait de l'élève (pastilles de la carte d'appréciation, appreciations.js › htmlPortraitAppr) */
 .portrait-appr { display: flex; flex-direction: column; gap: 5px; margin: 8px 0; }
 .portrait-appr .aide { margin: 0; }
-.groupe-portrait { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.titre-portrait { min-width: 6.5em; font-size: 12px; font-weight: 700; color: var(--texte2); }
+/* Titre à gauche, pastilles à droite : une ligne qui déborde repart sous les pastilles, pas sous le titre. */
+.groupe-portrait { display: grid; grid-template-columns: 8em minmax(0, 1fr); align-items: start; gap: 4px 6px; }
+.pastilles-portrait { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.titre-portrait { font-size: 12px; font-weight: 700; line-height: 26px; color: var(--texte2); }
+@media (max-width: 600px) { .groupe-portrait { grid-template-columns: minmax(0, 1fr); gap: 2px; } .titre-portrait { line-height: 1.4; } }
+/* Un thème par ligne : points forts | points à surveiller (bord teinté d'orange, même éteints, sans gras). */
+.sep-portrait { width: 1px; align-self: stretch; min-height: 18px; margin: 0 4px; background: var(--bord); }
+.pastille-portrait.attention { font-weight: 400; color: var(--texte); border-color: color-mix(in srgb, var(--attention) 45%, var(--bord)); }
+.pastille-portrait.estompee { opacity: .45; }
+.pastille-portrait.estompee:hover, .pastille-portrait.estompee:focus-visible { opacity: 1; }
+.groupe-portrait .lien { min-height: 26px; font-size: 12.5px; }
 .pastille-portrait { min-height: 26px; padding: 1px 10px; font-size: 12.5px; border: 1px solid var(--bord); border-radius: calc(13px * var(--arrondi, 1)); background: transparent; color: var(--texte); }
 .pastille-portrait[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-texte); }
 .pastille-portrait.attention[aria-pressed="true"] { background: color-mix(in srgb, var(--attention) 22%, var(--surface)); border-color: var(--attention); color: var(--texte); }
@@ -1853,7 +1870,7 @@ body.infos-cachees :is(.info-sensible, .pp-points, .pp-alertes, .tableau-eleves 
   .alerte-sante, .signaux-fiche, .lecture-besoin, .chip-besoin, .obs-fiche) { display: none !important; }
 /* Bandeau et filtres de la classe, liseré des cartes, statuts d'appel autres que présent, absent, retard, tenue. */
 body.infos-cachees [data-filtre-eleves]:is([data-filtre-eleves="dispenses"], [data-filtre-eleves="adaptes"], [data-filtre-eleves="besoins"], [data-filtre-eleves="alertes"]),
-body.infos-cachees .pastille-appel:not(.present, .ABS, .RET, .TEN), body.infos-cachees :is(.statut-fiche, .puce-appr.vigilance, .groupe-portrait:has(.attention, .perso),.bouton-appel:is(.b-DISP, .b-BLE, .b-MAL)) { display: none !important; }
+body.infos-cachees .pastille-appel:not(.present, .ABS, .RET, .TEN), body.infos-cachees :is(.statut-fiche, .puce-appr.vigilance, .groupe-portrait:has(.perso), .pastille-portrait.attention, .sep-portrait,.bouton-appel:is(.b-DISP, .b-BLE, .b-MAL)) { display: none !important; }
 body.infos-cachees .ligne-appel:is(.etat-DISP, .etat-BLE, .etat-MAL) { border-left: 1px solid var(--bord); background: var(--surface); }
 body.infos-cachees .carte-eleve[class*="lisere-"] { border-left-width: 1px; border-left-color: var(--bord); }
 /* Dispensé, blessé, malade et observations écrites dans les cases : case vide à l'écran, valeur intacte. */
@@ -2860,12 +2877,35 @@ div.tete-atelier-volley { display: flex; align-items: center; justify-content: c
 .matiere-livret { padding: 8px 0 12px; border-bottom: 1px solid var(--bord); }
 .matiere-livret h3 { margin: 4px 0 6px; }
 .domaine-livret { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 0; }
+.objectifs-livret { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; }
+.objectifs-livret .niveau { min-width: 0; min-height: 0; width: 20px; height: 20px; padding: 0; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
+
+/* Compétences de l'école (ecolecompetences.js) : accord de l'équipe, objectifs dans l'évaluation */
+.badge-niveau { display: inline-block; padding: 0 6px; margin-left: 2px; border-radius: calc(6px * var(--arrondi, 1)); border: 1px solid var(--bord); color: var(--texte2); font-size: 11px; font-weight: 700; vertical-align: 1px; }
+.accord-outils { align-items: center; justify-content: space-between; }
+.accord-outils p { margin: 0; }
+.accord-dom { border: 1px solid var(--bord); border-radius: calc(12px * var(--arrondi, 1)); margin-bottom: 8px; }
+.accord-dom > summary { padding: 10px 12px; cursor: pointer; }
+.accord-dom > .champ-ref { border: 0; border-top: 1px solid var(--bord); border-radius: 0; }
+.accord-dom label.attendu-ref input { min-height: 0; height: 20px; margin: 0; flex: none; } /* (toute la ligne est cliquable) */
+.modale .accord-dom label.attendu-ref.masque { opacity: .6; }
+.modale .accord-dom label.attendu-ref.masque .texte-attendu { text-decoration: none; } /* non retenu ≠ barré */
+.accord-tout { gap: 6px; }
+.accord-tout button { min-height: 34px; padding: 2px 12px; font-size: 13px; }
+.reglages h4.comp-accord, .comp-accord { margin: 8px 0 2px; font-size: 14px; text-transform: none; letter-spacing: normal; color: var(--texte); } /* (« XIe siècle » ne doit pas devenir « XIE ») */
+.comp-accord b { color: var(--accent); }
+.ajout-accord { display: grid; grid-template-columns: minmax(0, 220px) auto 1fr auto; gap: 6px; align-items: center; margin-top: 6px; }
+.modale .ajout-accord input:not([type=checkbox]), .modale .ajout-accord select { min-height: 38px; padding: 4px 8px; font-size: 14px; }
+.ajout-accord button { min-height: 38px; padding: 4px 12px; }
+.niveaux-ajout { display: inline-flex; gap: 8px; }
+.modale .niveaux-ajout label.case { font-size: 13px; }
+@media (max-width: 700px) { .ajout-accord { grid-template-columns: 1fr auto; } .ajout-accord input:not([type=checkbox]) { grid-column: 1 / -1; } .ajout-accord button { grid-column: 1 / -1; } }
+.objectifs-eval { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--bord); }
+.titre-objectifs { margin: 0 0 6px; }
+.objectifs-dom { margin-bottom: 4px; }
+.objectifs-dom > summary { padding: 6px 4px; cursor: pointer; font-weight: 600; }
 .choix-position { display: inline-flex; gap: 4px; }
 .appr-livret { display: block; margin-top: 6px; }
-@media print {
-  .page-livret { break-after: page; }
-  .page-livret:last-child { break-after: auto; }
-}
 .b-justif { margin-left: 6px; min-height: 36px; padding: 2px 10px; font-size: 13px; font-weight: 600; border-radius: calc(10px * var(--arrondi, 1)); }
 .b-justif.choisi { background: #2e7d6b; border-color: #2e7d6b; color: #fff; }
 .choix-eleve-livret { display: flex; flex: 1 1 100%; align-items: center; gap: 6px; }
@@ -3060,41 +3100,6 @@ html:not(.carnet-ecole) .bulle { color: color-mix(in srgb, var(--fam) 72%, var(-
 /* Fiche bilan (école) : les degrés d'une évaluation sans note */
 .degre-eval-fiche { display: inline-flex; align-items: center; gap: 3px; margin-right: 6px; white-space: nowrap; }
 
-/* ---------- Impression du livret d'un élève (ecole.js) ---------- */
-@media print {
-  #zone-impression .page-livret { font-size: 9.5pt; line-height: 1.3; }
-  #zone-impression .tete-livret { display: flex; justify-content: space-between; align-items: flex-start; gap: 12pt; padding-bottom: 6pt; margin-bottom: 8pt; border-bottom: 2pt solid #2a5d8a; }
-  #zone-impression .tete-livret h1 { margin: 0; font-size: 18pt; color: #1d4466; }
-  #zone-impression .tete-livret p { margin: 1pt 0 0; }
-  #zone-impression .droite-livret { text-align: right; font-size: 9pt; }
-  #zone-impression .droite-livret b { font-size: 11pt; color: #1d4466; }
-  #zone-impression .table-livret { table-layout: fixed; }
-  #zone-impression .table-livret tbody { break-inside: avoid; }
-  #zone-impression .table-livret th, #zone-impression .table-livret td { border: 0.75pt solid #9aa5ae; padding: 2.5pt 4pt; }
-  #zone-impression .table-livret th { background: #e4edf4; font-size: 8.5pt; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  #zone-impression .table-livret tbody tr:first-child td { border-top: 1.25pt solid #4a5a66; }
-  #zone-impression .c-matiere { width: 17%; }
-  #zone-impression .c-domaine { width: 19%; }
-  #zone-impression .c-pos { width: 7.5%; }
-  #zone-impression .c-appr { width: 34%; }
-  #zone-impression .titre-pos { padding: 2pt 1pt; text-align: center; font-size: 7pt; font-weight: 600; line-height: 1.1; vertical-align: middle; }
-  #zone-impression .matiere-pos b { color: #1d4466; }
-  #zone-impression .matiere-pos small { display: block; margin-top: 2pt; font-size: 7.5pt; color: #444; }
-  #zone-impression .case-pos { text-align: center; vertical-align: middle; font-size: 11pt; padding: 0; }
-  #zone-impression .case-pos.retenue { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  #zone-impression .pos-1 { background: #f6d5d0; }
-  #zone-impression .pos-2 { background: #fbe6c4; }
-  #zone-impression .pos-3 { background: #dcefd0; }
-  #zone-impression .pos-4 { background: #b9e0b0; }
-  #zone-impression .appr-pos { font-size: 9pt; }
-  #zone-impression .legende-livret { margin: 3pt 0 0; font-size: 7.5pt; color: #444; }
-  #zone-impression .general-livret { margin-top: 8pt; padding: 6pt 8pt; border: 1pt solid #2a5d8a; border-radius: 3pt; break-inside: avoid; }
-  #zone-impression .general-livret h2 { margin: 0 0 2pt; font-size: 11pt; color: #1d4466; }
-  #zone-impression .general-livret p { margin: 0; font-size: 10.5pt; }
-  #zone-impression .general-livret .accomp-livret { margin-top: 4pt; font-size: 9pt; }
-  #zone-impression .signatures-livret { display: flex; gap: 16pt; margin-top: 8pt; break-inside: avoid; }
-  #zone-impression .signatures-livret div { flex: 1; min-height: 34pt; padding: 2pt 4pt; border: 0.75pt solid #9aa5ae; font-size: 8pt; color: #444; }
-}
 .fleche-ecole .ic-ecole { margin: 0; vertical-align: middle; }
 
 /* ---------- Carnet École : direction « cahier Seyès » (classe carnet-ecole sur <html> : app.js › rendreClasses) ----------

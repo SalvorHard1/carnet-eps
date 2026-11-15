@@ -68,13 +68,15 @@ const QUESTIONS_ECOLE = () => ({
       reponse: ['Notes › <b>« Livret »</b> : l’appli propose un degré par domaine (le dernier de la période) et des appréciations.',
         'Touche un degré pour le changer, et réécris les textes comme tu veux ; <b>« Autre proposition »</b> en donne une autre formulation.',
         'La vue <b>Classe</b> donne le tableau de toute la classe et les éléments du programme travaillés.',
-        '<b>« Copier »</b> et <b>« Imprimer »</b> servent à reporter dans le LSU : l’appli n’y envoie rien elle-même.'],
+        '<b>« Copier »</b> sert à reporter dans le LSU : l’appli n’y envoie rien elle-même.',
+        '<b>« Aperçu, PDF, impression »</b> montre les pages du livret telles qu’elles seront (l’élève affiché, ou toute la classe en vue Classe, chacun sur sa page), puis les télécharge en PDF ou les imprime.'],
       guide: [ETAPES_HUGO.ongletNotes, etapeClasseEcole('#vue [data-ecole="livret"], #vue [data-action="vue-eleves"]'),
         etapeBouton('#vue [data-ecole="livret"]', 'Touche « Livret ».', () => !!fenetreLivret(), 'Ajoute d’abord des élèves à cette classe.'),
         etapeZone(fenetreLivret, '[data-livret-periode]', 'La période du livret.'),
         etapeZone(fenetreLivret, '.choix-position', 'Le degré de ce domaine. Pâle : proposé par l’appli. Touche-le pour le confirmer ou le changer.'),
         etapeZone(fenetreLivret, '[data-livret-appr]', 'L’appréciation proposée : réécris-la comme tu veux.'),
-        etapeZone(fenetreLivret, '[data-livret="copier"]', '« Copier » ou « Imprimer » pour reporter dans le LSU.')],
+        etapeZone(fenetreLivret, '[data-livret="copier"]', '« Copier » pour reporter dans le LSU.'),
+        etapeZone(fenetreLivret, '[data-livret="imprimer"]', 'Ici : l’aperçu des pages du livret, puis le PDF à télécharger ou l’impression.')],
     },
     {
       id: 'fluence', titre: 'Mesurer la fluence, suivre les rituels',
@@ -137,6 +139,13 @@ const QUESTIONS_ECOLE = () => ({
         etapeZone(fenetreReglagesNotes, '[name="s3"]', 'Le degré proposé d’après la note sur 20 : ici, « 3 dès… ».'),
         etapeZone(fenetreReglagesNotes, '[value="competences"]', 'Ici, tu crées ou modifies les compétences évaluées.'),
         etapeValider(fenetreReglagesNotes)],
+    },
+    {
+      id: 'accord-ecole', titre: 'Compétences de l’école : choisir les objectifs du programme en équipe',
+      reponse: ['⚙ <b>Réglages</b> › <b>« Compétences de l’école »</b> › <b>« Choisir les compétences de l’école… »</b> (ou onglet <b>Notes</b> › bouton <b>« Compétences »</b>).',
+        'Français, mathématiques, histoire-géographie, sciences et technologie, enseignement moral et civique, CM1 et CM2 : les objectifs du programme, par domaine. Choisis la matière en haut. En histoire-géographie et en sciences, le CM2 suit l’ancien programme cette année ; le nouveau apparaîtra tout seul à la rentrée 2027. Coche ceux que l’équipe travaille, filtre par niveau, ajoute les tiens en bas de chaque domaine.',
+        '<b>« Exporter le fichier de l’école »</b> : donne-le aux collègues, qui l’importent. Tout le monde a la même liste, sans aucune donnée d’élève.',
+        'Dans une évaluation de ces matières, coche les objectifs travaillés (rubrique « Objectifs du programme ») : chacun a sa colonne de degrés, et le livret s’en sert pour proposer le degré du domaine.'],
     },
     {
       id: 'double', titre: 'Classe à double niveau',
@@ -234,6 +243,7 @@ const PATCHS_AIDE_ECOLE = () => ({
     guide: n.guide.map(e => (typeof e.texte === 'string' && e.texte.startsWith('Voici') ? { ...e, texte: 'Choisis la matière, puis coche les compétences.' } : e)) }),
   'notes/parties': avecCocherNote,
   'notes/non-significative': avecCocherNote,
+  'notes/note-facultative': null, // (pas de note facultative à l'école)
 });
 
 // Rangement des questions sur les notes chiffrées dans leur propre sous-rubrique.

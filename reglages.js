@@ -37,6 +37,9 @@ const REGLAGES_DEFAUT = {
   competences: {
     niveaux: ['Maîtrise insuffisante', 'Maîtrise fragile', 'Maîtrise satisfaisante', 'Très bonne maîtrise'],
     masques: [], refsMasques: [], ajouts: [], refsPerso: [],
+    // Carnet École : accord de l'école sur les objectifs du programme (ecolecompetences.js) ; null = pas encore d'accord (tout est proposé).
+    // { ids: [objectifs retenus], ajouts: [{ id, refId, ca, dom, comp, niveaux, code, texte }], nom, date }
+    accord: null,
   },
   // (favoris : onglets de la barre en disposition « Favoris + Plus » sur tablette, voir onglets.js)
   // (ordre : ordre des onglets choisi dans 🎨 Apparence et personnalisation ; vide = ordre d'origine, voir perso.js)
@@ -49,6 +52,7 @@ const REGLAGES_DEFAUT = {
     // décochée n'est jamais mentionnée (depuis la v1.37.1, voir rubriquesAppr).
     ordre: ['attitude', 'competences', 'moteur', 'methodo', 'comportement', 'progression', 'objectif'],
     actives: ['attitude', 'competences', 'moteur', 'objectif'],
+    stylePasseLiees: false, // (v1.42.0 : un carnet resté en « Phrases » passe une fois en « Liées », voir reglageAppr)
     bilan: true, ton: 'bienveillant', style: 'liees', longueur: 250, // (limite d'École Directe ; 400 puis 300 auparavant : voir reglageAppr)
     oublis: [], // (remplacements appris que l'enseignant a décochés, carnet École)
     voix: true, fetes: true, liens: true, // (carnet École seulement : « Je le félicite » en fin d'appréciation, souhaits de fêtes en décembre, lien avec la période précédente)
@@ -379,6 +383,8 @@ async function ouvrirReglages(rubrique = 'apparence') {
         <button value="competences">${emojiReglages('📚')}Référentiels et compétences…</button>
         <p class="aide">Masquer des compétences officielles, ajouter les tiennes, créer ton propre référentiel.</p>
       </div></details>
+    ${ecole && typeof htmlRubriqueAccordEcole === 'function' ? `<details ${ouvert('accord')}><summary>${titreRubrique('🎯', 'cible', 'Compétences de l’école')} <small>accord de l’équipe, objectifs du programme</small></summary>
+      <div class="rubrique">${htmlRubriqueAccordEcole()}</div></details>` : ''}
     ${typeof htmlReglageAppr === 'function' ? `<details ${ouvert('appreciations')}><summary>${titreRubrique('✍', 'modifier', 'Appréciations')} <small>rubriques, ton, style, longueur</small></summary>
       <div class="rubrique" data-rubrique="appreciations">${htmlReglageAppr(reglageAppr())}
         <p class="aide">${ecole ? 'Les appréciations se préparent dans le livret (onglet Notes › Livret), ou dans la fiche d’un élève.' : 'Les appréciations se préparent dans l’onglet Notes › ✍ Appréciations, ou dans la fiche d’un élève.'}</p></div></details>` : ''}
@@ -487,6 +493,7 @@ async function ouvrirReglages(rubrique = 'apparence') {
   rendre();
   if (r.action === 'periodes') return lancer(editerPeriodes);
   if (r.action === 'competences') return lancer(gererCompetences);
+  if (r.action === 'accord') return lancer(gererAccordEcole);
   if (r.action === 'mdp') return lancer(changerMotDePasse);
   toast(messageFin, 'ok');
 }
@@ -703,6 +710,20 @@ function exporterReglages() {
   toast('Réglages exportés ✔ (aucune donnée d’élève dans ce fichier)', 'ok');
 }
 
+// Accord de l'école (fichier d'un collègue, réglages importés) : on ne garde que ce qui a la bonne forme.
+function nettoyerAccord(a) {
+  if (!a || typeof a !== 'object' || !Array.isArray(a.ids)) return null;
+  const texte = (s, max) => String(s ?? '').trim().slice(0, max);
+  const NIVEAUX = ['CP', 'CE1', 'CE2', 'CM1', 'CM2'];
+  const ajouts = (Array.isArray(a.ajouts) ? a.ajouts : []).filter(x => estIdPerso(x?.id) && typeof x.refId === 'string' && typeof x.ca === 'string' && typeof x.dom === 'string' && texte(x.texte, 400))
+    .map(x => ({ id: x.id, refId: x.refId.slice(0, 80), ca: x.ca.slice(0, 12), dom: x.dom.slice(0, 4), comp: texte(x.comp, 12),
+      niveaux: (Array.isArray(x.niveaux) ? x.niveaux : []).filter(n => NIVEAUX.includes(n)), code: texte(x.code, 12) || '+', texte: texte(x.texte, 400) }))
+    .slice(0, 500);
+  return { ids: [...new Set(a.ids.filter(x => typeof x === 'string').map(x => x.slice(0, 80)))].slice(0, 2000), ajouts,
+    ...(Array.isArray(a.matieres) ? { matieres: [...new Set(a.matieres.filter(x => typeof x === 'string').map(x => x.slice(0, 40)))].slice(0, 50) } : {}),
+    nom: texte(a.nom, 60), date: /^\d{4}-\d\d-\d\d$/.test(a.date || '') ? a.date : '' };
+}
+
 // Ne garde du fichier que des valeurs du bon type (le fichier peut venir de n'importe qui).
 function nettoyerReglage(nom, brut) {
   const propre = {};
@@ -741,6 +762,7 @@ function nettoyerReglage(nom, brut) {
       propre.ajouts = propre.ajouts.filter(x => estIdPerso(x?.id) && CHAMPS_MODELE[x.ca] !== undefined && typeof x.refId === 'string')
         .map(x => ({ id: x.id, refId: x.refId.slice(0, 80), ca: x.ca, code: texte(x.code, 12), texte: texte(x.texte, 400) }));
     }
+    if ('accord' in propre) propre.accord = nettoyerAccord(propre.accord);
   }
   if (nom === 'onglets') {
     if (propre.masques) propre.masques = propre.masques.filter(v => NOMS_ONGLETS[v]);
@@ -789,6 +811,8 @@ async function importerReglages(fichier) {
       const union = (a = [], b = []) => [...b, ...a.filter(x => !b.some(y => y.id === x.id))];
       propre.ajouts = union(ici.ajouts, propre.ajouts);
       propre.refsPerso = union(ici.refsPerso, propre.refsPerso);
+      if (propre.accord && ici.accord) propre.accord.ajouts = union(ici.accord.ajouts, propre.accord.ajouts);
+      else if (ici.accord && !('accord' in propre)) propre.accord = ici.accord;
     }
     ecrireReglage(nom, { ...REGLAGES_DEFAUT[nom], ...(nom === 'apparence' ? { prof: reglage('apparence').prof } : {}), ...propre });
   }

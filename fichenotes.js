@@ -246,6 +246,10 @@ function pointsEtAxes(el, s) {
   return { forts: tri(forts), axes: choisis, tous: tri(axes) };
 }
 
+// Fiche anonyme : le prénom devient « L’élève » en début de phrase, « l’élève » ailleurs (« Curieuse, l’élève… »).
+const anonymiserTexteFiche = (texte, prenom) => texte.split(prenom).reduce((t, morceau, i) =>
+  (i ? t + (!t.trim() || /[.!?]\s*$/.test(t) ? 'L’élève' : 'l’élève') + morceau : morceau), '');
+
 // Contenu de la fiche bilan. opts : { classe (moyennes de la classe par axe), impression (tout déplié, sans boutons), anonyme }.
 function htmlFicheNotes(el, periode, eleves, opts = {}) {
   const toutes = evalsDe(el.classeId), evals = periode === 'annee' ? toutes : toutes.filter(e => periodeDe(e.date) === periode);
@@ -304,7 +308,7 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
   // longueur). Ici on peut toucher les rubriques, demander une autre formulation, réécrire, copier.
   if (opts.impression) {
     let texte = appreciationEleve(el, periode, eleves).texte;
-    if (opts.anonyme && el.prenom) texte = texte.split(el.prenom).join('L’élève'); // (PDF anonyme : pas de prénom)
+    if (opts.anonyme && el.prenom) texte = anonymiserTexteFiche(texte, el.prenom); // (PDF anonyme : pas de prénom)
     html += `<h3>Appréciation</h3><p class="texte-appr-fiche texte-bilan">${esc(texte)}</p>`;
   } else {
     html += `<h3>Appréciation <span class="aide">${avecEcole() ? 'proposée par l’appli' : 'la même que dans ✍ Appréciations (onglet Notes)'} : touche une rubrique pour changer son niveau</span></h3>
@@ -342,7 +346,7 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
       : `${pictoEcole('notes', '📝')} Notes <span class="aide">moyenne ${fmt1(moy)}/20 · classe ${fmt1(moyClasse)}</span>`;
     html += `<details class="depli-fiche"${deplie}><summary>${sommeNotes}</summary>
       <table class="tableau-fiche notes-fiche"><tbody>${lignes.map(l => `<tr>
-      <th>${l.e.ca ? `<span class="chip-ca ca-${l.e.ca}">${l.e.ca}</span> ` : ''}<b>${esc(l.e.titre)}</b> <span class="aide">${dateCourte(l.e.date)}${l.e.apsa ? ' · ' + esc(l.e.apsa) : ''}${l.e.coef !== 1 ? ' · coef ' + fmt(l.e.coef) : ''}${l.e.nonSignificative ? ' · non significative' : ''}</span></th>
+      <th>${l.e.ca ? `<span class="chip-ca ca-${l.e.ca}">${l.e.ca}</span> ` : ''}<b>${esc(l.e.titre)}</b> <span class="aide">${dateCourte(l.e.date)}${l.e.apsa ? ' · ' + esc(l.e.apsa) : ''}${l.e.coef !== 1 ? ' · coef ' + fmt(l.e.coef) : ''}${l.e.nonSignificative ? ' · non significative' : LIBELLES_FACULTATIF[l.e.facultatif] ? ' · ' + LIBELLES_FACULTATIF[l.e.facultatif] : ''}</span></th>
       <td>${CODES[l.v] ? `<span class="code-fiche code-${l.v}">${esc(CODES[l.v])}</span>` : sansNoteEval(l.e) ? degresLigne(l) : l.v === '' ? '<span class="aide">non saisie</span>'
       : `${l.e.nonSignificative ? '(' : ''}<b>${esc(affichage(l.v))}</b>/${fmt(l.e.max)}${l.e.nonSignificative ? ')' : ''}${l.e.max !== 20 ? ` <span class="aide">(${fmt1(l.n)}/20)</span>` : ''}`}
         ${l.n !== null && l.classe !== null ? `<span class="aide"> · classe ${fmt1(l.classe)}/20</span>` : ''}</td></tr>`).join('')}</tbody></table></details>`;
@@ -403,6 +407,7 @@ async function ficheNotes(eleveId) {
     '<button type="button" data-fiche-nav="-1">◀ Précédent</button><button type="button" data-fiche-nav="1">Suivant ▶</button>'
     + (aLecons && !avecEcole() ? `<button type="button" data-fiche-lecons title="Ouvrir sa fiche de l’onglet ${esc(mot('lecons'))}">Fiche ${esc(mot('lecons'))}</button>` : '')
     + '<span class="espace"></span><label class="case anonyme-fiche" title="Sans nom, prénom, photo ni présence / santé"><input type="checkbox" data-fiche-anonyme> anonyme</label>'
+    + (typeof htmlIndicateurApprisAppr === 'function' ? htmlIndicateurApprisAppr() : '')
     + '<button type="button" data-fiche-pdf title="Imprimer ou enregistrer la fiche en PDF">📄 PDF</button>'
     + '<button type="button" data-fermer class="primaire">Fermer</button>', 'modale-large modale-fiche');
 
@@ -417,6 +422,7 @@ async function ficheNotes(eleveId) {
     ecrireReglage('appreciations', lireReglageAppr($('form', d)));
     cartes.enregistrerTexte();
     dessiner(true);
+    if (typeof majIndicateurApprisAppr === 'function') majIndicateurApprisAppr(d); // (une tournure décochée est oubliée)
   };
   d.addEventListener('toggle', e => { if (e.target.matches?.('[data-fiche-reglages-appr]')) reglagesOuverts = e.target.open; }, true);
   // (Longueur : refaite pendant la frappe, après une courte pause ; la carte est redessinée, le champ reprend la main.)
@@ -467,7 +473,10 @@ async function ficheNotes(eleveId) {
     if (e.target.closest('[data-fiche-pdf]')) {
       enregistrerObs();
       cartes.enregistrerTexte();
-      lancer(() => imprimerFiche(eleves[idx], periode, eleves, moyClasse(), $('[data-fiche-anonyme]', d).checked));
+      // (École : aperçu des pages dessinées, puis PDF ou impression, comme le livret ; ailleurs : la fiche imprimée.)
+      const anonyme = $('[data-fiche-anonyme]', d).checked;
+      if (avecEcole() && typeof apercuFicheEcole === 'function') lancer(() => apercuFicheEcole(eleves[idx], periode, eleves, moyClasse(), anonyme));
+      else lancer(() => imprimerFiche(eleves[idx], periode, eleves, moyClasse(), anonyme));
     }
   });
   // 👑 Délégué de classe : enregistré aussitôt ; la liste des élèves est redessinée à la fermeture.

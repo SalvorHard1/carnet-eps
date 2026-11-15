@@ -1141,6 +1141,18 @@ function rubriquesAideBase() {
               ETAPES_HUGO.valider],
           },
           {
+            id: 'note-facultative', titre: 'Une note facultative (bonus, ou comptée seulement si elle fait monter la moyenne)',
+            intro: 'Ex. un devoir en plus, un exposé, un défi : la note ne peut que faire monter la moyenne de l’élève.',
+            reponse: ['Dans l’onglet <b>Notes</b>, touche le <b>titre de l’évaluation</b> (ou <b>« + Évaluation »</b> pour en créer une).',
+              'Coche <b>« Note facultative »</b>, sous « Note non significative », puis choisis :',
+              '<b>Comme un bonus</b> : seuls les points au-dessus de 10/20 s’ajoutent à la moyenne. Ex. moyenne 14 avec 12 et 16 ; bonus 17 → (12 + 16 + 7) / 2 = 17,5 ; un 8 n’ajoute rien.',
+              '<b>Comme une note</b> : elle compte comme les autres, mais seulement si elle fait monter la moyenne de l’élève. Ex. moyenne 17 avec 16 et 18 ; un 20 → 18, il compte ; un 17 ensuite ferait 17,75 : ignoré. (Plusieurs facultatives : essayées de la meilleure à la moins bonne.)',
+              'Touche <b>« Enregistrer »</b>. L’en-tête de la colonne indique « facultative · bonus » ou « facultative · si meilleure ».'],
+            guide: [ETAPES_HUGO.ongletNotes, ETAPES_HUGO.classe, ETAPES_HUGO.ouvrirEval,
+              zoneEval('[name="facultative"]', 'Coche « Note facultative », puis choisis « comme un bonus » ou « comme une note ».'),
+              ETAPES_HUGO.valider],
+          },
+          {
             id: 'importer-notes', titre: 'Importer mes notes d’École Directe (ou de Pronote)',
             intro: 'Pour reprendre dans le carnet les notes déjà saisies dans École Directe ou Pronote.',
             reponse: ['Dans École Directe, exporte le <b>relevé de notes</b> de la classe en Excel : le <b>« Relevé »</b> (toutes les notes) ou un <b>« Trimestre »</b> (les notes du trimestre). Dans Pronote : le relevé de notes (.xlsx ou .csv).',

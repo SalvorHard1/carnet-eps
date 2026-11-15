@@ -50,7 +50,7 @@ function exporterNotesExcel(c, { anonyme = false } = {}) {
       ]),
       [],
       [E('Évaluations')],
-      ...evals.map(e => [`${dateFr(e.date)} — ${e.titre}${e.apsa && e.apsa !== e.titre ? ' (' + e.apsa + ')' : ''} — /${fmt(e.max)}${e.coef !== 1 ? ', coef ' + fmt(e.coef) : ''}${e.nonSignificative ? ', non significative' : ''}`]),
+      ...evals.map(e => [`${dateFr(e.date)} — ${e.titre}${e.apsa && e.apsa !== e.titre ? ' (' + e.apsa + ')' : ''} — /${fmt(e.max)}${e.coef !== 1 ? ', coef ' + fmt(e.coef) : ''}${e.nonSignificative ? ', non significative' : LIBELLES_FACULTATIF[e.facultatif] ? ', note ' + LIBELLES_FACULTATIF[e.facultatif] : ''}`]),
     ],
   };
   // Synthèse : une colonne par évaluation, puis les moyennes de chaque période et de l'année.
@@ -79,7 +79,7 @@ function exporterNotesExcel(c, { anonyme = false } = {}) {
         [anonyme ? '' : e.id, E('Date'), T(dateFr(e.date))],
         ['', E(mot('activite')), T(e.apsa || '')],
         ['', E('Noté sur'), e.max],
-        ['', E('Coefficient'), e.coef, e.nonSignificative ? A('note non significative : ne compte pas dans la moyenne') : ''],
+        ['', E('Coefficient'), e.coef, e.nonSignificative ? A('note non significative : ne compte pas dans la moyenne') : LIBELLES_FACULTATIF[e.facultatif] ? A('note ' + LIBELLES_FACULTATIF[e.facultatif]) : ''],
         // (Sans champ d'apprentissage hors EPS : le référentiel ; sa colonne A sert à l'import, comme celle du champ.)
         profil().champsSequence
           ? [e.referentiel || '', E('Champ d’apprentissage'), T(e.ca ? `${e.ca}${ref?.champs[e.ca] ? ' — ' + ref.champs[e.ca].titre : ''}` : '')]

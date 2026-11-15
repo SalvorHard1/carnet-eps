@@ -65,6 +65,7 @@ function niveauDeLaListe(eleves) {
 
 function htmlBoutonsEcole(c) {
   return `<button data-ecole="livret" title="Positionnements et appréciations de la période, à recopier dans le LSU">${iconeEcole('livre')}Livret</button>`
+    + (typeof gererAccordEcole === 'function' ? ` <button data-ecole="accord" title="Compétences de l’école : objectifs du programme choisis en équipe, proposés dans les évaluations">${iconeEcole('cible')}Compétences</button>` : '')
     + (niveauxDeClasse(c).length ? ` <button data-ecole="niveaux" title="Dire quel élève est dans quel niveau">${iconeEcole('eleves')}Niveaux</button>` : '');
 }
 
@@ -95,9 +96,11 @@ async function reglerNotesEcole(c) {
       <legend>Compétences évaluées</legend>
       <p class="aide">Ajouter tes propres compétences, renommer, ou ne plus proposer celles du programme dont tu ne te sers pas.</p>
       <button value="competences">${iconeEcole('cible')}Créer ou modifier les compétences…</button>
+      ${typeof gererAccordEcole === 'function' ? `<p class="aide">Objectifs détaillés du programme (français, maths, histoire-géographie, sciences, EMC ; CM1 et CM2) : ceux que l’équipe a choisis sont proposés dans les évaluations.</p>
+      <button value="accord">${iconeEcole('ecole')}Compétences de l’école…</button>` : ''}
     </fieldset>`, boutonsModale('Enregistrer'));
   const r = await resultat;
-  if (r.action !== 'ok' && r.action !== 'competences') return;
+  if (r.action !== 'ok' && r.action !== 'competences' && r.action !== 'accord') return;
   const v = r.data, seuils = [+v.s2, +v.s3, +v.s4].sort((x, y) => x - y);
   if (!memesSeuils(seuils, seuilsClasse(c))) {
     const enreg = Donnees.ecrire('classes', { ...c, seuils });
@@ -108,6 +111,7 @@ async function reglerNotesEcole(c) {
   appliquerReglages(true);
   rendre();
   if (r.action === 'competences') return gererCompetences();
+  if (r.action === 'accord') return gererAccordEcole();
   toast('Réglages des notes enregistrés ✔', 'ok');
 }
 
@@ -1107,7 +1111,18 @@ function degresEleve(el, c, periode) {
       if (v >= 1 && v <= 4) res.set(a.id, v);
     }
   }
-  return { res, evals };
+  // Objectifs du programme (ecolecompetences.js) : leur dernier degré compte pour le domaine du livret auquel ils
+  // appartiennent (moyenne arrondie avec le degré posé sur le domaine lui-même, s'il y en a un).
+  const objectifs = new Map(); // domaine → [{ a, v }]
+  for (const [id, v] of res) {
+    const a = REFERENTIEL.attendu(id);
+    if (a?.objectif) for (const p of a.parents || [a.parent]) objectifs.set(p, [...(objectifs.get(p) || []), { a, v }]);
+  }
+  for (const [parent, liste] of objectifs) {
+    const valeurs = [...(res.has(parent) ? [res.get(parent)] : []), ...liste.map(x => x.v)];
+    res.set(parent, Math.round(valeurs.reduce((x, y) => x + y, 0) / valeurs.length));
+  }
+  return { res, evals, objectifs };
 }
 // Notes chiffrées d'une matière sur la période → degré proposé d'après les seuils de la classe.
 function degreDesNotes(el, c, evals, ca) {
@@ -1119,13 +1134,13 @@ function degreDesNotes(el, c, evals, ca) {
 
 // Le livret d'un élève : matières → domaines (degré proposé, degré retenu), appréciations.
 function livretEleve(el, c, periode) {
-  const ref = refEleve(el, c), { res, evals } = degresEleve(el, c, periode), doc = livretDe(el, periode);
+  const ref = refEleve(el, c), { res, evals, objectifs } = degresEleve(el, c, periode), doc = livretDe(el, periode);
   const niveau = niveauEleve(el, c) || c.niveau;
   const matieres = Object.entries(ref.champs).filter(([ca]) => champVisibleEcole(niveau, ca)).map(([ca, ch]) => {
     const notes = degreDesNotes(el, c, evals, ca);
     const domaines = ch.attendus.filter(a => !a.masque).map(a => {
       const propose = res.get(a.id) || null, manuel = +doc.positions?.[a.id] || null;
-      return { a, propose, degre: manuel || propose, manuel: !!manuel };
+      return { a, propose, degre: manuel || propose, manuel: !!manuel, objectifs: objectifs.get(a.id) || [] };
     });
     const valeurs = domaines.map(x => x.degre).filter(Boolean);
     const niveau = valeurs.length ? valeurs.reduce((x, y) => x + y, 0) / valeurs.length : notes.degre;
@@ -1201,7 +1216,8 @@ function htmlFicheLivret(l) {
     ${l.matieres.map(m => `<section class="matiere-livret">
       <h3>${esc(m.titre)}${m.notes.moy !== null ? ` <span class="aide">moyenne ${fmt1(m.notes.moy)}/20</span>` : ''}</h3>
       ${m.domaines.map(x => `<div class="domaine-livret"><span>${esc(x.a.texte)}</span>
-        <span class="choix-position" role="group" aria-label="${esc(x.a.texte)}">${[1, 2, 3, 4].map(n => `<button type="button" class="niveau${x.degre === n ? ` n${n}` : ''}${x.degre === n && !x.manuel ? ' auto' : ''}" data-livret="position" data-arg="${esc(x.a.id)}|${n}" title="${esc(POSITIONS_LSU[n - 1])}" aria-pressed="${x.degre === n}">${n}</button>`).join('')}</span></div>`).join('')}
+        <span class="choix-position" role="group" aria-label="${esc(x.a.texte)}">${[1, 2, 3, 4].map(n => `<button type="button" class="niveau${x.degre === n ? ` n${n}` : ''}${x.degre === n && !x.manuel ? ' auto' : ''}" data-livret="position" data-arg="${esc(x.a.id)}|${n}" title="${esc(POSITIONS_LSU[n - 1])}" aria-pressed="${x.degre === n}">${n}</button>`).join('')}</span>
+        ${x.objectifs.length ? `<span class="objectifs-livret aide">Objectifs évalués : ${x.objectifs.map(o => `<span title="${esc(o.a.texte)}">${esc(o.a.code)} <span class="niveau n${o.v}">${o.v}</span></span>`).join(' ')}</span>` : ''}</div>`).join('')}
       <label class="appr-livret">Appréciation
         <textarea rows="2" data-livret-appr="${esc(m.ca)}" placeholder="${m.niveau === null ? 'Rien d’évalué sur cette période : écris ici si besoin.' : ''}">${esc(texteMatiere(l, m))}</textarea></label>
       ${m.niveau !== null ? `<button type="button" class="lien" data-livret="autre" data-arg="${esc(m.ca)}">${iconeEcole('de')}Autre proposition</button>` : ''}
@@ -1236,31 +1252,407 @@ function texteLivret(l) {
     `APPRÉCIATION GÉNÉRALE`, texteGenerale(l), ...(l.doc.accompagnement ? [`Accompagnement : ${l.doc.accompagnement}`] : [])].join('\n');
 }
 
-function htmlImpressionLivret(l) {
-  const a = absencesPeriode(l.el, l.periode), p = periodesAnnee().find(x => x.id === l.periode), app = reglage('apparence');
-  const lignes = l.matieres.filter(m => m.domaines.some(x => x.degre) || texteMatiere(l, m));
-  const cases = d => [1, 2, 3, 4].map(n => `<td class="case-pos${d === n ? ` retenue pos-${n}` : ''}">${d === n ? '●' : ''}</td>`).join('');
-  const blocs = lignes.map(m => {
-    const notes = m.domaines.filter(x => x.degre), travaille = elementsTravailles(l.c, l.periode, m.ca), appr = texteMatiere(l, m);
-    // Une matière sans sous-domaine (EPS, EMC…) : pas de ligne qui répète son nom.
-    const unique = m.domaines.length === 1, rangs = Math.max(1, unique ? 1 : notes.length);
-    const titre = `<b>${esc(m.titre)}</b>${travaille ? `<small>Travaillé : ${esc(travaille)}</small>` : ''}`;
-    const fin = `<td class="appr-pos" rowspan="${rangs}">${esc(appr)}</td>`;
-    if (unique) return `<tbody><tr><td class="matiere-pos" colspan="2">${titre}</td>${cases(notes[0]?.degre)}${fin}</tr></tbody>`;
-    if (!notes.length) return `<tbody><tr><td class="matiere-pos" colspan="2">${titre}</td>${cases(null)}${fin}</tr></tbody>`;
-    return `<tbody>${notes.map((x, i) => `<tr>${i ? '' : `<td class="matiere-pos" rowspan="${rangs}">${titre}</td>`}<td class="domaine-pos">${esc(x.a.texte.replace(/\s*\(.*$/, ''))}</td>${cases(x.degre)}${i ? '' : fin}</tr>`).join('')}</tbody>`;
-  }).join('');
-  const abs = `${a.abs} demi-journée${a.abs > 1 ? 's' : ''}${a.nj ? ` (dont ${a.nj} non justifiée${a.nj > 1 ? 's' : ''})` : ''}`;
-  return `<section class="page-livret">
-    <header class="tete-livret"><div><h1>${esc(l.el.prenom)} ${esc(l.el.nom)}</h1><p>${esc(l.c.nom)}${app.prof ? ` · ${esc(app.prof)}` : ''}</p></div>
-      <div class="droite-livret"><b>Livret — ${esc(p?.code || '')}</b><p>${esc(p?.texte || '')}</p><p>Absences : ${abs} · Retards : ${a.ret}</p></div></header>
-    <table class="table-livret"><colgroup><col class="c-matiere"><col class="c-domaine"><col class="c-pos"><col class="c-pos"><col class="c-pos"><col class="c-pos"><col class="c-appr"></colgroup>
-      <thead><tr><th colspan="2">Matière et domaine</th>${['Non atteints', 'Partiellement atteints', 'Atteints', 'Dépassés'].map(t => `<th class="titre-pos">${t}</th>`).join('')}<th>Appréciation</th></tr></thead>
-      ${blocs}</table>
-    <p class="legende-livret">Colonnes centrales : où en est l’élève par rapport aux objectifs d’apprentissage de la période.</p>
-    <div class="general-livret"><h2>Appréciation générale</h2><p>${esc(texteGenerale(l))}</p>${l.doc.accompagnement ? `<p class="accomp-livret"><b>Accompagnement :</b> ${esc(l.doc.accompagnement)}</p>` : ''}</div>
-    <div class="signatures-livret"><div>L’enseignant(e)</div><div>Le ou les parents</div></div>
-  </section>`;
+// Le livret dessiné en pages A4 (dessinpdf.js) : l'aperçu, le PDF et l'impression partent du même dessin.
+// Une page (ou plus si la période est chargée) par élève ; chaque élève commence sur une nouvelle page.
+const FONDS_POSITION_PDF = { 1: '#f6d5d0', 2: '#fbe6c4', 3: '#dcefd0', 4: '#b9e0b0' };
+const PASTILLES_POSITION_PDF = { 1: '#b93a2e', 2: '#b7700a', 3: '#2e8a45', 4: '#1f6b34' };
+function dessinerLivret(livrets, titre) {
+  const C = COULEURS_PDF, A = accentPdf(), app = reglage('apparence') || {};
+  const d = DessinPdf({ ...PAGE_A4_PORTRAIT, titre });
+  const M = 40, l = d.l - 2 * M, bas = d.h - 44;
+  const wM = l * 0.17, wD = l * 0.19, wP = l * 0.075, wA = l - wM - wD - 4 * wP;
+  const xD = M + wM, xP = xD + wD, xA = xP + 4 * wP;
+  const pad = 4, T = 8.5, lh = 10.5, Tp = 7.5, lhp = 9;
+  const edite = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  // (Coupés à la main : « Partiellement » ne tient pas en entier dans une colonne aussi étroite.)
+  const titresPos = [['Non', 'atteints'], ['Partielle-', 'ment', 'atteints'], ['Atteints'], ['Dépassés']];
+  const hEnteteTable = Math.max(...titresPos.map(x => x.length)) * 7.5 + 8;
+  // Texte en plusieurs lignes depuis le haut d'une case (y = haut de la case).
+  const lignes = (x, y, liste, taille, interligne, o = {}) => liste.forEach((t, i) => d.texte(x, y + pad + taille * 0.82 + i * interligne, t, { taille, ...o }));
+
+  livrets.forEach((lv, k) => {
+    if (k) d.nouvellePage();
+    const premiere = d.numeroPage - 1;
+    const a = absencesPeriode(lv.el, lv.periode), p = periodesAnnee().find(x => x.id === lv.periode);
+    const nom = `${lv.el.prenom} ${lv.el.nom}`.trim();
+    const abs = `${a.abs} demi-journée${a.abs > 1 ? 's' : ''}${a.nj ? ` (dont ${a.nj} non justifiée${a.nj > 1 ? 's' : ''})` : ''}`;
+
+    // En-tête de l'élève (en entier sur sa première page, en court sur les suivantes)
+    const entete = suite => {
+      if (suite) {
+        d.texte(M, 40, d.tenir(`${nom} — livret ${p?.code || ''} (suite)`, l, 11, true), { taille: 11, gras: true, couleur: A });
+        d.ligne(M, 48, M + l, 48, { trait: A, ep: 1 });
+        return 60;
+      }
+      d.texte(M, 50, d.tenir(nom, l - 210, 19, true), { taille: 19, gras: true, couleur: A });
+      d.texte(M, 66, d.tenir([lv.c.nom, app.prof].filter(Boolean).join(' · '), l - 210, 10), { taille: 10, couleur: C.texte2 });
+      d.texte(M + l, 46, `Livret — ${p?.code || ''}`, { taille: 12, gras: true, couleur: A, ancre: 'fin' });
+      d.texte(M + l, 59, (p?.texte || '').replace(/\s*→\s*/g, ' – '), { taille: 8.5, couleur: C.texte2, ancre: 'fin' }); // (pas de flèche en Helvetica)
+      d.texte(M + l, 71, `Absences : ${abs} · Retards : ${a.ret}`, { taille: 8.5, couleur: C.texte2, ancre: 'fin' });
+      d.ligne(M, 80, M + l, 80, { trait: A, ep: 1.6 });
+      return 94;
+    };
+    const enteteTable = y => {
+      d.rect(M, y, l, hEnteteTable, { fond: '#e4edf4', trait: C.bord, ep: 0.6 });
+      d.texte(M + pad, y + hEnteteTable / 2 + 3, 'Matière et domaine', { taille: 8, gras: true, couleur: C.texte });
+      titresPos.forEach((t, i) => {
+        const cx = xP + i * wP + wP / 2, y0 = y + (hEnteteTable - t.length * 7.5) / 2 + 5.5;
+        t.forEach((ligne, j) => d.texte(cx, y0 + j * 7.5, ligne, { taille: 6.5, gras: true, couleur: C.texte, ancre: 'milieu' }));
+        d.ligne(xP + i * wP, y, xP + i * wP, y + hEnteteTable, { trait: C.bord, ep: 0.6 });
+      });
+      d.ligne(xA, y, xA, y + hEnteteTable, { trait: C.bord, ep: 0.6 });
+      d.texte(xA + pad, y + hEnteteTable / 2 + 3, 'Appréciation', { taille: 8, gras: true, couleur: C.texte });
+      return y + hEnteteTable;
+    };
+
+    // Les blocs du tableau : une matière = un bloc qu'on ne coupe pas entre deux pages.
+    const blocs = lv.matieres.filter(m => m.domaines.some(x => x.degre) || texteMatiere(lv, m)).map(m => {
+      const notes = m.domaines.filter(x => x.degre), travaille = elementsTravailles(lv.c, lv.periode, m.ca);
+      const unique = m.domaines.length === 1 || !notes.length; // (sans sous-domaine, ou rien de placé : une seule ligne)
+      const largeurTitre = (unique ? wM + wD : wM) - 2 * pad;
+      const titreM = d.couper(m.titre, largeurTitre, 9, true), trav = travaille ? d.couper(`Travaillé : ${travaille}`, largeurTitre, Tp) : [];
+      const appr = d.couper(texteMatiere(lv, m), wA - 2 * pad, T);
+      const rangs = unique ? [{ degre: notes[0]?.degre ?? null, texte: [] }]
+        : notes.map(x => ({ degre: x.degre, texte: d.couper(x.a.texte.replace(/\s*\(.*$/, ''), wD - 2 * pad, T) }));
+      rangs.forEach(r => { r.h = Math.max(18, r.texte.length * lh + 2 * pad); });
+      const hTitre = titreM.length * 11 + trav.length * lhp + 2 * pad + (trav.length ? 2 : 0);
+      const h = Math.max(rangs.reduce((s, r) => s + r.h, 0), hTitre, appr.length * lh + 2 * pad);
+      const reste = h - rangs.reduce((s, r) => s + r.h, 0);
+      rangs.forEach(r => { r.h += reste / rangs.length; });
+      return { unique, titreM, trav, appr, rangs, h };
+    });
+    const dessinerBloc = (b, y) => {
+      const { h } = b;
+      // Matière (et domaine si une seule ligne)
+      lignes(M + pad, y, b.titreM, 9, 11, { gras: true, couleur: A });
+      lignes(M + pad, y + b.titreM.length * 11 + 2, b.trav, Tp, lhp, { couleur: C.texte2 });
+      // Lignes des domaines et cases des positions
+      let yr = y;
+      b.rangs.forEach((r, i) => {
+        if (!b.unique) lignes(xD + pad, yr, r.texte, T, lh, { couleur: C.texte });
+        if (r.degre) {
+          const x = xP + (r.degre - 1) * wP;
+          d.rect(x, yr, wP, r.h, { fond: FONDS_POSITION_PDF[r.degre] });
+          d.cercle(x + wP / 2, yr + r.h / 2, 3.6, { fond: PASTILLES_POSITION_PDF[r.degre] });
+        }
+        if (i) d.ligne(b.unique ? M : xD, yr, xA, yr, { trait: C.bord, ep: 0.5 });
+        yr += r.h;
+      });
+      lignes(xA + pad, y, b.appr, T, lh, { couleur: C.texte });
+      // Traits de la case
+      d.rect(M, y, l, h, { trait: '#9aa5ae', ep: 0.6 });
+      d.ligne(M, y, M + l, y, { trait: '#4a5a66', ep: 1.1 });
+      if (!b.unique) d.ligne(xD, y, xD, y + h, { trait: '#9aa5ae', ep: 0.5 });
+      for (let i = 0; i <= 4; i++) d.ligne(xP + i * wP, y, xP + i * wP, y + h, { trait: '#9aa5ae', ep: 0.5 });
+      return y + h;
+    };
+
+    // Le bas : légende, appréciation générale, signatures.
+    const generale = d.couper(texteGenerale(lv) || '—', l - 20, 10);
+    const accomp = lv.doc.accompagnement ? d.couper(`Accompagnement : ${lv.doc.accompagnement}`, l - 20, 9) : [];
+    const hGenerale = 24 + generale.length * 12.5 + (accomp.length ? 4 + accomp.length * 11 : 0) + 6;
+    const hBas = 16 + hGenerale + 10 + 44;
+    const dessinerBas = y => {
+      d.texte(M, y + 9, 'Colonnes centrales : où en est l’élève par rapport aux objectifs d’apprentissage de la période.', { taille: 7.5, couleur: C.texte2 });
+      y += 16;
+      d.rect(M, y, l, hGenerale, { trait: A, ep: 1, rayon: 4 });
+      d.texte(M + 10, y + 16, 'Appréciation générale', { taille: 11, gras: true, couleur: A });
+      generale.forEach((t, i) => d.texte(M + 10, y + 31 + i * 12.5, t, { taille: 10, couleur: C.texte }));
+      accomp.forEach((t, i) => d.texte(M + 10, y + 31 + generale.length * 12.5 + 4 + i * 11, t, { taille: 9, couleur: C.texte }));
+      y += hGenerale + 10;
+      const ws = (l - 16) / 2;
+      ['L’enseignant(e)', 'Le ou les parents'].forEach((t, i) => {
+        d.rect(M + i * (ws + 16), y, ws, 44, { trait: '#9aa5ae', ep: 0.6 });
+        d.texte(M + i * (ws + 16) + 5, y + 11, t, { taille: 8, couleur: C.texte2 });
+      });
+    };
+
+    let y = entete(false);
+    if (!blocs.length) { d.texte(M, y + 12, 'Rien d’évalué sur cette période.', { taille: 10, couleur: C.texte2 }); y += 24; }
+    else {
+      y = enteteTable(y);
+      for (const b of blocs) {
+        if (y + b.h > bas) { d.nouvellePage(); y = enteteTable(entete(true)); }
+        y = dessinerBloc(b, y);
+      }
+    }
+    if (y + 8 + hBas > bas) { d.nouvellePage(); y = entete(true) - 8; }
+    dessinerBas(y + 8);
+
+    // Pied de chaque page de l'élève : « 1 / 2 » s'il y en a plusieurs.
+    const n = d.numeroPage - premiere;
+    for (let i = 0; i < n; i++) {
+      d.allerPage(premiere + i);
+      d.texte(M, d.h - 24, `Carnet École S-A · ${lv.c.nom} · édité le ${edite}`, { taille: 7.5, couleur: C.texte2 });
+      if (n > 1) d.texte(M + l, d.h - 24, `${nom} · ${i + 1} / ${n}`, { taille: 7.5, couleur: C.texte2, ancre: 'fin' });
+    }
+    d.allerPage(d.numeroPage - 1);
+  });
+  return d;
+}
+
+// Aperçu des pages du livret, puis « Télécharger le PDF » ou « Imprimer » (comme le bilan de l'appel).
+async function apercuLivret(livrets, nom) {
+  const dessin = dessinerLivret(livrets, nom);
+  const pages = dessin.pages.map((_, i) => dessin.versSvg(i));
+  const qui = livrets.length > 1 ? `${livrets.length} élèves, chacun sur sa page` : 'une page A4 en portrait';
+  const { d, resultat } = ouvrirModale(`Aperçu — ${nom}`,
+    `<p class="aide">${pluriel(pages.length, 'page')} (${qui}) : c’est exactement ce que contiendra le PDF ou la feuille imprimée.</p><div class="apercu-pdf">${pages.map(s => `<div class="feuille-pdf">${s}</div>`).join('')}</div>`,
+    `<button type="button" class="primaire" data-pdf>${iconeEcole('telecharger')}Télécharger le PDF</button><button type="button" data-imprimer>${iconeEcole('imprimer')}Imprimer</button><span class="espace"></span><button type="button" data-fermer autofocus>Retour</button>`,
+    'modale-large modale-apercu-pdf');
+  iconeTitreModale(d, 'regarder');
+  d.addEventListener('click', e => {
+    if (e.target.closest('[data-pdf]')) lancer(async () => { telechargerBlob(new Blob([await dessin.versPdf()], { type: 'application/pdf' }), `${nom}.pdf`); toast('PDF enregistré dans tes téléchargements', 'ok'); });
+    if (e.target.closest('[data-imprimer]')) imprimerZoneEcole(`<div class="impression-pdf">${pages.join('')}</div>`, nom);
+  });
+  await resultat;
+}
+
+/* ---------- Fiche bilan d'un élève en PDF (même présentation que le livret) ----------
+   Les données de la fiche à l'écran (fichenotes.js › htmlFicheNotes) : synthèse comparée à la classe, appréciation,
+   points d'appui et axes de progression, compétences, évaluations. Dessinée une fois (dessinpdf.js), montrée en aperçu,
+   puis téléchargée ou imprimée. Anonyme : ni nom, ni prénom, ni absences, ni santé. Jamais les observations de l'enseignant. */
+function dessinerFicheEcole(el, periode, eleves, classe, anonyme) {
+  const C = COULEURS_PDF, A = accentPdf(), app = reglage('apparence') || {}, VERT = '#1f9d7a', GRIS = '#8a95a1';
+  const c = Donnees.get('classes', el.classeId), p = periodesAnnee().find(x => x.id === periode);
+  const nom = anonyme ? 'Élève (anonyme)' : `${el.prenom} ${el.nom}`.trim();
+  const quand = periode === 'annee' ? 'toute l’année' : p?.code || '';
+  const d = DessinPdf({ ...PAGE_A4_PORTRAIT, titre: `Fiche bilan ${nom} ${quand}` });
+  const M = 40, l = d.l - 2 * M, bas = d.h - 44;
+  const edite = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  const toutes = evalsDe(el.classeId), evals = periode === 'annee' ? toutes : toutes.filter(e => periodeDe(e.date) === periode);
+  const s = syntheseEleve(el, periode, eleves), pa = pointsEtAxes(el, s), moy = s.moy ?? null;
+  const moyennes = eleves.map(x => moyenneEleve(x.id, evals)).filter(m => m !== null);
+  const moyClasse = moyennes.length ? moyennes.reduce((a, b) => a + b, 0) / moyennes.length : null;
+  const abs = periode === 'annee' ? (() => { const x = appelsEleve(el), n = k => x.filter(v => v.etat === k).length; return { abs: n('AN') + n('AJ'), nj: n('AN'), ret: n('R') }; })()
+    : absencesPeriode(el, periode);
+  let appr = appreciationEleve(el, periode, eleves).texte;
+  if (anonyme && el.prenom) appr = anonymiserTexteFiche(appr, el.prenom); // (comme la fiche imprimée)
+  const lignes = (x, y, liste, taille, interligne, o = {}) => liste.forEach((t, i) => d.texte(x, y + i * interligne, t, { taille, ...o }));
+  const pastille = (cx, cy, v) => {
+    d.cercle(cx, cy, 6.5, { fond: PASTILLES_POSITION_PDF[v] });
+    d.texte(cx, cy + 2.6, String(v), { taille: 7.5, gras: true, couleur: '#ffffff', ancre: 'milieu' });
+  };
+
+  // En-tête (en entier sur la première page, en court sur les suivantes)
+  const entete = suite => {
+    if (suite) {
+      d.texte(M, 40, d.tenir(`${nom} — fiche bilan ${quand} (suite)`, l, 11, true), { taille: 11, gras: true, couleur: A });
+      d.ligne(M, 48, M + l, 48, { trait: A, ep: 1 });
+      return 62;
+    }
+    d.texte(M, 50, d.tenir(nom, l - 200, 19, true), { taille: 19, gras: true, couleur: A });
+    d.texte(M, 66, d.tenir([c?.nom, app.prof].filter(Boolean).join(' · '), l - 200, 10), { taille: 10, couleur: C.texte2 });
+    d.texte(M + l, 46, `Fiche bilan — ${periode === 'annee' ? 'année' : quand}`, { taille: 12, gras: true, couleur: A, ancre: 'fin' });
+    d.texte(M + l, 59, periode === 'annee' ? 'Toute l’année' : (p?.texte || '').replace(/\s*→\s*/g, ' – '), { taille: 8.5, couleur: C.texte2, ancre: 'fin' }); // (pas de flèche en Helvetica)
+    if (!anonyme) d.texte(M + l, 71, `Absences : ${abs.abs} demi-journée${abs.abs > 1 ? 's' : ''}${abs.nj ? ` (dont ${abs.nj} NJ)` : ''} · Retards : ${abs.ret}`, { taille: 8.5, couleur: C.texte2, ancre: 'fin' });
+    d.ligne(M, 80, M + l, 80, { trait: A, ep: 1.6 });
+    return 96;
+  };
+  let y = entete(false);
+  const place = h => { if (y + h > bas) { d.nouvellePage(); y = entete(true); } };
+  const titreSection = (t, suite = '') => {
+    place(40);
+    d.texte(M, y + 11, t, { taille: 11, gras: true, couleur: A });
+    if (suite) d.texte(M + d.largeurTexte(t, 11, true) + 6, y + 11, suite, { taille: 8.5, couleur: C.texte2 });
+    y += 20;
+  };
+
+  // 1. Synthèse : la toile (élève / classe) et les quatre valeurs
+  {
+    const cx = M + 92, cy = y + 74, R = 50;
+    const pt = (i, v) => { const ang = -Math.PI / 2 + (i * Math.PI) / 2, r = (Math.max(0, Math.min(4, v ?? 0)) / 4) * R; return [cx + r * Math.cos(ang), cy + r * Math.sin(ang)]; };
+    const poly = vals => AXES_SYNTHESE.map(([k], i) => pt(i, vals[k]));
+    [1, 2, 3, 4].forEach(n => d.trace(AXES_SYNTHESE.map((_, i) => pt(i, n)), { ferme: true, trait: n === 4 ? '#b4bcc6' : '#dde2e8', ep: 0.6 }));
+    AXES_SYNTHESE.forEach((_, i) => { const [x, yy] = pt(i, 4); d.ligne(cx, cy, x, yy, { trait: '#dde2e8', ep: 0.6 }); });
+    d.trace(poly(s.valeurs), { ferme: true, fond: '#cdeee3', trait: VERT, ep: 1.6 });
+    d.trace(poly(classe || {}), { ferme: true, trait: GRIS, ep: 1.1, tirets: [3, 2] });
+    AXES_SYNTHESE.forEach(([k], i) => { if (s.valeurs[k] !== null && s.valeurs[k] !== undefined) { const [x, yy] = pt(i, s.valeurs[k]); d.cercle(x, yy, 2.2, { fond: VERT }); } });
+    AXES_SYNTHESE.forEach(([k, n], i) => {
+      const [x, yy] = pt(i, 4.5);
+      d.texte(x, yy + (i === 0 ? -2 : i === 2 ? 8 : 3), nomAxeSynthese(k, n), { taille: 7.5, gras: true, couleur: C.texte, ancre: i === 1 ? 'debut' : i === 3 ? 'fin' : 'milieu' });
+    });
+    d.ligne(M + 30, y + 148, M + 44, y + 148, { trait: VERT, ep: 1.6 });
+    d.texte(M + 48, y + 151, anonyme ? 'élève' : el.prenom || 'élève', { taille: 7.5, couleur: C.texte2 });
+    d.ligne(M + 92, y + 148, M + 106, y + 148, { trait: GRIS, ep: 1.1, tirets: [3, 2] });
+    d.texte(M + 110, y + 151, 'moyenne de la classe', { taille: 7.5, couleur: C.texte2 });
+    // Les valeurs, en quatre cartes
+    const x0 = M + 200, wc = (l - 200 - 8) / 2, hc = 44;
+    AXES_SYNTHESE.forEach(([k, n], i) => {
+      const x = x0 + (i % 2) * (wc + 8), yy = y + 6 + Math.floor(i / 2) * (hc + 8), v = s.valeurs[k], vc = (classe || {})[k];
+      d.rect(x, yy, wc, hc, { fond: C.carte, rayon: 4 });
+      d.texte(x + 8, yy + 13, nomAxeSynthese(k, n), { taille: 8, couleur: C.texte2 });
+      d.texte(x + 8, yy + 30, v === null || v === undefined ? '–' : k === 'niveau' ? `${fmt1(moy)}/20` : `${fmt1(v)}/4`, { taille: 14, gras: true, couleur: C.texte });
+      if (vc !== null && vc !== undefined) d.texte(x + 8, yy + 40, k === 'niveau' ? `classe ${fmt1(moyClasse)}/20` : `classe ${fmt1(vc)}`, { taille: 7.5, couleur: C.texte2 });
+    });
+    // À signaler (pas dans la fiche anonyme)
+    if (!anonyme) {
+      const sante = bilanLecons(el, periode).sante + evals.filter(e => SANTE.includes(Donnees.note(e.id, el.id))).length;
+      const sig = [s.vs.abs && `${s.vs.abs} absence${s.vs.abs > 1 ? 's' : ''}`, s.vs.retards && `${s.vs.retards} retard${s.vs.retards > 1 ? 's' : ''}`, sante && `${sante} fois malade`].filter(Boolean);
+      d.texte(x0, y + 126, d.tenir(sig.length ? `À signaler : ${sig.join(' · ')}` : 'Rien à signaler en vie scolaire.', l - 200, 8.5), { taille: 8.5, couleur: C.texte2 });
+    }
+    y += 162;
+  }
+
+  // 2. Appréciation, dans un cadre
+  {
+    const t = d.couper(appr || '—', l - 20, 10), h = 26 + t.length * 13 + 4;
+    place(h + 10);
+    d.rect(M, y, l, h, { trait: A, ep: 1, rayon: 4 });
+    d.texte(M + 10, y + 16, 'Appréciation', { taille: 11, gras: true, couleur: A });
+    lignes(M + 10, y + 31, t, 10, 13, { couleur: C.texte });
+    y += h + 14;
+  }
+
+  // 3. Points d'appui et axes de progression, côte à côte
+  {
+    const wcol = (l - 20) / 2, x2 = M + wcol + 20;
+    const qui = anonyme ? 'Ce que l’élève' : /^[aeiouyhàâéèêëîïôöûü]/i.test(el.prenom || '') ? `Ce qu’${el.prenom}` : `Ce que ${el.prenom}`;
+    const forts = pa.forts.slice(0, 3).map(x => d.couper(x.texte, wcol - 10, 9));
+    const axes = pa.axes.map(x => ({ phrase: d.couper(x.phrase[0].toUpperCase() + x.phrase.slice(1), wcol - 14, 9, true), texte: d.couper(x.texte, wcol - 14, 8) }));
+    const hF = forts.length ? forts.reduce((a, t) => a + t.length * 11.5 + 3, 0) : 12;
+    const hA = axes.reduce((a, x) => a + x.phrase.length * 11.5 + x.texte.length * 10 + 5, 0);
+    place(18 + Math.max(hF, hA) + 10);
+    d.texte(M, y + 10, d.tenir(`${qui} sait faire`, wcol, 9.5, true), { taille: 9.5, gras: true, couleur: A });
+    d.texte(x2, y + 10, 'Axes de progression (2 au plus)', { taille: 9.5, gras: true, couleur: A });
+    let y1 = y + 26, y2 = y + 26;
+    if (!forts.length) d.texte(M, y1, 'Pas encore assez de données.', { taille: 9, couleur: C.texte2 });
+    forts.forEach(t => { d.cercle(M + 3, y1 - 3, 1.6, { fond: C.texte2 }); lignes(M + 10, y1, t, 9, 11.5, { couleur: C.texte }); y1 += t.length * 11.5 + 3; });
+    axes.forEach((x, i) => {
+      d.texte(x2, y2, `${i + 1}.`, { taille: 9, gras: true, couleur: C.texte });
+      lignes(x2 + 14, y2, x.phrase, 9, 11.5, { gras: true, couleur: C.texte });
+      lignes(x2 + 14, y2 + x.phrase.length * 11.5, x.texte, 8, 10, { couleur: C.texte2 });
+      y2 += x.phrase.length * 11.5 + x.texte.length * 10 + 5;
+    });
+    y = Math.max(y1, y2) + 8;
+  }
+
+  // Matières de la classe, dans l'ordre du livret ; les évaluations et compétences y sont rangées.
+  const ordreMatieres = matieresClasse(c || {}).map(([k]) => k);
+  const rangMatiere = ca => { const i = ordreMatieres.indexOf(ca); return i < 0 ? 99 : i; };
+  const nomMat = ca => (ca ? nomMatiere(c, ca) || ca : 'Autres');
+  const ZEBRE = '#f5f7fb', BANDE = '#e4edf4';
+  const bande = (t, h = 16) => {
+    d.rect(M, y, l, h, { fond: BANDE });
+    d.texte(M + 6, y + h / 2 + 3.2, d.tenir(t, l - 12, 9, true), { taille: 9, gras: true, couleur: A });
+    y += h;
+  };
+
+  // 4. Compétences, regroupées par matière : degrés obtenus (du plus ancien au plus récent) et où en est l'élève.
+  {
+    const groupes = new Map(); // ca → Map(id → { a, valeurs })
+    for (const e of evals) for (const at of competencesEval(e)) {
+      const v = +Donnees.note(e.id, el.id, at.id);
+      if (!(v >= 1 && v <= 4)) continue;
+      if (!groupes.has(e.ca || '')) groupes.set(e.ca || '', new Map());
+      const g = groupes.get(e.ca || '');
+      if (!g.has(at.id)) g.set(at.id, { a: at, valeurs: [] });
+      g.get(at.id).valeurs.push(v);
+    }
+    const matieres = [...groupes.keys()].sort((x, z) => rangMatiere(x) - rangMatiere(z));
+    const toutes = matieres.flatMap(ca => [...groupes.get(ca).values()]);
+    if (toutes.length) {
+      const acquises = toutes.filter(x => x.valeurs.at(-1) >= 3).length;
+      titreSection('Compétences par matière', `${acquises} sur ${toutes.length} au degré 3 ou 4`);
+      // Légende des degrés, sur une ligne
+      place(20);
+      let xl = M;
+      d.texte(xl, y + 9, 'Degrés :', { taille: 7.5, gras: true, couleur: C.texte2 }); xl += 36;
+      NIVEAUX_MAITRISE.forEach(n => {
+        pastille(xl + 6.5, y + 6.5, +n.v);
+        d.texte(xl + 16, y + 9, n.nom, { taille: 7.5, couleur: C.texte2 });
+        xl += 22 + d.largeurTexte(n.nom, 7.5) + 10;
+      });
+      y += 20;
+      const wT = l * 0.46, wDg = l * 0.27, xDg = M + wT, xEt = xDg + wDg;
+      const enteteTable = () => {
+        d.rect(M, y, l, 16, { fond: '#ffffff', trait: C.bord, ep: 0.6 });
+        d.texte(M + 6, y + 11, 'Domaine', { taille: 7.5, gras: true, couleur: C.texte });
+        d.texte(xDg + 6, y + 11, 'Degrés, du premier au dernier', { taille: 7.5, gras: true, couleur: C.texte });
+        d.texte(xEt + 6, y + 11, 'Où en est l’élève', { taille: 7.5, gras: true, couleur: C.texte });
+        y += 16;
+      };
+      place(16 + 16 + 20);
+      enteteTable();
+      const maxPastilles = Math.floor((wDg - 12) / 16);
+      for (const ca of matieres) {
+        const rangs = [...groupes.get(ca).values()];
+        if (y + 16 + 20 > bas) { d.nouvellePage(); y = entete(true); enteteTable(); }
+        bande(nomMat(ca));
+        rangs.forEach(({ a, valeurs }, i) => {
+          // (Le nom de la matière est dans la bande : le domaine seul, sans code.)
+          const t = d.couper(a.texte, wT - 12, 8.5), h = Math.max(18, t.length * 10.5 + 7);
+          if (y + h > bas) { d.nouvellePage(); y = entete(true); enteteTable(); bande(`${nomMat(ca)} (suite)`); }
+          if (i % 2) d.rect(M, y, l, h, { fond: ZEBRE });
+          lignes(M + 6, y + h / 2 - (t.length - 1) * 5.25 + 3, t, 8.5, 10.5, { couleur: C.texte });
+          const vus = valeurs.slice(-maxPastilles);
+          vus.forEach((v, k) => pastille(xDg + 12 + k * 16, y + h / 2, v));
+          const der = valeurs.at(-1);
+          d.texte(xEt + 6, y + h / 2 + 3, nomNiveau(String(der)), { taille: 8.5, gras: true, couleur: PASTILLES_POSITION_PDF[der] });
+          d.ligne(M, y + h, M + l, y + h, { trait: C.ligne, ep: 0.6 });
+          y += h;
+        });
+      }
+      y += 12;
+    }
+  }
+
+  // 5. Annexe : les évaluations de la période, en liste courte par matière, sur une autre page.
+  if (evals.length) {
+    if (d.numeroPage === 1) { d.nouvellePage(); y = entete(true); }
+    titreSection(`Évaluations ${periode === 'annee' ? 'de l’année' : 'de la période'}`, moy !== null ? `moyenne des notes ${fmt1(moy)}/20${moyClasse !== null ? ` · classe ${fmt1(moyClasse)}/20` : ''}` : '');
+    const parMatiere = [...new Set(evals.map(e => e.ca || ''))].sort((x, z) => rangMatiere(x) - rangMatiere(z));
+    const xT = M + 52, xR = M + l * 0.66;
+    for (const ca of parMatiere) {
+      const liste = evals.filter(e => (e.ca || '') === ca);
+      if (y + 16 + 16 > bas) { d.nouvellePage(); y = entete(true); }
+      bande(nomMat(ca), 15);
+      liste.forEach((e, i) => {
+        const h = 15, v = Donnees.note(e.id, el.id), ym = y + h / 2;
+        if (y + h > bas) { d.nouvellePage(); y = entete(true); bande(`${nomMat(ca)} (suite)`, 15); }
+        if (i % 2) d.rect(M, y, l, h, { fond: ZEBRE });
+        d.texte(M + 6, ym + 3, dateCourte(e.date), { taille: 8, couleur: C.texte2 });
+        d.texte(xT, ym + 3, d.tenir(e.titre, xR - xT - 8, 8.5), { taille: 8.5, couleur: C.texte });
+        if (CODES[v]) d.texte(xR, ym + 3, CODES[v], { taille: 8.5, couleur: C.texte2 });
+        else if (sansNoteEval(e)) {
+          const ds = competencesEval(e).map(a => +Donnees.note(e.id, el.id, a.id)).filter(x => x >= 1 && x <= 4);
+          if (!ds.length) d.texte(xR, ym + 3, 'non évaluée', { taille: 8.5, couleur: C.texte2 });
+          ds.slice(0, Math.floor((M + l - xR) / 16)).forEach((x, k) => pastille(xR + 7 + k * 16, ym, x));
+        } else if (v === '' || v === undefined || v === null) d.texte(xR, ym + 3, 'non saisie', { taille: 8.5, couleur: C.texte2 });
+        else d.texte(xR, ym + 3, `${affichage(v)}/${fmt(e.max)}${e.nonSignificative ? ' (non significative)' : ''}`, { taille: 8.5, gras: true, couleur: C.texte });
+        y += h;
+      });
+      y += 6;
+    }
+  }
+
+  // Pied de chaque page : « 1 / 2 » s'il y en a plusieurs.
+  const n = d.numeroPage;
+  for (let i = 0; i < n; i++) {
+    d.allerPage(i);
+    d.texte(M, d.h - 24, `Carnet École S-A · ${c?.nom || ''} · édité le ${edite}`, { taille: 7.5, couleur: C.texte2 });
+    if (n > 1) d.texte(M + l, d.h - 24, `${i + 1} / ${n}`, { taille: 7.5, couleur: C.texte2, ancre: 'fin' });
+  }
+  d.allerPage(n - 1);
+  return d;
+}
+
+// Aperçu de la fiche bilan, puis « Télécharger le PDF » ou « Imprimer » (comme le livret).
+async function apercuFicheEcole(el, periode, eleves, classe, anonyme) {
+  const dessin = dessinerFicheEcole(el, periode, eleves, classe, anonyme);
+  const p = periodesAnnee().find(x => x.id === periode), quand = periode === 'annee' ? 'année' : p?.code || '';
+  const nom = `Fiche bilan ${anonyme ? 'anonyme' : `${el.prenom} ${el.nom}`.trim()} ${quand}`;
+  const pages = dessin.pages.map((_, i) => dessin.versSvg(i));
+  const { d, resultat } = ouvrirModale(`Aperçu — ${nom}`,
+    `<p class="aide">${pluriel(pages.length, 'page')} A4 en portrait${anonyme ? ', sans nom, absences ni santé' : ''} : c’est exactement ce que contiendra le PDF ou la feuille imprimée. Tes observations n’y sont jamais.</p><div class="apercu-pdf">${pages.map(s => `<div class="feuille-pdf">${s}</div>`).join('')}</div>`,
+    `<button type="button" class="primaire" data-pdf>${iconeEcole('telecharger')}Télécharger le PDF</button><button type="button" data-imprimer>${iconeEcole('imprimer')}Imprimer</button><span class="espace"></span><button type="button" data-fermer autofocus>Retour</button>`,
+    'modale-large modale-apercu-pdf');
+  iconeTitreModale(d, 'regarder');
+  d.addEventListener('click', e => {
+    if (e.target.closest('[data-pdf]')) lancer(async () => { telechargerBlob(new Blob([await dessin.versPdf()], { type: 'application/pdf' }), `${nom}.pdf`); toast('PDF enregistré dans tes téléchargements', 'ok'); });
+    if (e.target.closest('[data-imprimer]')) imprimerZoneEcole(`<div class="impression-pdf">${pages.join('')}</div>`, nom);
+  });
+  await resultat;
 }
 
 async function ouvrirLivret(c) {
@@ -1278,7 +1670,7 @@ async function ouvrirLivret(c) {
       <button type="button" class="fleche-ecole" data-livret="suivant" data-arg="1" aria-label="Élève suivant">${iconeEcole('suivant')}</button></span>` : ''}</div>`;
   const corps = () => entete() + (etat.vue === 'eleve' ? htmlFicheLivret(courant()) : htmlClasseLivret(Donnees.get('classes', c.id), etat.periode));
   const { d, resultat } = ouvrirModale(`Livret — ${c.nom}`, `<div data-corps>${corps()}</div>`,
-    `<button type="button" data-livret="copier">${iconeEcole('copier')}Copier</button><button type="button" data-livret="imprimer">${iconeEcole('imprimer')}Imprimer</button><span class="espace"></span><button type="button" data-fermer class="primaire">Fermer</button>`, 'modale-large livret-ecole');
+    `<button type="button" data-livret="copier">${iconeEcole('copier')}Copier</button><button type="button" data-livret="imprimer" class="primaire" title="Voir les pages avant de les imprimer ou d’en faire un PDF">${iconeEcole('regarder')}Aperçu, PDF, impression</button><span class="espace"></span><button type="button" data-fermer>Fermer</button>`, 'modale-large livret-ecole');
   iconeTitreModale(d, 'livre');
   const redessiner = () => {
     const z = $('[data-corps]', d), haut = z.closest('.modale')?.scrollTop;
@@ -1316,7 +1708,8 @@ async function ouvrirLivret(c) {
         await copierTexte(etat.vue === 'eleve' ? texteLivret(courant()) : eleves.map(x => texteLivret(livretEleve(x, cl, etat.periode))).join('\n\n———\n\n'));
       } else if (quoi === 'imprimer') {
         const cl = Donnees.get('classes', c.id), liste = etat.vue === 'eleve' ? [el()] : eleves;
-        imprimerZoneEcole(liste.map(x => htmlImpressionLivret(livretEleve(x, cl, etat.periode))).join(''), `Livret ${cl.nom} ${etat.periode}`);
+        const code = periodesAnnee().find(p => p.id === etat.periode)?.code || etat.periode;
+        await apercuLivret(liste.map(x => livretEleve(x, cl, etat.periode)), etat.vue === 'eleve' ? `Livret ${code} ${el().prenom} ${el().nom}` : `Livret ${code} ${cl.nom}`);
       }
     });
   });
@@ -1349,6 +1742,7 @@ document.addEventListener('click', e => {
     case 'livret': return lancer(() => ouvrirLivret(c));
     case 'niveaux': return lancer(() => editerNiveauxEleves(c));
     case 'reglages-notes': return lancer(() => reglerNotesEcole(c));
+    case 'accord': return lancer(gererAccordEcole);
     case 'matiere': ui.matiereEcole = arg; memoriserUi(); return rendreVue();
     case 'niveau': ui.niveauEcole = arg; memoriserUi(); return rendreVue();
     case 'demi': ui.demiJournee = arg; return rendreVue();

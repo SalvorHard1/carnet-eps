@@ -437,6 +437,43 @@ const REFERENTIEL = (() => {
         refs[refId].champs[ca] = { titre, attendus };
       }
     }
+    // Carnet École : objectifs détaillés du programme (programmeecole.js), rangés sous un domaine du livret (`parent`),
+    // plus ceux que l'école a ajoutés (accord de l'école). `retenu` : coché dans l'accord (tout est retenu tant qu'il n'y en a pas).
+    const accord = perso.accord && Array.isArray(perso.accord.ids) ? perso.accord : null;
+    const auj = new Date(), ANNEE_SCOLAIRE_PROGRAMMES = auj.getFullYear() - (auj.getMonth() + 1 < 8 ? 1 : 0); // (comme anneeScolaire, app.js)
+    const retenus = new Set(accord?.ids || []);
+    // Matières sur lesquelles l'équipe s'est prononcée (« refId.ca ») ; les autres : tout est retenu. (Accord de la v1.48 : le français seul.)
+    const couvertes = new Set(accord ? (Array.isArray(accord.matieres) ? accord.matieres : ['ecoleCycle3.FR']) : []);
+    for (const [refId, matieres] of Object.entries(typeof PROGRAMMES_ECOLE === 'object' ? PROGRAMMES_ECOLE : {})) {
+      for (const [ca, domainesProg] of Object.entries(matieres)) {
+        const champ = refs[refId]?.champs[ca];
+        if (!champ) continue;
+        // Même ordre que les domaines du livret (cases du haut de la fenêtre d'évaluation) : Oral avant Lecture, etc.
+        const rangLivret = d => [].concat(d.livret)[0];
+        const domaines = [...domainesProg].sort((a, b) => rangLivret(a) - rangLivret(b));
+        champ.objectifs = [];
+        champ.domainesProgramme = domaines.map(d => ({ dom: d.dom, nom: d.nom, livret: d.livret, comps: d.comps.map(([code, nom]) => ({ code, nom })) }));
+        // `livret` : un domaine du livret, ou plusieurs ([1, 2] : l'objectif compte dans les deux) ; `parent` = le premier.
+        // `horsVigueur` : programme pas encore (ou plus) en vigueur cette année scolaire ({ de: 2027 } ou { a: 2026 }) ;
+        // il n'est ni proposé ni affiché (sauf dans une évaluation qui l'a déjà), mais reste retenu pour l'année où il le sera.
+        const ajouter = (o, perso) => {
+          const parents = [].concat(o.livret).map(n => `${refId}.${ca}.${n}`);
+          const horsVigueur = (o.de && ANNEE_SCOLAIRE_PROGRAMMES < o.de) || (o.a !== undefined && ANNEE_SCOLAIRE_PROGRAMMES > o.a);
+          const objectif = { ...o, ca, refId, objectif: true, parent: parents[0], parents, retenu: !couvertes.has(`${refId}.${ca}`) || retenus.has(o.id),
+            ...(horsVigueur ? { horsVigueur: true } : {}), ...(perso ? { perso: true } : {}) };
+          parId[objectif.id] = objectif;
+          champ.objectifs.push(objectif);
+        };
+        for (const d of domaines) {
+          for (const [comp, , liste, livretComp] of d.comps) {
+            for (const [code, niveaux, texte, annees] of liste) ajouter({ id: `${refId}.${ca}.${code}`, code, texte, niveaux: niveaux.split(' '), dom: d.dom, comp, livret: livretComp ?? d.livret, ...(annees || {}) });
+          }
+          for (const a of (accord?.ajouts || []).filter(x => x.refId === refId && x.ca === ca && x.dom === d.dom)) {
+            ajouter({ id: a.id, code: a.code, texte: a.texte, niveaux: a.niveaux, dom: d.dom, comp: a.comp || '', livret: d.livret }, true);
+          }
+        }
+      }
+    }
     // Compétences ajoutées : toujours retrouvables par leur identifiant (même si leur référentiel a disparu).
     for (const a of perso.ajouts || []) {
       const attendu = { id: a.id, code: a.code, texte: a.texte, ca: a.ca, refId: a.refId, perso: true };

@@ -21,8 +21,10 @@ const RUBRIQUES_APPR = {
 };
 const TONS_APPR = { bienveillant: 'Bienveillant', neutre: 'Neutre', exigeant: 'Exigeant' };
 const STYLES_APPR = { phrases: 'Phrases (« Léa s’investit… Elle… »)', telegraphique: 'Télégraphique (« Investissement sérieux. »)' };
-// Style « Liées » (phrases reliées, voir redigerLieesAppr) : EPS seulement (ses phrases parlent de capacités motrices).
-const stylesAppr = () => (profil().appreciations ? STYLES_APPR : { ...STYLES_APPR, liees: 'Liées (« Volontaire et appliquée, Léa s’appuie sur… »)' });
+// Style « Liées » (phrases reliées) : en EPS, rédigé à part (redigerLieesAppr, ses phrases parlent de capacités
+// motrices) ; à l'école, les phrases de l'école reliées entre elles (redigerAppr › lier). Pas en SVT ni en PC.
+const stylesAppr = () => (!profil().appreciations ? { ...STYLES_APPR, liees: 'Liées (« Volontaire et appliquée, Léa s’appuie sur… »)' }
+  : profil().appreciations.portrait ? { ...STYLES_APPR, liees: 'Liées (« Consciencieuse et curieuse, Léa réussit… »)' } : STYLES_APPR);
 const NOMS_NIV_APPR = { 0: 'non mentionné', 1: 'insuffisant', 2: 'fragile', 3: 'satisfaisant', 4: 'très bien' };
 const NOMS_NIV_PROG = { 0: 'non mentionnée', 1: 'en baisse', 2: 'stable', 3: 'en progrès', 4: 'nets progrès' };
 const idAppr = (eleveId, periode) => idSuivi(eleveId, 'appréciation ' + periode);
@@ -52,13 +54,16 @@ const objectifsAppr = () => ({ ...OBJECTIFS_APPR, ...(profil().appreciations?.ob
 // Gardé dans l'appréciation de la période ; une période sans portrait reprend celui de la dernière période qui en a un.
 const portraitProfil = () => profil().appreciations?.portrait || null;
 function portraitAppr(eleveId, periode) {
-  if (!portraitProfil()) return [];
+  const P = portraitProfil();
+  if (!P) return [];
+  // (Pastilles d'avant le rangement par thème : remplacées par celle qui les reprend, ou retirées ; voir discipline.js › anciennes.)
+  const migrer = ids => [...new Set(ids.map(x => (P.anciennes && x in P.anciennes ? P.anciennes[x] : x)).filter(Boolean))];
   const lire = p => Donnees.get('suivis', idAppr(eleveId, p))?.portrait;
-  if (Array.isArray(lire(periode))) return lire(periode);
+  if (Array.isArray(lire(periode))) return migrer(lire(periode));
   const ps = periodesAnnee(), k = periode === 'annee' ? ps.length : ps.findIndex(p => p.id === periode);
-  for (let i = k - 1; i >= 0; i--) { const x = lire(ps[i].id); if (Array.isArray(x)) return x; }
+  for (let i = k - 1; i >= 0; i--) { const x = lire(ps[i].id); if (Array.isArray(x)) return migrer(x); }
   // (Rien avant : le portrait choisi pour toute l'année.)
-  return (periode !== 'annee' && lire('annee')) || [];
+  return migrer((periode !== 'annee' && lire('annee')) || []);
 }
 // Les pastilles choisies, par groupe (dans l'ordre de discipline.js).
 function choixPortrait(portrait) {
@@ -73,7 +78,7 @@ function nomMorceauAppr(k) {
   if (k.startsWith('lien-')) return 'lien avec la période précédente';
   if (k.startsWith('perso-')) return 'ta phrase';
   const P = portraitProfil(), id = k.replace(/^[a-z]+-/, '');
-  if (P && /^(portrait|attention|situation)-/.test(k)) return (Object.values(P).flat().find(x => x.id === id)?.nom || id).toLocaleLowerCase('fr');
+  if (P && /^(portrait|attention|situation)-/.test(k)) return ([...P.qualites, ...P.attention, ...P.situations].find(x => x.id === id)?.nom || id).toLocaleLowerCase('fr');
   return (rubriqueAppr(k).nom || k).toLocaleLowerCase('fr');
 }
 
@@ -92,10 +97,14 @@ function diffMotsAppr(avant, apres) {
   const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
   for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
   const morceaux = [];
-  let i = 0, j = 0, de = [], vers = [];
-  const fermer = () => { if (de.length || vers.length) morceaux.push({ de, vers }); de = []; vers = []; };
+  let i = 0, j = 0, de = [], vers = [], dernier = null;
+  // (avant / apres : mots inchangés autour du morceau, pour apprendre un mot retiré ou ajouté : « bon courage » → « courage ».)
+  const fermer = () => {
+    if (de.length || vers.length) morceaux.push({ de, vers, avant: dernier, apres: i < n && j < m && a[i] === b[j] ? a[i] : null });
+    de = []; vers = [];
+  };
   while (i < n || j < m) {
-    if (i < n && j < m && a[i] === b[j]) { fermer(); i++; j++; }
+    if (i < n && j < m && a[i] === b[j]) { fermer(); dernier = a[i]; i++; j++; }
     else if (j < m && (i >= n || L[i][j + 1] >= L[i + 1][j])) vers.push(b[j++]);
     else de.push(a[i++]);
   }
@@ -127,8 +136,17 @@ function apprisAppr() {
     if (!el) continue;
     const noms = [el.prenom, el.nom, ...String(el.prenom || '').split(/[\s-]+/)].filter(x => x && x.length > 1);
     for (const h of diffMotsAppr(s.base, s.texte)) {
-      if (!h.de.length || !h.vers.length || h.de.length > 4 || h.vers.length > 4) continue;
-      const de = net(h.de), vers = net(h.vers), bas = x => x.toLocaleLowerCase('fr');
+      if ((!h.de.length && !h.vers.length) || h.de.length > 4 || h.vers.length > 4) continue;
+      let hDe = h.de, hVers = h.vers;
+      // Mot retiré ou ajouté : appris avec le mot inchangé qui suit (sinon celui qui précède), jamais seul
+      // (« bon » retiré partout abîmerait « de bons résultats »).
+      if (!hDe.length || !hVers.length) {
+        const mot = x => x && /\p{L}/u.test(x);
+        if (mot(h.apres)) { hDe = [...hDe, h.apres]; hVers = [...hVers, h.apres]; }
+        else if (mot(h.avant)) { hDe = [h.avant, ...hDe]; hVers = [h.avant, ...hVers]; }
+        else continue;
+      }
+      const de = net(hDe), vers = net(hVers), bas = x => x.toLocaleLowerCase('fr');
       if (!de || !vers || de === vers || bas(de).startsWith(bas(vers)) || bas(vers).startsWith(bas(de))) continue;
       if ([de, vers].some(x => MOTS_NEUTRES_APPR.has(bas(x)) || noms.some(nm => x.includes(nm)))) continue;
       const k = de + ' → ' + vers;
@@ -139,12 +157,16 @@ function apprisAppr() {
     }
   }
   const tous = [...vus.values()].filter(x => x.eleves.size >= 2).map(({ de, vers, cle: k, eleves }) => ({ de, vers, cle: k, n: eleves.size })).sort((x, y) => y.n - x.n);
-  cacheApprisAppr = { cle, val: { tous, parEleve } };
+  // (Vu chez un seul élève : appliqué à ses propositions seulement, à toutes dès un 2e élève.)
+  const attente = [...vus.values()].filter(x => x.eleves.size === 1).map(({ de, vers, cle: k }) => ({ de, vers, cle: k }));
+  cacheApprisAppr = { cle, val: { tous, parEleve, attente } };
   return cacheApprisAppr.val;
 }
+// Toutes les disciplines apprennent (l'École l'a eu d'abord : profil().appreciations.apprendre).
+const apprendAppr = () => profil().appreciations?.apprendre ?? true;
 // Remplacements appris, appliqués à une proposition (mots entiers ; aussi avec une majuscule en début de phrase).
 function appliquerApprisAppr(texte, r, eleveId) {
-  if (!profil().appreciations?.apprendre || !texte) return texte;
+  if (!apprendAppr() || !texte) return texte;
   const { tous, parEleve } = apprisAppr(), oublis = new Set(r.oublis || []);
   const liste = [...(parEleve.get(eleveId) || []), ...tous].filter(x => !oublis.has(x.cle));
   const fait = new Set();
@@ -174,15 +196,41 @@ function phrasesEleveAppr(eleveId, periode) {
 // Remplacements appris, dans les réglages : décocher l'un d'eux le fait oublier (r.oublis).
 let apprisOuvertAppr = false;
 function htmlApprisAppr(r) {
-  if (!profil().appreciations?.apprendre) return '';
-  const { tous } = apprisAppr(), oublis = new Set(r.oublis || []);
+  if (!apprendAppr()) return '';
+  const { tous, attente } = apprisAppr(), oublis = new Set(r.oublis || []);
   return `<details class="appris-appr" data-appr-appris ${apprisOuvertAppr ? 'open' : ''}><summary>🧠 Ce que l’appli a appris de tes corrections <small>${tous.length ? tous.length + ' tournure' + (tous.length > 1 ? 's' : '') : 'rien pour l’instant'}</small></summary>
-    <p class="aide">Quand tu remplaces un mot ou une tournure chez au moins deux élèves, l’appli le fait ensuite d’elle-même (chez un seul élève : pour lui seulement).
-      Les phrases que tu ajoutes pour un élève lui sont reproposées aux autres périodes (« Tes phrases », sur sa carte). Décoche ce qui ne te convient pas.</p>
+    <p class="aide">Quand tu remplaces ou retires un mot ou une tournure chez au moins deux élèves (« Bon courage ! » → « Courage ! »), l’appli le fait ensuite d’elle-même dans toutes ses propositions (chez un seul élève : pour lui seulement).
+      ${profil().appreciations?.apprendre ? 'Les phrases que tu ajoutes pour un élève lui sont reproposées aux autres périodes (« Tes phrases », sur sa carte). ' : ''}Décoche ce qui ne te convient pas : l’appli l’oublie.</p>
     ${tous.map(x => `<label class="case"><input type="checkbox" name="appr-appris" value="${esc(x.cle)}" ${oublis.has(x.cle) ? '' : 'checked'}> « ${esc(x.de)} » → « ${esc(x.vers)} » <span class="aide">(${x.n} élèves)</span></label>`).join('')}
+    ${attente.length ? `<p class="aide">À confirmer (vu chez un seul élève, appliqué partout dès que tu le refais chez un autre) : ${attente.slice(0, 12).map(x => `« ${esc(x.de)} » → « ${esc(x.vers)} »`).join(' · ')}${attente.length > 12 ? '…' : ''}</p>` : ''}
   </details>`;
 }
 document.addEventListener('toggle', e => { if (e.target.matches?.('[data-appr-appris]')) apprisOuvertAppr = e.target.open; }, true);
+
+// Indicateur « Apprentissage » (bas de la fenêtre ✍ Appréciations et de la fiche bilan) : ce que l'appli a retenu de tes
+// corrections. Le toucher ouvre la liste, dans les réglages des appréciations.
+function htmlIndicateurApprisAppr() {
+  if (!apprendAppr()) return '';
+  const { tous, attente } = apprisAppr(), oublis = new Set(reglage('appreciations').oublis || []), n = tous.filter(x => !oublis.has(x.cle)).length;
+  const titre = `L’appli apprend de tes corrections : ${n} tournure${n > 1 ? 's' : ''} retenue${n > 1 ? 's' : ''}${attente.length ? `, ${attente.length} à confirmer` : ''}. Toucher pour voir la liste.`;
+  return `<button type="button" class="indicateur-appris${n ? ' actif' : ''}" data-appr-apprentissage title="${esc(titre)}">🧠 Apprentissage <b>${n}</b>${attente.length ? `<small>+${attente.length} à confirmer</small>` : ''}</button>`;
+}
+function majIndicateurApprisAppr(d) {
+  const b = d?.querySelector('[data-appr-apprentissage]');
+  if (b) b.outerHTML = htmlIndicateurApprisAppr();
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest?.('[data-appr-apprentissage]');
+  if (!b) return;
+  const m = b.closest('dialog') || document;
+  const reglages = m.querySelector('details.reglages-appr, [data-fiche-reglages-appr]');
+  if (reglages) reglages.open = true;
+  apprisOuvertAppr = true;
+  // (Liste redessinée : elle date de l'ouverture de la fenêtre, avant les corrections.)
+  m.querySelector('[data-appr-appris]')?.replaceWith(Object.assign(document.createElement('template'), { innerHTML: htmlApprisAppr(reglageAppr()) }).content);
+  const liste = m.querySelector('[data-appr-appris]');
+  if (liste) { liste.open = true; liste.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+});
 
 /* ---------- Réglages ---------- */
 
@@ -199,6 +247,12 @@ function reglageAppr() {
   r.actives = r.actives.filter(k => connues.includes(k));
   if (!TONS_APPR[r.ton]) r.ton = 'bienveillant';
   if (!stylesAppr()[r.style]) r.style = 'phrases';
+  // (EPS et école : « Liées » est mieux écrit. Un carnet resté en « Phrases » y passe une fois ; un choix fait ensuite dans les
+  // réglages est gardé — lireReglageAppr pose la marque.)
+  if (stylesAppr().liees && !r.stylePasseLiees && r.style === 'phrases') {
+    r.style = 'liees'; r.stylePasseLiees = true;
+    ecrireReglage('appreciations', { style: 'liees', stylePasseLiees: true });
+  }
   // (Anciens défauts, 400 puis 300 caractères : ils passent à 250, la limite d'École Directe ; une autre valeur choisie est gardée.)
   r.longueur = Math.max(80, Math.min(2000, +r.longueur === 400 || +r.longueur === 300 || !+r.longueur ? 250 : +r.longueur));
   return r;
@@ -235,7 +289,7 @@ function lireReglageAppr(form) {
   return {
     ordre, actives: ordre.filter(k => form.elements['appr-' + k]?.checked),
     bilan: !!form.elements['appr-bilan']?.checked,
-    ton: form.elements['appr-ton']?.value || 'bienveillant', style: form.elements['appr-style']?.value || 'phrases',
+    ton: form.elements['appr-ton']?.value || 'bienveillant', style: form.elements['appr-style']?.value || 'phrases', stylePasseLiees: true,
     longueur: Math.max(80, Math.min(2000, +form.elements['appr-longueur']?.value || 250)),
     // (École seulement : cases absentes ailleurs, la valeur enregistrée est alors gardée.)
     ...(form.elements['appr-voix'] ? { voix: form.elements['appr-voix'].checked } : {}),
@@ -302,9 +356,41 @@ const RE_COMPORTEMENT = /respect|solidaire|accepter le resultat|accepter de se p
 const RE_ATTITUDE = /attitude|engagement|investissement|implication|motivation|participation/;
 const categorieAppr = texte => {
   const t = sansAccent(texte);
-  if (profil().ecole && /autonom|initiative/.test(t)) return 'autonomie'; // (rubrique du carnet École)
-  return RE_ATTITUDE.test(t) ? 'attitude' : RE_COMPORTEMENT.test(t) ? 'comportement' : RE_METHODO.test(t) ? 'methodo' : 'moteur';
+  if (profil().ecole) {
+    if (/autonom|initiative/.test(t)) return 'autonomie'; // (rubrique du carnet École)
+    return RE_ATTITUDE.test(t) ? 'attitude' : RE_COMPORTEMENT.test(t) ? 'comportement' : RE_METHODO.test(t) ? 'methodo' : 'moteur';
+  }
+  const theme = themeSavoirEtreAppr(texte);
+  return theme ? THEMES_SE_APPR[theme].rubrique : RE_METHODO.test(t) ? 'methodo' : 'moteur';
 };
+
+// Savoir-être : compétences qui parlent de l'élève avec les autres, de ses émotions ou de son investissement
+// (AFL3 « fonctionnement collectif solidaire », « coopérer pour faire progresser », AFC « respecter les partenaires… »,
+// critères écrits par l'enseignant : coéquipiers, gestion des émotions, rapport aux autres, investissement…).
+// Un degré 1 ou 2 rempli à la main n'est pas noyé dans la moyenne des compétences : l'appréciation le dit en clair
+// (voir analyserAppr › savoirEtre), même chez un élève qui a de bonnes notes. (Pas au carnet École.)
+const THEMES_SE_APPR = {
+  equipe: { nom: 'travail avec les partenaires', rubrique: 'comportement' },
+  emotions: { nom: 'gestion des émotions', rubrique: 'comportement' },
+  respect: { nom: 'rapport aux autres', rubrique: 'comportement' },
+  // (Comportement en classe — écoute, concentration, consignes, bavardages — : ce qui gêne les apprentissages, pas
+  // forcément les relations avec les autres. Critère « comportement » seul : ce thème, pas le rapport aux autres.)
+  conduite: { nom: 'comportement en classe', rubrique: 'comportement' },
+  engagement: { nom: 'investissement', rubrique: 'attitude' },
+};
+function themeSavoirEtreAppr(texte) {
+  const t = sansAccent(texte);
+  if (/securite|assurage/.test(t) && !/coop/.test(t)) return null; // (sécurité : méthodologie)
+  const autres = /autres|camarade|partenaire|adversaire|arbitr|chacun|adulte|citoyen|fair.?play|toleran|bienveillan|politesse|poli\b/.test(t);
+  const emotion = (/emotion/.test(t) && !/suscit|emouv/.test(t)) || /maitrise de soi|maitriser ses reactions|self.?control|sang.?froid|frustration|colere|\bstress|nervosit|impulsiv|s'enerv/.test(t);
+  if (!autres && !emotion && /comportement|conduite|consigne|concentr|attenti|ecoute|bavard|dissip|disciplin|perturb|agitat|\bagite|serieux en (cours|classe)|travailler dans le calme|calme en (cours|classe)|regles (de vie|de (la )?classe|de fonctionnement|du cours)/.test(t)) return 'conduite';
+  if (emotion || /\bcalme/.test(t)) return 'emotions';
+  if (/respect|fair.?play|accepter (le resultat|la defaite|la decision|les decisions|l'arbitr)|accepter de se produire|comportement|citoyen|rapport aux autres|relations? (aux|avec les) autres|envers (les )?autres|attenti\S* aux autres|tolerance|bienveillan|politesse|regles de vie/.test(t)) return 'respect';
+  if (/coop|partenaire|coequipi|equipier|camarade|entraid|solidari|solidaire|esprit d'equipe|(travail|travailler) (en|d'|de) (groupe|equipe)|au sein (d'un|du|de son|de l') ?(groupe|equipe)|fonctionnement collectif|prestation collective|au service (du|de l'|de son) ?(groupe|equipe|collectif)/.test(t)) return 'equipe';
+  // (« s’engager pour gagner… », « engagement moteur », « réinvestir ses connaissances » : pas l'investissement.)
+  if (/attitude|\binvesti|implication|impliqu|motivation|\bmotivee?s?\b|particip|persever|assidu|\benvie|volontaire|engagement(?! moteur)|s'engager (en cours|dans (l'activite|les activites|la seance|chaque seance|le travail))/.test(t)) return 'engagement';
+  return null;
+}
 
 const moyenneListe = l => (l.length ? l.reduce((a, b) => a + b, 0) / l.length : null);
 const niveauDegre = x => (x === null ? null : x >= 3.5 ? 4 : x >= 2.75 ? 3 : x >= 2 ? 2 : 1);
@@ -389,8 +475,15 @@ function analyserAppr(el, periode, eleves, sansAvant = false) {
     comps.get(a.id).auto = !!Donnees.noteComplete(e.id, el.id, a.id)?.auto;
   }
   const faibles = [];
+  // Savoir-être (voir THEMES_SE_APPR) : derniers degrés choisis à la main, par thème.
+  const parTheme = new Map();
+  const noterTheme = (texte, v) => {
+    const th = !ecole && themeSavoirEtreAppr(texte);
+    if (th) parTheme.set(th, [...(parTheme.get(th) || []), v]);
+  };
   for (const { a, valeurs, auto } of comps.values()) {
     const der = valeurs.at(-1);
+    if (!auto) noterTheme(a.texte, der);
     degres.competences.push(der);
     degres[categorieAppr(a.texte)].push(der);
     if (!auto) { saisi.competences = true; saisi[categorieAppr(a.texte)] = true; }
@@ -423,6 +516,7 @@ function analyserAppr(el, periode, eleves, sansAvant = false) {
       const der = +valeurs.at(-1);
       if (!(der >= 1 && der <= 4)) continue;
       const cat = ind.etape ? 'moteur' : categorieAppr(ind.nom);
+      if (!ind.etape) noterTheme(ind.nom, der);
       degres[cat].push(der);
       degres.competences.push(der);
       saisi[cat] = saisi.competences = true;
@@ -514,6 +608,17 @@ function analyserAppr(el, periode, eleves, sansAvant = false) {
     const validees = degres.competences.filter(v => v >= 3).length;
     sources.competences = `${validees}/${degres.competences.length} au degré 3 ou 4 · degré moyen ${fmtD(m)}`;
   }
+  // Savoir-être : un thème au degré 1 ou 2 fixe le niveau des compétences (sinon de bons degrés moteurs le cachent)
+  // et sera dit en clair (« la coopération avec ses partenaires reste fragile »). Le plus faible d'abord.
+  details.savoirEtre = [...parTheme].map(([theme, l]) => ({ theme, m: moyenneListe(l), n: niveauDegre(moyenneListe(l)), nb: l.length }))
+    .sort((x, y) => x.m - y.m);
+  details.niveauCompetencesSeul = niveaux.competences ?? null;
+  const pireSE = details.savoirEtre[0];
+  if (pireSE && pireSE.n <= 2 && niveaux.competences && pireSE.n <= niveaux.competences) {
+    niveaux.competences = pireSE.n;
+    details.themeCompetences = pireSE.theme;
+    sources.competences += `\nSavoir-être : ${THEMES_SE_APPR[pireSE.theme].nom}, degré moyen ${fmtD(pireSE.m)} sur ${pireSE.nb} critère${pireSE.nb > 1 ? 's' : ''} → niveau ${pireSE.n} retenu`;
+  }
 
   // Méthodologie : rôles, organisation, sécurité (compétences et données de leçon de ce type).
   if (degres.methodo.length) {
@@ -560,6 +665,9 @@ function analyserAppr(el, periode, eleves, sansAvant = false) {
     }
     if (n === null) { n = 3; defaut.comportement = true; morceaux.push('aucune donnée : niveau par défaut, à vérifier'); }
     niveaux.comportement = n; sources.comportement = morceaux.join(' · ');
+    // (Difficulté qui vient d'un critère de savoir-être : la phrase nomme ce critère, pas « son comportement ».)
+    const th = details.savoirEtre.find(x => THEMES_SE_APPR[x.theme].rubrique === 'comportement');
+    if (th && th.n <= 2 && n <= 2) details.themeComportement = th.theme;
   }
 
   // École : autonomie et soin, d'après les degrés de ce type et les mots-clés des observations (discipline.js › mots).
@@ -679,9 +787,13 @@ const PHRASES_APPR = {
   comportement: {
     4: { p: ['{S} a un comportement exemplaire, respectueux de tous.', 'Le comportement est exemplaire envers les camarades comme envers l’adulte.'], t: ['Comportement exemplaire.'] },
     3: { p: ['{S} a un comportement correct et respectueux.', '{S} respecte les règles et ses camarades.', 'Le comportement est correct et respectueux.'], t: ['Comportement correct.', 'Attitude respectueuse.'] },
-    2: { p: { b: ['{S} doit veiller à mieux respecter les consignes.'], n: ['Le comportement est parfois à reprendre.'], x: ['{S} doit impérativement mieux respecter les consignes.'] },
-      t: { b: ['Respect des consignes à améliorer.'], n: ['Comportement parfois à reprendre.'], x: ['Comportement à corriger.'] } },
-    1: { p: { b: ['Le comportement doit s’améliorer pour progresser sereinement.', 'Le respect des règles et des camarades doit devenir une priorité.'], n: ['Le comportement pose problème en cours.'],
+    2: { p: { b: ['{S} doit veiller à mieux respecter les consignes.', 'Le comportement en cours doit encore gagner en sérénité.', 'L’attitude en cours reste à améliorer.',
+      'Un comportement plus posé aiderait à mieux progresser.'],
+      n: ['Le comportement est parfois à reprendre.', 'L’attitude en cours est encore inégale.', 'Le comportement manque encore de régularité.'],
+      x: ['{S} doit impérativement mieux respecter les consignes.', 'Le comportement en cours n’est pas satisfaisant.', 'L’attitude en cours doit changer.'] },
+      t: { b: ['Respect des consignes à améliorer.', 'Attitude en cours à améliorer.'], n: ['Comportement parfois à reprendre.', 'Attitude inégale.'], x: ['Comportement à corriger.', 'Attitude à revoir.'] } },
+    1: { p: { b: ['Le comportement doit s’améliorer pour progresser sereinement.', 'Le respect des règles et des camarades doit devenir une priorité.'],
+      n: ['Le comportement pose problème en cours.', 'L’attitude en cours pose problème.', 'Le comportement freine nettement les progrès.'],
       x: ['Le comportement est inacceptable et nuit au travail de la classe.', 'Le comportement est inacceptable et nuit au travail de tous.', 'Le comportement est inacceptable et perturbe la classe.'] },
     t: { b: ['Comportement à améliorer nettement.'], n: ['Comportement problématique.'], x: ['Comportement inacceptable.'] } },
   },
@@ -745,7 +857,191 @@ const OBJECTIFS_APPR = {
     'retrouver son niveau habituel'],
   regularite: ['retrouver de la régularité dans ses résultats', 'maintenir ses efforts dans la durée', 'gagner en constance'],
   haut: ['maintenir ses efforts', 'conserver cette belle dynamique', 'viser l’excellence', 'garder ce niveau d’investissement', 'continuer sur cette lancée', 'garder cette exigence'],
+  // Savoir-être (voir THEMES_SE_APPR ; l'investissement prend ceux de l'attitude).
+  equipe: ['mieux coopérer avec ses partenaires', 's’appuyer davantage sur ses partenaires', 'se mettre davantage au service du groupe',
+    'travailler plus volontiers avec les autres', 'faire preuve de plus d’esprit d’équipe', 'accepter de travailler avec chacun',
+    'trouver sa place dans le groupe', 'aider davantage ses camarades', 'écouter davantage ses partenaires', 'encourager ses camarades', 'jouer collectif', 'aider ses camarades'],
+  emotions: ['mieux gérer ses émotions', 'apprendre à garder son calme', 'mieux maîtriser ses réactions', 'garder son sang-froid dans les moments difficiles',
+    'mieux accepter l’échec', 'apprendre à gérer sa frustration', 'prendre du recul dans les moments tendus', 'garder son calme', 'canaliser ses émotions'],
+  respect: ['mieux respecter les autres', 'adopter une attitude plus respectueuse envers chacun', 'faire preuve de plus de respect envers les autres',
+    'mieux accepter les décisions et les règles du jeu', 'faire preuve de tolérance et de fair-play', 'adopter une attitude plus bienveillante',
+    'entretenir des relations apaisées avec ses camarades', 'respecter chacun de ses camarades', 'accepter plus sereinement les décisions de l’arbitre', 'respecter chacun', 'gagner en fair-play'],
+  conduite: ['se concentrer davantage en cours', 'mieux écouter les consignes', 'adopter une attitude plus posée en cours', 'travailler dans le calme',
+    'canaliser son énergie au service des apprentissages', 'éviter les bavardages en cours', 'adopter une attitude propice au travail', 'écouter les consignes', 'se poser en cours', 'gagner en concentration'],
 };
+
+// Savoir-être, niveaux 1 et 2 : phrases du style « Phrases » et « Télégraphique » (l'investissement prend celles de
+// l'attitude), puis compléments du style « Liées » (après une liaison : « Toutefois, … »).
+const PHRASES_SE_APPR = {
+  equipe: {
+    2: { p: { b: ['{S} doit encore apprendre à mieux travailler avec ses partenaires.', 'Le travail avec les partenaires reste à améliorer.',
+      'L’entraide avec les camarades reste à développer.', 'Le travail collectif demande encore plus d’ouverture aux autres.', 'L’écoute des partenaires reste à développer.', 'L’entraide reste à développer.', 'L’esprit d’équipe reste à affirmer.', 'L’ouverture aux autres reste à cultiver.'],
+      n: ['La coopération avec les partenaires reste fragile.', '{S} coopère encore difficilement avec ses partenaires.', 'L’entraide reste encore timide.',
+        'La place au sein du groupe reste à trouver.', '{S} s’intègre encore difficilement au groupe.', 'L’esprit d’équipe reste fragile.'],
+      x: ['{S} doit nettement mieux coopérer avec ses partenaires.', 'La coopération avec les partenaires est insuffisante.', 'Le jeu collectif souffre d’un manque d’ouverture aux autres.',
+        'Le repli sur soi pénalise le collectif.', 'L’esprit d’équipe fait défaut.', 'L’entraide est insuffisante.'] },
+    t: { b: ['Coopération avec les partenaires à développer.', 'Esprit d’équipe à développer.', 'Entraide à développer.'], n: ['Coopération avec les partenaires fragile.', 'Esprit d’équipe fragile.', 'Entraide timide.'],
+      x: ['Coopération avec les partenaires insuffisante.', 'Esprit d’équipe insuffisant.', 'Manque d’ouverture aux autres.'] } },
+    1: { p: { b: ['{S} a encore beaucoup de mal à travailler avec ses partenaires.', 'Le travail en équipe reste difficile : il faut s’ouvrir aux autres.',
+      'Trouver sa place dans le groupe reste un vrai défi.', 'L’ouverture aux autres est une priorité.'],
+      n: ['{S} peine à coopérer avec ses partenaires.', 'Le travail avec les partenaires pose problème.', 'L’intégration au sein du groupe reste difficile.', 'L’esprit d’équipe manque nettement.'],
+      x: ['{S} refuse trop souvent de coopérer avec ses partenaires.', 'Le manque de coopération pénalise le groupe.', 'L’esprit d’équipe fait cruellement défaut.',
+        'Le refus de travailler avec certains camarades pénalise le groupe.'] },
+    t: { b: ['Travail d’équipe à construire.', 'Esprit d’équipe à construire.', 'Place dans le groupe à trouver.'], n: ['Coopération très difficile.', 'Esprit d’équipe absent.', 'Intégration au groupe difficile.'],
+      x: ['Coopération quasi absente.', 'Refus de coopérer.'] } },
+  },
+  emotions: {
+    2: { p: { b: ['{S} doit apprendre à mieux gérer ses émotions.', 'La gestion des émotions reste à travailler.', 'La gestion de la frustration reste à travailler.',
+      'Garder son calme dans les moments tendus reste un objectif.', 'Les réactions à chaud restent à mieux contrôler.', 'La maîtrise de soi reste à construire.', 'Les réactions restent à mieux canaliser.', 'Le sang-froid reste à acquérir.'],
+      n: ['La gestion des émotions reste fragile.', '{S} gère encore difficilement ses émotions.', 'La frustration prend encore parfois le dessus.',
+        'Les réactions face à l’échec restent parfois excessives.', 'La maîtrise de soi reste fragile.', 'Les réactions sont parfois vives.'],
+      x: ['{S} doit mieux maîtriser ses émotions en cours.', 'La maîtrise de soi fait encore défaut.', 'Les émotions sont encore trop mal gérées.',
+        'Les réactions excessives nuisent au bon déroulement des séances.', 'Les débordements d’humeur ne sont pas acceptables.', 'Les réactions sont trop vives.'] },
+    t: { b: ['Gestion des émotions à travailler.', 'Émotions à mieux gérer.', 'Frustration à mieux gérer.'], n: ['Gestion des émotions fragile.', 'Émotions encore mal gérées.', 'Réactions parfois excessives.'],
+      x: ['Maîtrise de soi insuffisante.', 'Gestion des émotions insuffisante.', 'Réactions excessives.'] } },
+    1: { p: { b: ['{S} a encore beaucoup de mal à gérer ses émotions.', 'La gestion des émotions reste difficile : il faut apprendre à garder son calme.',
+      'Apprendre à gérer la frustration doit devenir une priorité.', 'Garder son calme est une priorité.'],
+      n: ['{S} peine à gérer ses émotions.', 'La gestion des émotions pose problème.', 'Les réactions excessives sont trop fréquentes.', 'Les réactions vives sont fréquentes.'],
+      x: ['Le manque de maîtrise de soi nuit au travail du groupe.', '{S} ne parvient pas à maîtriser ses émotions.', 'Les débordements répétés perturbent le groupe.', 'Les emportements doivent cesser.'] },
+    t: { b: ['Gestion des émotions à construire.', 'Émotions difficiles à gérer.'], n: ['Émotions mal gérées.', 'Gestion des émotions difficile.', 'Réactions excessives fréquentes.'],
+      x: ['Manque de maîtrise de soi.', 'Émotions non contrôlées.', 'Débordements répétés.'] } },
+  },
+  // (Relations avec les autres : respect, fair-play, bienveillance, décisions acceptées. Le comportement en classe, lui,
+  // est dans « conduite ».)
+  respect: {
+    2: { p: { b: ['{S} doit veiller à son attitude envers les autres.', 'Le respect des camarades reste à consolider.', 'Plus de fair-play est attendu.', 'Le respect d’autrui reste à consolider.', 'L’écoute des autres reste à développer.', 'Plus de respect envers chacun est attendu.', 'Les relations aux autres restent à apaiser.',
+      'Plus de bienveillance envers les camarades est attendue.', 'Les relations avec les camarades méritent plus d’attention.',
+      'Un peu plus de fair-play rendrait les échanges plus sereins.', 'Le respect des autres doit devenir un réflexe.'],
+      n: ['Les relations avec les autres restent fragiles.', 'Le respect des autres est encore inégal.', 'L’attitude envers les camarades manque parfois de respect.',
+        '{S} manque parfois de bienveillance envers les autres.', 'Le fair-play fait encore parfois défaut.', 'L’acceptation des décisions reste difficile.', 'Le fair-play reste inégal.', 'Le respect d’autrui reste inégal.', 'Les relations aux autres restent tendues.'],
+      x: ['{S} doit nettement mieux respecter les autres.', 'Le respect des autres est insuffisant.', 'L’attitude envers les camarades n’est pas acceptable.',
+        'Le manque de fair-play nuit aux échanges.', 'Les remarques déplacées envers les camarades doivent cesser.', 'Le respect d’autrui fait défaut.', 'Le fair-play fait défaut.'] },
+    t: { b: ['Respect des camarades à consolider.', 'Attitude envers les autres à revoir.', 'Fair-play à développer.', 'Bienveillance à développer.'],
+      n: ['Respect des autres inégal.', 'Relations avec les autres fragiles.', 'Fair-play inégal.'],
+      x: ['Respect des autres insuffisant.', 'Attitude envers les autres à corriger.', 'Manque de fair-play.'] } },
+    1: { p: { b: ['Le respect des autres doit devenir une priorité.', '{S} doit apprendre à mieux respecter les autres.',
+      'Les relations avec les camarades doivent s’apaiser.', 'Une attitude respectueuse envers chacun est indispensable.', 'Le respect d’autrui est une priorité.'],
+      n: ['Les relations avec les autres posent problème.', '{S} peine à respecter les autres.', 'Les conflits avec les camarades sont trop fréquents.',
+        'L’attitude envers les camarades est souvent irrespectueuse.', 'Les conflits sont trop fréquents.'],
+      x: ['Le manque de respect envers les autres est inacceptable.', '{S} ne respecte pas les autres.', 'Les attitudes irrespectueuses envers les camarades doivent cesser.', 'Le respect d’autrui fait gravement défaut.'] },
+    t: { b: ['Respect des autres à construire.', 'Relations avec les autres à apaiser.'], n: ['Relations avec les autres difficiles.', 'Respect des autres défaillant.', 'Conflits fréquents.'],
+      x: ['Manque de respect envers les autres.', 'Attitude irrespectueuse envers les autres.'] } },
+  },
+  // Comportement en classe (écoute, concentration, consignes, bavardages) : ce qui gêne les apprentissages.
+  conduite: {
+    2: { p: { b: ['{S} doit adopter une attitude plus posée en cours.', 'Le comportement en classe doit encore progresser.', 'L’écoute des consignes reste à améliorer.',
+      'Plus de concentration en cours permettrait de mieux progresser.', 'Une attitude plus sérieuse en cours aiderait à mieux apprendre.', 'L’attention en cours reste à renforcer.', 'La concentration reste à travailler.', 'Plus de calme en cours est attendu.', 'Le sérieux en classe reste à affirmer.'],
+      n: ['Le comportement en classe reste irrégulier.', 'Des moments de dissipation freinent les apprentissages.', '{S} se disperse encore trop souvent en cours.',
+        'L’attention en cours reste fluctuante.', 'L’attitude en classe manque encore de sérieux.', 'Les bavardages freinent les progrès.', 'La concentration fait parfois défaut.', 'Le sérieux en classe reste inégal.'],
+      x: ['Le comportement en classe freine les apprentissages.', '{S} doit impérativement adopter une attitude plus sérieuse en cours.',
+        'Les bavardages et l’agitation nuisent au travail.', 'L’attitude en classe n’est pas satisfaisante.', 'Le manque de concentration en cours pénalise les progrès.', 'Les bavardages sont trop fréquents.', 'La concentration fait défaut.'] },
+    t: { b: ['Comportement en cours à améliorer.', 'Concentration en cours à développer.', 'Écoute des consignes à renforcer.'],
+      n: ['Comportement en cours irrégulier.', 'Attention fluctuante en cours.', 'Trop de dispersion en cours.'],
+      x: ['Comportement en cours insuffisant.', 'Agitation qui freine les apprentissages.', 'Manque de sérieux en cours.'] } },
+    1: { p: { b: ['Le comportement en classe doit devenir une priorité.', '{S} doit apprendre à se poser en cours pour pouvoir progresser.',
+      'Une attitude plus calme en cours est indispensable pour avancer.', 'Plus de calme en cours est indispensable.'],
+      n: ['Le comportement en classe gêne les apprentissages.', '{S} perturbe trop souvent le déroulement des séances.', 'Le manque d’attention en cours pose problème.',
+        'L’agitation en classe empêche de progresser.', 'L’agitation en cours freine tout progrès.'],
+      x: ['Le comportement en classe est inacceptable et compromet les apprentissages.', '{S} perturbe régulièrement le cours.',
+        'L’attitude en cours nuit au travail de toute la classe.', 'Les perturbations du cours doivent cesser.'] },
+    t: { b: ['Comportement en cours à reprendre.', 'Attitude en cours à construire.'], n: ['Comportement qui gêne les apprentissages.', 'Perturbe le cours.'],
+      x: ['Comportement inacceptable en cours.', 'Perturbations répétées du cours.'] } },
+  },
+};
+const LIEES_SE_APPR = {
+  equipe: {
+    // (Des tournures courtes, et sans « travail » ni « partenaires » : la phrase principale ou l'objectif les disent souvent.)
+    2: { b: ['{il} doit encore apprendre à travailler avec ses partenaires', 'le travail avec ses partenaires reste à améliorer', 'la coopération avec ses partenaires reste à développer',
+      'l’esprit d’équipe reste à développer', '{il} doit s’ouvrir davantage aux autres', 'l’entraide avec ses camarades reste à développer',
+      '{il} gagnerait à s’ouvrir davantage au groupe'],
+      n: ['la coopération avec ses partenaires reste fragile', '{il} coopère encore difficilement avec ses partenaires', 'l’esprit d’équipe reste fragile',
+        'l’entraide reste encore timide', '{il} s’intègre encore difficilement au groupe', 'sa place dans le collectif reste à trouver'],
+      x: ['{il} doit nettement mieux coopérer avec ses partenaires', 'la coopération avec ses partenaires est insuffisante', 'l’esprit d’équipe fait défaut',
+        'son manque d’ouverture pénalise le collectif'] },
+    1: { b: ['{il} a encore beaucoup de mal à travailler avec ses partenaires', 'le travail en équipe reste difficile pour {lui|elle}',
+      'l’esprit d’équipe lui fait encore défaut', '{il} doit apprendre à s’ouvrir aux autres', '{il} doit encore trouver sa place dans le groupe'],
+      n: ['{il} peine à coopérer avec ses partenaires', 'le travail avec ses partenaires pose problème', 'la coopération reste très difficile',
+        'son intégration dans le groupe reste difficile'],
+      x: ['{il} refuse trop souvent de coopérer avec ses partenaires', 'son manque de coopération pénalise le groupe', 'l’esprit d’équipe fait défaut',
+        'son refus de travailler avec certains camarades pénalise le groupe'] },
+  },
+  emotions: {
+    2: { b: ['{il} doit apprendre à mieux gérer ses émotions', 'la gestion de ses émotions reste à travailler', 'la maîtrise de soi reste à construire',
+      'la gestion de la frustration reste à travailler', '{il} doit apprendre à garder son calme dans les moments tendus'],
+      n: ['la gestion de ses émotions reste fragile', '{il} gère encore difficilement ses émotions', 'la maîtrise de soi reste fragile',
+        'la frustration prend encore parfois le dessus', 'ses réactions face à l’échec restent parfois excessives'],
+      x: ['{il} doit mieux maîtriser ses émotions', 'la maîtrise de soi lui fait encore défaut', 'ses réactions excessives nuisent au bon déroulement des séances'] },
+    1: { b: ['{il} a encore beaucoup de mal à gérer ses émotions', 'la gestion de ses émotions reste difficile', 'la maîtrise de soi lui fait encore défaut',
+      '{il} doit apprendre à gérer sa frustration'],
+      n: ['{il} peine à gérer ses émotions', 'la gestion de ses émotions pose problème', 'la maîtrise de soi pose problème', 'ses réactions excessives sont trop fréquentes'],
+      x: ['son manque de maîtrise de soi nuit au travail du groupe', '{il} ne parvient pas à maîtriser ses émotions', 'ses débordements répétés perturbent le groupe'] },
+  },
+  respect: {
+    2: { b: ['{il} doit veiller à son attitude envers les autres', 'son rapport aux autres reste à améliorer', '{il} doit se montrer plus {respectueux|respectueuse} envers chacun',
+      'le respect de ses camarades reste à consolider', 'plus de bienveillance envers ses camarades est attendue', 'ses relations avec les autres méritent plus d’attention',
+      'un peu plus de fair-play rendrait les échanges plus sereins', 'son fair-play reste à développer', 'le respect d’autrui reste à consolider'],
+      n: ['ses relations avec les autres restent fragiles', 'le respect des autres est encore inégal', '{il} manque parfois de bienveillance envers ses camarades',
+        'son fair-play reste inégal', '{il} accepte encore difficilement les décisions'],
+      x: ['{il} doit nettement mieux respecter les autres', 'le respect des autres est insuffisant', 'son attitude envers ses camarades n’est pas acceptable',
+        'son manque de fair-play nuit aux échanges'] },
+    1: { b: ['le respect des autres doit devenir une priorité', '{il} doit apprendre à mieux respecter les autres', 'son attitude envers chacun doit changer',
+      'ses relations avec ses camarades doivent s’apaiser'],
+      n: ['ses relations avec les autres posent problème', '{il} peine à respecter les autres', 'les conflits avec ses camarades sont trop fréquents',
+        'son attitude envers ses camarades est souvent irrespectueuse'],
+      x: ['son manque de respect envers les autres est inacceptable', '{il} ne respecte pas les autres', 'ses attitudes irrespectueuses doivent cesser'] },
+  },
+  conduite: {
+    2: { b: ['{il} doit adopter une attitude plus posée en cours', 'son comportement en classe doit encore progresser', 'une meilleure écoute des consignes l’aiderait à progresser',
+      '{il} gagnerait à être plus {attentif|attentive} en cours', 'plus de concentration en cours lui permettrait d’aller plus loin'],
+      n: ['son comportement en classe reste irrégulier', '{il} se disperse encore trop souvent en cours', 'des moments d’agitation freinent ses apprentissages',
+        'son attention en cours reste fluctuante', 'son attitude en classe manque encore de sérieux'],
+      x: ['son comportement en classe freine ses apprentissages', 'ses bavardages nuisent à son travail', '{il} doit se montrer nettement plus {sérieux|sérieuse} en cours',
+        'son manque de concentration pénalise ses progrès'] },
+    1: { b: ['son comportement en classe doit devenir une priorité', '{il} doit apprendre à se poser en cours pour progresser', 'une attitude plus calme en cours est indispensable'],
+      n: ['son comportement en classe gêne ses apprentissages', '{il} perturbe trop souvent les séances', 'son agitation en cours l’empêche de progresser',
+        'son manque d’attention pose problème'],
+      x: ['son comportement en classe compromet ses apprentissages', '{il} perturbe régulièrement le cours', 'son attitude nuit au travail de toute la classe'] },
+  },
+  engagement: {
+    2: { b: ['son engagement reste encore irrégulier', '{il} doit s’investir plus régulièrement'],
+      n: ['son investissement reste irrégulier', 'son engagement reste inégal'],
+      x: ['son investissement est insuffisant', '{il} doit s’investir davantage'] },
+    1: { b: ['{il} doit trouver davantage d’envie pour s’engager', 'son engagement reste trop timide'],
+      n: ['{il} s’investit trop peu', 'son investissement est trop faible'],
+      x: ['son investissement est très insuffisant', '{il} ne s’investit pas assez'] },
+  },
+};
+// Thèmes de savoir-être à dire (voir THEMES_SE_APPR) → { comp, comport }. comp : dit par la rubrique « compétences »,
+// sauf si la rubrique du thème (attitude, comportement), cochée, dit déjà la difficulté ; le niveau des compétences
+// redevient alors celui des seuls degrés (sauf niveau choisi à la main). comport : dit par la rubrique « comportement ».
+// (Modifie niv.)
+function themesSEAppr(a, niv, actives, perso = {}) {
+  perso ||= {};
+  let comp = a.details.themeCompetences || null;
+  let comport = actives.includes('comportement') && niv.comportement && niv.comportement <= 2 ? a.details.themeComportement || null : null;
+  if (comp) {
+    const k = THEMES_SE_APPR[comp].rubrique, nTh = a.details.savoirEtre.find(x => x.theme === comp)?.n;
+    // (Rubrique du thème cochée : c'est elle qui le dit, au niveau du thème au plus — pas « Il respecte les règles »
+    // à côté d'un critère « respect » au degré 1 —, sauf niveau choisi à la main.)
+    if (actives.includes(k) && niv[k] && !(k in perso) && nTh) niv[k] = Math.min(niv[k], nTh);
+    if (actives.includes(k) && niv[k] && niv[k] <= 2) {
+      if (k === 'comportement' && !comport) comport = comp;
+      comp = null;
+      if (!('competences' in perso)) niv.competences = a.details.niveauCompetencesSeul;
+    }
+  }
+  // (Niveau des compétences remonté à la main : plus de difficulté à nommer.)
+  if (comp && !(niv.competences <= 2)) comp = null;
+  return { comp, comport };
+}
+// Objectif tiré d'un thème de savoir-être (« mieux coopérer avec ses partenaires ») plutôt que « consolider ses acquis ».
+function objectifSEAppr(o, th) {
+  const t = o.cle === 'competences' ? th.comp : o.cle === 'comportement' ? th.comport : null;
+  const k = t === 'engagement' ? 'attitude' : t;
+  return k && objectifsAppr()[k]?.length ? { cle: k } : o;
+}
+// Banque de phrases d'un thème (style « Phrases » / « Télégraphique »).
+const phrasesSEAppr = (theme, n) => (theme === 'engagement' ? PHRASES_APPR.attitude[n] : PHRASES_SE_APPR[theme]?.[n]);
 
 // Petit hasard reproductible : la même graine donne toujours la même formulation.
 function hasardAppr(texte) {
@@ -1021,8 +1317,14 @@ const htmlRelectureAppr = (texte, el, autres, manuel) => {
 
 function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   // Style « Liées » : rédigé à part ; sans il / elle connu (accords impossibles) ou sans résultats, style « Phrases ».
+  // (École : « Liées » garde les phrases de l'école et les relie entre elles, voir lier ; lieesEcole.)
+  let lieesEcole = false;
   if (r.style === 'liees') {
-    if (stylesAppr().liees) { const t = redigerLieesAppr(el, periode, a, niveauxPerso, r, graine); if (t) return t; }
+    if (profil().appreciations?.portrait) lieesEcole = true;
+    else if (stylesAppr().liees) {
+      const t = redigerLieesAppr(el, periode, a, niveauxPerso, r, graine);
+      if (t) return { ...t, texte: appliquerApprisAppr(t.texte, r, el.id) }; // (texteBrut : sans les remplacements appris)
+    }
     r = { ...r, style: 'phrases' };
   }
   niveauxPerso = persoUtileAppr(r, a, niveauxPerso);
@@ -1118,6 +1420,7 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   const brut = x => x.replace(/\{apsa\}/g, '').replace(/\{ce\}/g, ce).replace(/\{[A-Za-z]+\}/g, ' ');
   const actives = rubriquesAppr(r, a, niveauxPerso);
   const vigilance = vigilanceAppr(r, a, niveauxPerso); // (passent en priorité)
+  const thSE = themesSEAppr(a, niv, actives, niveauxPerso); // (savoir-être : « La coopération avec les partenaires reste fragile. »)
   // Bilan nuancé par la position dans la classe (voir positionClasse) : en retrait, un bilan correct (3 ou 4) devient
   // « un peu en retrait par rapport à la classe » ; parmi les meilleurs, il le dit. (Sauf niveau des résultats choisi
   // à la main qui le contredit.)
@@ -1133,6 +1436,9 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
     const n = niv[k];
     let banque = phrasesAppr()[k][n];
     if (k === 'progression' && n === 2 && (niv.moteur || 0) >= 3) banque = STABLE_BON_APPR;
+    // (Difficulté venue d'un critère de savoir-être : la phrase le nomme.)
+    const theme = k === 'competences' ? thSE.comp : k === 'comportement' ? thSE.comport : null;
+    if (theme && n <= 2 && phrasesSEAppr(theme, n)) banque = phrasesSEAppr(theme, n);
     // (Résultats corrects mais sous la moyenne de la classe : nuancés, une seule fois dans l'appréciation.)
     const retrait = k === 'moteur' && n === 3 && a.details.position?.cle === 'retrait';
     if (retrait) banque = retraitDit ? RETRAIT_DIT_APPR : RETRAIT_APPR;
@@ -1168,7 +1474,10 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
       const sansSujet = dejaNomme && !sexe ? tout.filter(x => !/\{[Ss]\}/.test(x)) : [];
       // Phrase précédente en « Il / Elle » : on varie la tournure (« L’engagement est… », « Les résultats… »).
       const varie = dejaNomme && dernierPronom ? tout.filter(x => !x.startsWith('{S}')) : [];
-      const liste = premiere.length ? premiere : sansSujet.length ? sansSujet : varie.length ? varie : tout;
+      // (École, « Liées » : après les qualités du portrait, une phrase sur l'élève, pour les mettre en tête :
+      // « Persévérante et attentive, Louise… », voir lier.)
+      const apresPortrait = lieesEcole && morceaux.at(-1)?.adjs ? tout.filter(x => x.startsWith('{S}')) : [];
+      const liste = premiere.length ? premiere : apresPortrait.length ? apresPortrait : sansSujet.length ? sansSujet : varie.length ? varie : tout;
       const min = Math.min(...liste.map(x => x.length));
       // (court = 1 : parmi les phrases à 15 caractères près de la plus courte, partagées dans la classe ; court = 2 (ou true) : les plus courtes.)
       const choix = court ? tirer(liste.filter(x => x.length <= min + (court === 1 ? Math.max(marge, 15) : marge)), graine) : tirer(liste, graine);
@@ -1233,7 +1542,7 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
         const modele = !sexe ? `{S} fait preuve ${de(liste)}.` : tele ? `{UN} ${qui} ${et(liste)}.` : dejaNomme ? `C’est {UN} ${qui} ${et(liste)}.` : `{S} est {UN} ${qui} ${et(liste)}.`;
         const t = remplir(modele, 4);
         dernierPronom = false;
-        ajouter({ cle: 'portrait-' + adjs[0].id, importance: 6, pol: 1, texte: t[0].toUpperCase() + t.slice(1) });
+        ajouter({ cle: 'portrait-' + adjs[0].id, importance: 6, pol: 1, adjs: sexe ? et(liste) : '', texte: t[0].toUpperCase() + t.slice(1) });
       }
       autres.forEach((x, i) => {
         if (!exclues.includes('portrait-' + x.id)) ajouter({ cle: 'portrait-' + x.id, importance: 5.9 - i / 100, pol: 1, texte: remplir(choisir(x.phrases, g('portrait-' + x.id)), 4) });
@@ -1282,7 +1591,7 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
       // (À faiblesse égale, l'objectif vise d'abord un point de vigilance rempli par l'enseignant ; à l'école, un point
       // d'attention du portrait passe avant tout : « il faudra prendre le temps de se relire ».)
       const att = humain ? choix.attention[0] : null;
-      const o = att ? { cle: 'attention' } : objectifAppr(niv, a, [...vigilance, ...actives.filter(k => !vigilance.has(k))]);
+      const o = att ? { cle: 'attention' } : objectifSEAppr(objectifAppr(niv, a, [...vigilance, ...actives.filter(k => !vigilance.has(k))]), thSE);
       // (Le but est un bout de phrase : choisi à part, pour ne pas fausser le suivi des « Il / Elle ».)
       const buts = att ? att.buts : objectifsAppr()[o.cle];
       // (Sans répéter un mot déjà écrit : « Pour progresser, il faudra fournir davantage de travail pour progresser ».)
@@ -1306,7 +1615,7 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
       }
       let t = remplir(choisir(modelesObjectifAppr(modelesDits, but, false, suite), g('objectif'), 20), 0);
       t = t[0].toUpperCase() + t.slice(1);
-      ajouter({ cle: 'objectif', texte: t });
+      ajouter({ cle: 'objectif', pour: att ? 'attention-' + att.id : o.cle, texte: t }); // (pour : la difficulté qu'il vise, voir lier)
     }
     // École : mot de fin de l'enseignant, puis souhaits de fêtes pour une période qui finit vers décembre.
     if (r.voix && pa.fins && kG && !exclues.includes('voix')) ajouter({ cle: 'voix', importance: 1.2, pol: 0, texte: remplir(tirer(moinsDeRepetitions(pa.fins[kG], brut), g('voix')), kG) });
@@ -1324,12 +1633,53 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
     // Une seule liaison de chaque sens dans l'appréciation : pas de « Néanmoins » s'il y a déjà un « mais »…
     const deja = inventaireAppr(liste.map(m => m.texte).join(' ')).liaisons;
     let enEffet = deja.has('explication'), opposition = deja.has('opposition'), lies = 0, avant = null;
+    const sujet = new RegExp(`^(Il|Elle|${prenom.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}) `);
+    // (Suite de phrase : « Chloé doute » devient « elle doute » quand le prénom est déjà écrit.)
+    const clesPhrases = []; // (pour chaque phrase écrite, les morceaux qu'elle réunit)
+    const suiteDe = t => (sexe && t.startsWith(prenom + ' ') && sortie.join(' ').includes(prenom) ? (sexe === 'F' ? 'elle ' : 'il ') + t.slice(prenom.length + 1) : debutMinuscule(t));
     for (const m of liste) {
       let t = m.texte;
       const prec = sortie.at(-1);
+      // École, style « Liées » (comme en EPS : moins de phrases courtes juxtaposées, plus de liens logiques).
+      if (lieesEcole && avant && prec && /\.$/.test(prec)) {
+        const remplacer = texte => { sortie[sortie.length - 1] = texte; clesPhrases.at(-1)?.add(m.cle); avant = m; };
+        // 1. Les qualités du portrait en tête de la phrase suivante : « Chloé est une enfant consciencieuse et curieuse.
+        // Elle réussit bien ses apprentissages. » → « Consciencieuse et curieuse, Chloé réussit bien ses apprentissages. »
+        if (avant.adjs && prec === avant.texte && m.pol > 0 && sujet.test(t)) {
+          const qui = prec.startsWith(prenom + ' ') ? prenom : sexe === 'F' ? 'elle' : 'il';
+          remplacer(`${avant.adjs[0].toLocaleUpperCase('fr')}${avant.adjs.slice(1)}, ${qui} ${t.replace(sujet, '')}`);
+          continue;
+        }
+        // 2. Un point fort et une difficulté dans la même phrase : « …, même si elle doute encore d’elle. » ; dans
+        // l'autre sens : « …, mais elle progresse. » (une seule opposition dans l'appréciation).
+        if (m.pol && avant.pol && avant.cle !== 'bilan' && avant.pol * m.pol < 0 && !opposition && !/:| mais | même si /.test(prec)
+          && !/^(C’est|Comme)|, mais |:/.test(t) && prec.length + t.length < 190) {
+          remplacer(prec.slice(0, -1) + (avant.pol > 0 ? ', même si ' : ', mais ') + suiteDe(t));
+          opposition = true;
+          continue;
+        }
+        // 3. Le conseil rattaché à la difficulté qu'il vise, si elle est dans la phrase d'avant : « Elle doute encore
+        // d’elle : il faut maintenant oser se lancer. »
+        if (m.cle === 'objectif' && avant.pol < 0 && clesPhrases.at(-1)?.has(m.pour) && !/:/.test(prec) && !/:|[.!?] /.test(t) && /\.$/.test(t) && prec.length < 140) {
+          remplacer(prec.slice(0, -1) + ' : ' + debutMinuscule(t));
+          continue;
+        }
+        // 4. Deux phrases de même sens sur l'élève, réunies par « et » (y compris une qualité du portrait ou deux
+        // difficultés) : « Moussa se montre toujours prêt à aider ses camarades et participe… avec le sourire. »
+        const memeSujet = sujet.test(t) && (prec.startsWith(prenom + ' ') || /^(Il|Elle) /.test(prec));
+        // (Pas deux fois le même adverbe dans la phrase : « a parfois du mal… et entre parfois en conflit ».)
+        const memeAdverbe = ['parfois', 'encore', 'souvent', 'toujours', 'volontiers'].some(x => new RegExp(`\\b${x}\\b`).test(prec) && new RegExp(`\\b${x}\\b`).test(t));
+        if (memeSujet && !memeAdverbe && m.pol && avant.pol === m.pol && avant.cle !== 'bilan' && !avant.adjs && lies < 2
+          && !/ et |:| même si | mais /.test(prec) && !/ et |:/.test(t) && prec.length < 95 && t.length < 95) {
+          remplacer(prec.slice(0, -1) + (prec.includes(',') ? ', et ' : ' et ') + t.replace(sujet, ''));
+          lies++;
+          continue;
+        }
+      }
       if (avant && m.cle !== 'objectif' && m.pol) {
-        // (« En effet » : une appréciation sur deux environ, toujours la même pour un élève donné.)
-        if (avant.cle === 'bilan' && !avant.exclam && !enEffet && m.pol === avant.pol && hasardAppr(g('en effet')) < 0.55) { t = 'En effet, ' + debutMinuscule(t); enEffet = true; }
+        // (« En effet » : une appréciation sur deux environ, toujours la même pour un élève donné ; pas devant le
+        // portrait en style « Liées », dont les qualités passent en tête de la phrase suivante.)
+        if (avant.cle === 'bilan' && !avant.exclam && !enEffet && m.pol === avant.pol && !(lieesEcole && m.adjs) && hasardAppr(g('en effet')) < 0.55) { t = 'En effet, ' + debutMinuscule(t); enEffet = true; }
         else if (avant.cle !== 'bilan' && avant.pol * m.pol < 0) {
           if (!opposition) { t = (avant.pol > 0 ? 'Néanmoins, ' : 'En revanche, ') + debutMinuscule(t); opposition = true; }
         }
@@ -1344,11 +1694,11 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
           // (Après une incise « , notamment en … » : « , et ».)
           const joint = /, notamment [^,]*\.$/.test(prec) ? ', et ' : ' et ';
           sortie[sortie.length - 1] = prec.slice(0, -1) + joint + (memeSujet ? t.replace(debutSujet, '') : debutMinuscule(t));
-          lies++; avant = m;
+          lies++; clesPhrases.at(-1)?.add(m.cle); avant = m;
           continue;
         }
       }
-      sortie.push(t);
+      sortie.push(t); clesPhrases.push(new Set([m.cle]));
       avant = m;
     }
     return sortie.join(' ');
@@ -1391,6 +1741,12 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   for (const cle of [...retirees].reverse()) {
     const sans = retirees.filter(k => k !== cle), avecElle = construire(true, sans);
     if (finir(avecElle).length <= r.longueur) { retirees.splice(retirees.indexOf(cle), 1); morceaux = avecElle; }
+  }
+  // Rubriques retenues : on revient aux formulations libres (ou presque) si elles tiennent dans la longueur. Sinon
+  // chaque rubrique garderait sa phrase la plus courte, la même à chaque « Autre formulation ».
+  if (retirees.length) for (const court of [false, 1]) {
+    const x = construire(court, retirees);
+    if (finir(x).length <= r.longueur) { morceaux = x; break; }
   }
   // Toujours commencer par le prénom (style télégraphique : « Léa : investissement sérieux. … »).
   let texte = finir(morceaux);
@@ -1549,7 +1905,8 @@ const LIEES_APPR = {
     },
     comportement: {
       4: ['son comportement, respectueux de tous, est exemplaire', 'son comportement est exemplaire envers chacun'],
-      2: ['son attitude en cours, parfois dissipée, freine ses progrès', 'le respect des consignes doit s’améliorer', 'son attitude est parfois dissipée'],
+      2: ['son attitude en cours, parfois dissipée, freine ses progrès', 'le respect des consignes doit s’améliorer', 'son attitude est parfois dissipée',
+        'son comportement en cours reste inégal', 'son attitude en classe doit gagner en sérénité'],
       1: { b: ['le respect des règles et des camarades doit devenir une priorité', 'son comportement doit s’améliorer pour progresser sereinement', 'son comportement doit s’améliorer'],
         n: ['son comportement, qui nuit au travail de la classe, doit changer rapidement', 'son comportement pose problème et doit changer rapidement', 'son comportement pose problème'],
         x: ['son comportement, inacceptable, nuit au travail de la classe', 'son comportement est inacceptable et perturbe le groupe', 'son comportement est inacceptable'] },
@@ -1604,6 +1961,7 @@ function redigerLieesAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   const niv = { ...a.niveaux };
   for (const [k, v] of Object.entries(niveauxPerso)) niv[k] = v || null; // 0 = ne pas en parler
   const actives = rubriquesAppr(r, a, niveauxPerso), vigilance = vigilanceAppr(r, a, niveauxPerso);
+  const thSE = themesSEAppr(a, niv, actives, niveauxPerso); // (savoir-être, voir THEMES_SE_APPR)
   const dit = k => (actives.includes(k) && niv[k] ? niv[k] : null);
   const L = LIEES_APPR, fem = sexe === 'F', ton = r.ton[0] === 'b' ? 'b' : r.ton[0] === 'e' ? 'x' : 'n';
   const prenom = (el.prenom || '').trim() || el.nom;
@@ -1657,7 +2015,7 @@ function redigerLieesAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   });
   const but = (() => {
     if (!actives.includes('objectif') || niv.objectif === null) return null;
-    const o = objectifAppr(niv, a, [...vigilance, ...actives.filter(k => !vigilance.has(k))]);
+    const o = objectifSEAppr(objectifAppr(niv, a, [...vigilance, ...actives.filter(k => !vigilance.has(k))]), thSE);
     return { cle: o.cle, liste: objectifsAppr()[o.cle] || [] };
   })();
   const remplir = (t, v = {}) => t
@@ -1713,16 +2071,21 @@ function redigerLieesAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   const nMeth = dit('methodo');
   if (nMeth && nMeth !== 3) ajouterComp('methodo', L.complements.methodo[nMeth], vigilance.has('methodo') ? 5 : 3, nMeth >= 3 ? 1 : -1);
   const nComp = dit('comportement');
-  if (nComp && nComp !== 3) ajouterComp('comportement', L.complements.comportement[nComp], vigilance.has('comportement') ? 5.1 : nComp === 4 ? 2 : 4, nComp >= 3 ? 1 : -1);
+  // (Savoir-être : la phrase nomme le critère — partenaires, émotions, rapport aux autres —, pas « son comportement ».)
+  if (nComp && nComp !== 3) ajouterComp('comportement', thSE.comport && nComp <= 2 ? LIEES_SE_APPR[thSE.comport][nComp] : L.complements.comportement[nComp],
+    vigilance.has('comportement') ? 5.1 : nComp === 4 ? 2 : 4, nComp >= 3 ? 1 : -1);
   const nC = cleM === 'moteur' ? dit('competences') : null;
-  if (nC && nC !== 3 && !(nC === 4 && M === 4) && !(nC <= 2 && !Mp)) ajouterComp('competences', L.complements.competences[nC], vigilance.has('competences') ? 5 : 2, nC >= 3 ? 1 : -1);
+  // (Compétences fragiles et résultats justes : redondant, sauf si c'est le savoir-être qui pèche, même avec de bonnes notes.)
+  if (nC && thSE.comp && nC <= 2) ajouterComp('competences', LIEES_SE_APPR[thSE.comp][nC], vigilance.has('competences') ? 5.2 : 4.6, -1);
+  else if (nC && nC !== 3 && !(nC === 4 && M === 4) && !(nC <= 2 && !Mp)) ajouterComp('competences', L.complements.competences[nC], vigilance.has('competences') ? 5 : 2, nC >= 3 ? 1 : -1);
   if (a.details.absences >= 3 && A && A <= 2) ajouterComp('absences', L.complements.absences, 4.5, -1);
   if (a.details.position?.cle === 'tete' && Mp && polP > 0) ajouterComp('tete', L.complements.tete, 1.5, 1);
   comps.sort((x, y) => y.prio - x.prio);
 
   // 3. Fin.
   const kG = Math.round(moyenneListe([A, M, dit('competences')].filter(Boolean)));
-  const modelesFin = !but ? (polP > 0 && ton !== 'x' ? L.fin.haut[kG >= 4 && ton === 'b' ? 'b4' : ton].filter(m => !m.includes('{but}')) : [])
+  // (Pas de félicitations à la fin d'un texte qui signale une difficulté de savoir-être.)
+  const modelesFin = !but ? (polP > 0 && ton !== 'x' && !thSE.comp && !thSE.comport ? L.fin.haut[kG >= 4 && ton === 'b' ? 'b4' : ton].filter(m => !m.includes('{but}')) : [])
     : but.cle === 'haut' ? L.fin.haut[kG >= 4 && ton === 'b' ? 'b4' : ton]
       : [...L.fin.but[ton], ...(ton === 'b' && kG >= 3 && A >= 3 ? L.fin.but.b3 : [])]; // (« bravo pour ses efforts » : s'il en fait)
 
@@ -1809,26 +2172,55 @@ async function copierTexte(texte) {
 
 /* ---------- Fenêtre « ✍ Appréciations » de la classe ---------- */
 
-// École : pastilles du portrait (qualités, points d'attention, situations), à toucher pour décrire l'élève.
+// École : situation montrée d'office (discipline.js › situations, champ quand) ; les autres attendent « + Autre situation ».
+function situationUtileAppr(x, el, periode) {
+  if (!x.quand) return false;
+  const ps = periodesAnnee(), fin = periode === 'annee' || ps.at(-1)?.id === periode;
+  const c = Donnees.get('classes', el.classeId), niv = c && typeof niveauEleve === 'function' ? niveauEleve(el, c) : '';
+  if (x.quand === 'fin') return fin;
+  if (x.quand === 'cm2') return fin && niv === 'CM2';
+  if (x.quand === 'lecture') return niv === 'CP' || niv === 'CE1';
+  if (x.quand === 'absences') {
+    // (6 demi-journées d'absence sur la période, justifiées ou non ; sur l'année, 6 par période.)
+    if (typeof appelsEleve !== 'function') return false;
+    const abs = appelsEleve(el).filter(a => ['AN', 'AJ'].includes(a.etat) && (periode === 'annee' || periodeDe(a.date) === periode)).length;
+    return abs >= 6 * (periode === 'annee' ? ps.length : 1);
+  }
+  return false;
+}
+// École : élèves dont « + Autre situation » est déplié (gardé quand la carte est redessinée).
+const situationsDeplieesAppr = new Set();
+// École : pastilles du portrait, à toucher pour décrire l'élève. Une ligne par thème (points forts | à surveiller),
+// puis les situations utiles à ce moment de l'année. Au-delà de 3 pastilles, les autres s'estompent (toujours touchables).
 function htmlPortraitAppr(el, periode) {
   const P = portraitProfil();
   if (!P) return '';
   const choisis = portraitAppr(el.id, periode), propre = Array.isArray(Donnees.get('suivis', idAppr(el.id, periode))?.portrait);
-  const groupe = (cle, titre, classe) => `<div class="groupe-portrait"><span class="titre-portrait">${titre}</span>${P[cle].map(x => {
+  const assez = choisis.length >= 3;
+  const pastille = classe => x => {
     const oui = choisis.includes(x.id);
-    return `<button type="button" class="pastille-portrait${classe}" data-appr-portrait="${esc(x.id)}" aria-pressed="${oui}">${esc(x.nom)}</button>`;
-  }).join('')}</div>`;
+    return `<button type="button" class="pastille-portrait${classe}${assez && !oui ? ' estompee' : ''}" data-appr-portrait="${esc(x.id)}" aria-pressed="${oui}">${esc(x.nom)}</button>`;
+  };
+  const ligne = (titre, contenu) => `<div class="groupe-portrait"><span class="titre-portrait">${titre}</span><div class="pastilles-portrait">${contenu}</div></div>`;
+  const themes = (P.themes || []).map(t => ligne(esc(t.nom), P.qualites.filter(x => x.theme === t.id).map(pastille('')).join('')
+    + '<span class="sep-portrait" aria-hidden="true"></span>' + P.attention.filter(x => x.theme === t.id).map(pastille(' attention')).join(''))).join('');
+  const deplie = situationsDeplieesAppr.has(el.id);
+  const utiles = P.situations.filter(x => choisis.includes(x.id) || situationUtileAppr(x, el, periode)), autres = P.situations.filter(x => !utiles.includes(x));
+  const situations = ligne('Situation', [...utiles, ...(deplie ? autres : [])].map(pastille(' situation')).join('')
+    + (autres.length ? `<button type="button" class="lien" data-appr-situations aria-expanded="${deplie}">${deplie ? '− Moins' : '+ Autre situation'}</button>` : ''));
+  const aide = assez ? `${choisis.length} pastilles choisies : c’est assez pour une appréciation. Retire-en une pour en changer`
+    : `Portrait de ${esc(el.prenom || el.nom)} : touche 2 ou 3 pastilles pour rendre l’appréciation plus personnelle`;
   return `<div class="portrait-appr" role="group" aria-label="Portrait de l’élève">
-    <p class="aide">Portrait de ${esc(el.prenom || el.nom)} : touche 2 ou 3 pastilles pour rendre l’appréciation plus personnelle${choisis.length && !propre ? ' (repris de la période précédente)' : ''}.</p>
-    ${groupe('qualites', 'Qualités', '')}${groupe('attention', 'À surveiller', ' attention')}${groupe('situations', 'Situation', ' situation')}${htmlPhrasesEleveAppr(el, periode)}</div>`;
+    <p class="aide">${aide}${choisis.length && !propre ? ' (repris de la période précédente)' : ''}.</p>
+    ${themes}${situations}${htmlPhrasesEleveAppr(el, periode)}</div>`;
 }
 // École : phrases écrites par l'enseignant pour cet élève aux autres périodes (voir phrasesEleveAppr), à reprendre d'un toucher.
 function htmlPhrasesEleveAppr(el, periode) {
   const prises = Donnees.get('suivis', idAppr(el.id, periode))?.phrases || [];
   const toutes = [...new Set([...prises, ...phrasesEleveAppr(el.id, periode)])];
   if (!toutes.length) return '';
-  return `<div class="groupe-portrait"><span class="titre-portrait">Tes phrases</span>${toutes.map(t => `<button type="button" class="pastille-portrait perso"
-    data-appr-phrase="${esc(t)}" aria-pressed="${prises.includes(t)}" title="${esc(t)}">${esc(t.length > 48 ? t.slice(0, 46) + '…' : t)}</button>`).join('')}</div>`;
+  return `<div class="groupe-portrait"><span class="titre-portrait">Tes phrases</span><div class="pastilles-portrait">${toutes.map(t => `<button type="button" class="pastille-portrait perso"
+    data-appr-phrase="${esc(t)}" aria-pressed="${prises.includes(t)}" title="${esc(t)}">${esc(t.length > 48 ? t.slice(0, 46) + '…' : t)}</button>`).join('')}</div></div>`;
 }
 
 // suite : contenu ajouté au bas de la carte (fiche bilan : le ⚙ des réglages, dans la carte même).
@@ -1884,7 +2276,7 @@ async function ouvrirAppreciations(periodeVoulue, eleveVise) {
     <div data-appr-liste></div>`,
   '<button type="button" data-appr-tout title="Copie « NOM Prénom [tab] appréciation », une ligne par élève (se colle aussi dans Excel)">📋 Copier toutes</button>'
     + '<button type="button" data-appr-ed title="Nécessite l’extension Passerelle (bouton puzzle, en bas à gauche). Rien n’est envoyé : c’est toi qui colles et qui enregistres.">📋 Reporter sur École Directe</button>'
-    + '<span class="espace aide" data-appr-ed-message role="status"></span><button type="button" data-fermer class="primaire">Fermer</button>', 'modale-large modale-appr');
+    + '<span class="espace aide" data-appr-ed-message role="status"></span>' + htmlIndicateurApprisAppr() + '<button type="button" data-fermer class="primaire">Fermer</button>', 'modale-large modale-appr');
   const form = $('form', d);
 
 
@@ -1905,6 +2297,7 @@ async function ouvrirAppreciations(periodeVoulue, eleveVise) {
     r = { ...reglageAppr(), ...lireReglageAppr(form) };
     ecrireReglage('appreciations', lireReglageAppr(form));
     dessiner();
+    majIndicateurApprisAppr(d); // (une tournure décochée est oubliée)
   };
 
   d.addEventListener('click', e => lancer(async () => {
@@ -1956,8 +2349,14 @@ function gererCartesAppr(d, ctx) {
     const { eleve, per, texte } = enAttente;
     enAttente = null;
     const p = appreciationEleve(Donnees.get('eleves', eleve), per, ctx.eleves, ctx.r()).propose, propose = p.texte;
-    // (École : la proposition de départ est gardée, pour que l'appli apprenne des corrections : voir apprisAppr.)
-    ecrireAppr(eleve, per, { texte: texte === propose ? '' : texte, ...(profil().appreciations?.apprendre ? { base: texte === propose ? '' : p.texteBrut } : {}) });
+    // (La proposition de départ est gardée, pour que l'appli apprenne des corrections : voir apprisAppr.)
+    const apprend = apprendAppr(), avant = apprend ? new Set(apprisAppr().tous.map(x => x.cle)) : null;
+    ecrireAppr(eleve, per, { texte: texte === propose ? '' : texte, ...(apprend ? { base: texte === propose ? '' : p.texteBrut } : {}) });
+    if (!apprend) return;
+    // Nouvelle tournure confirmée (vue chez deux élèves) : dite une fois, puis appliquée partout.
+    const nouvelles = apprisAppr().tous.filter(x => !avant.has(x.cle));
+    if (nouvelles.length) toast(`🧠 Appris : « ${nouvelles[0].de} » → « ${nouvelles[0].vers} » (appliqué aux autres appréciations)`, 'ok');
+    majIndicateurApprisAppr(d);
   };
   // Changer un niveau ou la formulation remplace le texte proposé ; un texte réécrit à la main est d'abord confirmé.
   const garderTexteManuel = async id => {
@@ -1994,6 +2393,13 @@ function gererCartesAppr(d, ctx) {
       ecrireAppr(id, periode, { phrases: prises.includes(t) ? prises.filter(x => x !== t) : [...prises, t], texte: '' });
       dessinerCarte(id);
       [...d.querySelectorAll(`[data-appr-eleve="${id}"] [data-appr-phrase]`)].find(x => x.dataset.apprPhrase === t)?.focus();
+      return;
+    }
+    if (b.matches('[data-appr-situations]')) {
+      // École : « + Autre situation » déplié ou replié (rien n'est écrit dans le carnet).
+      if (!situationsDeplieesAppr.delete(id)) situationsDeplieesAppr.add(id);
+      dessinerCarte(id);
+      d.querySelector(`[data-appr-eleve="${id}"] [data-appr-situations]`)?.focus();
       return;
     }
     if (b.dataset.apprPortrait) {

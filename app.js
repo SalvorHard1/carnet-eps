@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.39.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.53.1'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -656,16 +656,32 @@ function migrerCodes() {
 }
 
 // Moyenne sur 20, pondérée par les coefficients ; ABS / DISP / NE et les évaluations « non significatives » ne comptent pas.
+// Notes facultatives (e.facultatif) : elles ne peuvent que faire monter la moyenne.
+//  · 'bonus' : seuls les points au-dessus de 10/20 s'ajoutent (12, 16 + bonus 17 → (12 + 16 + 7) / 2 = 17,5 ; un 8 n'ajoute rien) ;
+//  · 'note'  : comptée comme une note, seulement si elle améliore la moyenne (essayées de la meilleure à la moins bonne).
 function moyenneEleve(eleveId, evals) {
   let somme = 0, poids = 0;
+  const commeNote = [], bonus = [];
   for (const e of evals) {
     const n = nombre(Donnees.note(e.id, eleveId));
     if (n === null || !e.coef || e.nonSignificative) continue; // (note non significative : affichée, pas comptée)
-    somme += (n / e.max) * 20 * e.coef;
-    poids += e.coef;
+    const sur20 = (n / e.max) * 20;
+    if (e.facultatif === 'note') commeNote.push({ sur20, coef: e.coef });
+    else if (e.facultatif === 'bonus') bonus.push({ sur20, coef: e.coef });
+    else { somme += sur20 * e.coef; poids += e.coef; }
   }
-  return poids ? somme / poids : null;
+  commeNote.sort((a, b) => b.sur20 - a.sur20);
+  for (const f of commeNote) {
+    if (poids && (somme + f.sur20 * f.coef) / (poids + f.coef) <= somme / poids) continue; // (elle ferait baisser la moyenne : ignorée)
+    somme += f.sur20 * f.coef; poids += f.coef;
+  }
+  if (!poids) return null; // (un bonus seul, sans autre note, ne fait pas de moyenne)
+  const pointsBonus = bonus.reduce((t, b) => t + Math.max(0, b.sur20 - 10) * b.coef, 0);
+  return Math.min(20, (somme + pointsBonus) / poids);
 }
+
+// Libellé d'une note facultative (fiche élève, export Excel).
+const LIBELLES_FACULTATIF = { bonus: 'facultative, comme un bonus', note: 'facultative, si elle améliore la moyenne' };
 
 function moyenneEval(e, eleves) {
   const notes = eleves.map(el => nombre(Donnees.note(e.id, el.id))).filter(n => n !== null);
@@ -1080,6 +1096,7 @@ function htmlNotes(c) {
               <div class="eval-info">${esc(e.apsa || '')}</div>
               <div class="eval-info">${dateCourte(e.date)}${sansNoteEval(e) ? '' : ` · /${fmt(e.max)}${e.coef !== 1 ? ' · coef ' + fmt(e.coef) : ''}`}</div>
               ${e.nonSignificative ? '<div class="eval-info eval-non-signif" title="Note non significative : affichée entre parenthèses, elle ne compte pas dans la moyenne">non significative</div>' : ''}
+              ${!e.nonSignificative && LIBELLES_FACULTATIF[e.facultatif] ? `<div class="eval-info eval-facultative" title="${e.facultatif === 'bonus' ? 'Note facultative, comme un bonus : seuls les points au-dessus de 10/20 s’ajoutent à la moyenne' : 'Note facultative, comme une note : elle ne compte que si elle fait monter la moyenne de l’élève'}">${e.facultatif === 'bonus' ? 'facultative · bonus' : 'facultative · si meilleure'}</div>` : ''}
               ${nb ? '' : flechesTri('note|' + e.id)}
             </th>`;
           }).join('')}
@@ -1969,6 +1986,16 @@ async function editerEval(id) {
     </div>
     <label class="case"><input type="checkbox" name="nonSignificative" ${e.nonSignificative ? 'checked' : ''}>
       <span><b>Note non significative</b> : affichée entre parenthèses, elle ne compte pas dans la moyenne (évaluation formative, devoir de rattrapage…)</span></label>
+    <div class="bloc-facultative">
+      <label class="case"><input type="checkbox" name="facultative" ${e.facultatif && !e.nonSignificative ? 'checked' : ''}>
+        <span><b>Note facultative</b> : elle ne peut que faire monter la moyenne de l’élève</span></label>
+      <div class="choix-facultatif" ${e.facultatif && !e.nonSignificative ? '' : 'hidden'}>
+        <label class="case"><input type="radio" name="facultatif" value="bonus" ${e.facultatif !== 'note' ? 'checked' : ''}>
+          <span><b>Comme un bonus</b> : seuls les points au-dessus de 10/20 s’ajoutent à la moyenne <span class="aide">(moyenne 14 avec 12 et 16 ; bonus 17 → (12 + 16 + 7) / 2 = 17,5 ; un 8 n’ajoute rien)</span></span></label>
+        <label class="case"><input type="radio" name="facultatif" value="note" ${e.facultatif === 'note' ? 'checked' : ''}>
+          <span><b>Comme une note</b> : comptée seulement si elle fait monter la moyenne <span class="aide">(moyenne 17 avec 16 et 18 ; un 20 en plus → 18, il compte ; un 17 ensuite ferait 17,75 : ignoré)</span></span></label>
+      </div>
+    </div>
     <fieldset class="parties-note lien-bareme">
       <legend>Barème <span class="aide">(bibliothèque, onglet Barèmes)</span></legend>
       <label>Calculer la note avec<select name="bareme"><option value="">— aucun barème —</option>${optionsBaremesEval(e, e.apsa, c.niveau, e.bareme?.id)}</select></label>
@@ -2040,9 +2067,13 @@ async function editerEval(id) {
           <label class="case competence"><input type="checkbox" name="competence" value="${esc(a.id)}" ${coches.has(a.id) ? 'checked' : ''}>
             <span><b>${esc(a.code)}</b> ${esc(a.texte)}</span></label>`).join('')
         : '<p class="aide">Aucune compétence proposée dans ce champ (⚙ Réglages → Compétences).</p>';
+    // École : objectifs détaillés du programme retenus par l'école (ecolecompetences.js), pour le niveau de la classe.
+    if (avecEcole() && champ?.objectifs) zone.insertAdjacentHTML('beforeend', htmlObjectifsEval(champ, niveauxDeClasse(c).length ? niveauxDeClasse(c) : [c.niveau].filter(Boolean), coches));
   };
   zone.addEventListener('change', ev => {
     if (ev.target.name === 'competence') ev.target.checked ? coches.add(ev.target.value) : coches.delete(ev.target.value);
+    const det = ev.target.closest('.objectifs-dom');
+    if (det) { const n = det.querySelectorAll('input:checked').length; $('[data-compte-objectifs]', det).textContent = n ? `${n} coché${n > 1 ? 's' : ''}` : ''; }
   });
   selRef.addEventListener('change', () => majChamps(caDeApsa($('[name="apsa"]', d).value, selRef.value) || selCa.value));
   selCa.addEventListener('change', () => { caChoisiALaMain = true; majAttendus(); });
@@ -2105,6 +2136,12 @@ async function editerEval(id) {
     const val = n => +$(`[name="${n}"]`, d).value;
     $('.seuils-bareme', d).textContent = seuilsDansBareme([val('s2'), val('s3'), val('s4')], val('max'));
   });
+  // Note non significative ou note facultative : l'une ou l'autre (cocher l'une décoche l'autre).
+  const caseNs = $('[name="nonSignificative"]', d), caseFac = $('[name="facultative"]', d);
+  const majFacultative = () => { $('.choix-facultatif', d).hidden = !caseFac.checked; };
+  caseNs.addEventListener('change', () => { if (caseNs.checked) { caseFac.checked = false; majFacultative(); } });
+  caseFac.addEventListener('change', () => { if (caseFac.checked) caseNs.checked = false; majFacultative(); });
+  if (avecEcole()) $('.bloc-facultative', d).remove(); // (carnet école : pas de note facultative)
   if (avecEcole()) preparerEvalEcole(d, e); // (école : degrés par défaut, note chiffrée en option)
 
   const r = await resultat;
@@ -2137,6 +2174,7 @@ async function editerEval(id) {
       parties: parties.length ? parties : undefined, bareme: lien,
       titre: r.data.titre.trim(), apsa: r.data.apsa.trim(), date: r.data.date, max, coef: +r.data.coef,
       nonSignificative: r.data.nonSignificative === 'on' || undefined,
+      facultatif: r.data.nonSignificative !== 'on' && r.data.facultative === 'on' && !avecEcole() ? (r.data.facultatif === 'note' ? 'note' : 'bonus') : undefined,
       ...(avecEcole() ? { sansNote: r.data.avecNote !== 'on' || undefined } : {}),
       referentiel: r.data.referentiel, ca: toutes ? '' : r.data.ca,
       competences: r.data.ca || toutes ? r.fd.getAll('competence').filter(duChamp) : [],
@@ -3121,6 +3159,74 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.53.1', titre: 'Objectifs du programme dans l’ordre du livret', discipline: 'ecole', points: [
+    'Dans la fenêtre d’une évaluation, les objectifs du programme suivent maintenant l’ordre des domaines du dessus (en français : Oral, Lecture, Écriture, Langue). Même ordre dans « Compétences de l’école ».',
+  ] },
+  { version: '1.53.0', titre: 'Notes facultatives', sauf: 'ecole', points: [
+    'Dans la fenêtre d’une évaluation, sous « Note non significative » : <b>Note facultative</b>, qui ne peut que faire monter la moyenne.',
+    '<b>Comme un bonus</b> : seuls les points au-dessus de 10/20 s’ajoutent (moyenne 14 avec 12 et 16 ; bonus 17 → 17,5 ; un 8 n’ajoute rien).',
+    '<b>Comme une note</b> : elle compte seulement si elle fait monter la moyenne de l’élève (sinon elle est ignorée, pour lui seul).',
+  ] },
+  { version: '1.52.0', titre: 'Compétences de l’école : l’enseignement moral et civique', discipline: 'ecole', points: [
+    'EMC CM1 et CM2 : les objectifs du programme de 2024, par axe (CM1 : civisme, égalité et dignité, fraternité ; CM2 : citoyenneté, libertés et droits, respect des droits de tous, laïcité), plus les démarches (débat réglé, argumentation, coopération).',
+    'Notes › <b>Compétences</b> : choisis « Enseignement moral et civique » en haut de la fenêtre. Tes autres listes ne bougent pas.',
+  ] },
+  { version: '1.51.0', titre: 'Compétences de l’école : sciences et technologie', discipline: 'ecole', points: [
+    'Sciences et technologie CM1 et CM2 : les objectifs du programme (la matière, la lumière et l’électricité, le vivant, la Terre, le corps humain, les objets techniques), plus les démarches scientifiques.',
+    'CM1 : nouveau programme 2026. CM2 : programme de 2023 cette année ; celui de 2026 prendra sa place tout seul à la rentrée 2027.',
+    'Notes › <b>Compétences</b> : choisis « Sciences et technologie » en haut de la fenêtre.',
+  ] },
+  { version: '1.50.0', titre: 'Compétences de l’école : l’histoire-géographie', discipline: 'ecole', points: [
+    'Histoire-géographie CM1 et CM2 : les objectifs du programme, par thème (le Moyen Âge, la monarchie, 1789… ; se nourrir, se déplacer…), plus les démarches (frise, carte, document, oral et écrit).',
+    'CM1 : nouveau programme 2026. CM2 : programme de 2020 cette année ; celui de 2026 prendra sa place tout seul à la rentrée 2027.',
+    'Notes › <b>Compétences</b> : choisis « Histoire et géographie » en haut de la fenêtre. Tes listes de français et de maths ne bougent pas.',
+  ] },
+  { version: '1.49.0', titre: 'Compétences de l’école : les mathématiques aussi', discipline: 'ecole', points: [
+    'Mathématiques CM1 et CM2 : les <b>objectifs du programme 2025</b>, rangés par domaine (nombres et calcul, grandeurs et mesures, espace et géométrie, données et probabilités, proportionnalité, pensée informatique).',
+    'Notes › <b>Compétences</b> : choisis la matière en haut de la fenêtre, coche ce que l’équipe travaille. Ta liste de français ne bouge pas.',
+    'Dans une évaluation de mathématiques, coche les objectifs travaillés : chacun a sa colonne de degrés, et le livret s’en sert pour proposer le degré du domaine.',
+  ] },
+  { version: '1.48.0', titre: 'Compétences de l’école : les objectifs du programme de français', discipline: 'ecole', points: [
+    'Français CM1 et CM2 : les <b>objectifs du programme 2025</b>, rangés par domaine (lecture, culture littéraire, écriture, oral, vocabulaire, grammaire). Par exemple, en CM1 : « Lire sans effort un texte d’une page silencieusement ou à voix haute ».',
+    '⚙ Réglages › <b>Compétences de l’école</b> (ou Notes › bouton <b>Compétences</b>) : l’équipe coche les objectifs qu’elle travaille et en ajoute si besoin. <b>Exporter</b> donne un fichier pour les collègues, qui l’<b>importent</b> : tout le monde a la même liste.',
+    'Dans une évaluation de français, coche les objectifs travaillés : chacun a sa colonne de degrés. Le livret s’en sert pour proposer le degré du domaine.',
+  ] },
+  { version: '1.47.0', titre: 'Fiche bilan en PDF : plus facile à lire', discipline: 'ecole', points: [
+    'Les <b>compétences</b> sont rangées <b>par matière</b>, comme dans le livret : les degrés obtenus, du premier au dernier, puis où en est l’élève, écrit en toutes lettres. Une légende des degrés est en haut du tableau.',
+    'Les <b>évaluations</b> passent en page 2, en liste courte par matière (date, titre, résultat).',
+  ] },
+  { version: '1.46.0', titre: 'Fiche bilan : aperçu avant d’imprimer', discipline: 'ecole', points: [
+    'Dans la fiche bilan d’un élève, le bouton <b>PDF</b> montre maintenant les pages telles qu’elles seront, comme pour le livret : synthèse, appréciation, points d’appui, compétences et évaluations.',
+    'Puis <b>Télécharger le PDF</b> ou <b>Imprimer</b>. Case « anonyme » cochée : ni nom, ni absences, ni santé. Tes observations n’y sont jamais.',
+  ] },
+  { version: '1.45.0', titre: 'Appréciations : un portrait plus simple, des phrases liées', discipline: 'ecole', points: [
+    'Le <b>portrait</b> de l’élève passe de 45 à 18 pastilles, rangées par thème : <b>Au travail</b>, <b>Écoute et oral</b>, <b>Avec les autres</b>. Sur chaque ligne, les qualités d’abord, puis les points à surveiller.',
+    'Les <b>situations</b> n’apparaissent que quand elles servent (« Prêt·e pour le collège » en CM2 en fin d’année, « La lecture se met en place » en CP et CE1…) ; les autres sont dans <b>+ Autre situation</b>. Au-delà de 3 pastilles, les autres s’estompent.',
+    'Tes choix d’avant sont repris (« Sérieux » devient « Consciencieux », « Bavardages » devient « Se laisse distraire »…).',
+    'Nouveau style <b>« Liées »</b>, par défaut : moins de phrases courtes, plus de liens. « Consciencieuse et curieuse, Chloé réussit bien ses apprentissages, même si… Elle doute encore d’elle : il faut maintenant oser se lancer. » Le style « Phrases » reste dans ⚙ réglages.',
+  ] },
+  { version: '1.44.0', titre: 'Livret : aperçu avant d’imprimer', discipline: 'ecole', points: [
+    'Dans le livret, le bouton <b>« Aperçu, PDF, impression »</b> montre les pages telles qu’elles seront, élève par élève, avant de les imprimer.',
+    'Tu peux aussi <b>télécharger le PDF</b> du livret d’un élève ou de toute la classe (chaque élève sur sa page).',
+  ] },
+  { version: '1.43.0', titre: 'Appréciations : l’appli apprend de tes corrections', points: [
+    'Quand tu corriges une appréciation (✍ Appréciations ou fiche bilan), l’appli retient tes changements : « Bon courage ! » → « Courage ! », un mot remplacé, un mot retiré…',
+    'Fait chez <b>deux élèves</b>, le changement est appliqué ensuite à toutes ses propositions (chez un seul : pour cet élève seulement).',
+    'En bas de la fenêtre, <b>🧠 Apprentissage</b> dit combien de tournures sont retenues ; touche-le pour voir la liste et décocher ce qui ne te va pas.',
+  ] },
+  { version: '1.42.0', titre: 'Appréciations : style « Liées » par défaut', points: [
+    'Les appréciations sont rédigées en phrases <b>reliées</b> (« X a de bonnes capacités motrices, mais son investissement encore irrégulier… ») plutôt qu’en petites phrases à la suite.',
+    'Tu peux toujours revenir au style « Phrases » dans les réglages des appréciations : ton choix sera gardé.',
+  ] },
+  { version: '1.41.0', titre: 'Appréciations : comportement en classe et relations avec les autres', points: [
+    'Un critère de <b>comportement en classe</b> (comportement, écoute, concentration, consignes, bavardages) n’est plus confondu avec le <b>rapport aux autres</b> : « Le comportement en classe freine les apprentissages » plutôt que « Le rapport aux autres reste à améliorer ».',
+    'Beaucoup plus de tournures pour le social (respect, fair-play, entraide, émotions, comportement) : 🎲 Autre formulation propose vraiment d’autres phrases.',
+  ] },
+  { version: '1.40.0', titre: 'Appréciations : les compétences de savoir-être comptent', points: [
+    'Un élève qui a de bonnes notes mais un <b>degré 1 ou 2</b> sur une compétence de savoir-être (AFL3, « solidaire de ses partenaires », « accepter le résultat », ou un critère que tu as écrit : coéquipiers, gestion des émotions, rapport aux autres, investissement…) n’a plus une appréciation « tout va bien ».',
+    'L’appréciation nomme le point en clair (« Toutefois, la coopération avec ses partenaires reste fragile ») et l’objectif suit (« mieux coopérer avec ses partenaires »), sans « Bravo » à la fin.',
+    'Seuls les degrés choisis à la main comptent (pas ceux pré-remplis d’après la note). La pastille « Compétences » dit d’où vient son niveau ; touche-la pour le changer.',
+  ] },
   { version: '1.39.0', titre: 'Tablette Android : le carnet arrive bien sur l’ordinateur', points: [
     'Sur Android, « Enregistrer » ne pose le fichier que dans <b>Téléchargements</b> : il faut le déplacer sur la clé. L’appli disait pourtant « Tout est enregistré sur la clé ». Maintenant le bouton reste orange (« À déplacer ») jusqu’à ce que tu touches « C’est fait : il est sur la clé » dans le menu Enregistrer.',
     'Sur l’ordinateur avec la clé, Enregistrer › Aide et dépannage › Plus d’options › <b>Reprendre un fichier de la tablette</b> : choisis le .json de la tablette où qu’il soit (racine de la clé, Téléchargements…). Il est réuni au carnet puis écrit sur la clé.',
@@ -3389,7 +3495,7 @@ const nomVersion = v => (/^\d/.test(v) ? `v${v}` : 'version d’avant la 1.0'); 
 
 async function afficherNouveautes(depuis) {
   // (Nouveauté propre à une discipline, « discipline: 'eps' » : montrée seulement dans un carnet de cette discipline.)
-  const liste = NOUVEAUTES.filter(n => (!n.discipline || n.discipline === disciplineActive()) && (!/^\d/.test(depuis) || Cle.compareVersions(n.version, depuis) > 0)
+  const liste = NOUVEAUTES.filter(n => (!n.discipline || n.discipline === disciplineActive()) && n.sauf !== disciplineActive() && (!/^\d/.test(depuis) || Cle.compareVersions(n.version, depuis) > 0)
     && Cle.compareVersions(n.version, VERSION_APP) <= 0);
   if (!liste.length) return;
   const { resultat } = ouvrirModale(`${avecEcole() ? '' : '🎉 '}Quoi de neuf ? (v${VERSION_APP})`,
@@ -3573,7 +3679,7 @@ $('#recherche-eleve').addEventListener('focus', () => { if ($('#recherche-eleve'
 // Raccourcis : « / » ou Ctrl+K (hors d'un champ de saisie).
 document.addEventListener('keydown', e => {
   const dansChamp = e.target.matches?.('input, textarea, select, [contenteditable]');
-  if ((e.key === '/' && !dansChamp) || (e.key.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey))) {
+  if ((e.key === '/' && !dansChamp) || ((e.key || '').toLowerCase() === 'k' && (e.ctrlKey || e.metaKey))) {
     if (document.querySelector('dialog[open]') || document.body.classList.contains('mode-eleve')) return;
     e.preventDefault();
     if (matchMedia('(max-width: 860px)').matches) basculerMenu(true);
