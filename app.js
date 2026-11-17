@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.64.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.68.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -372,7 +372,7 @@ function dispenseLe(el, date) {
 function dispensesAvecActuelle(el) {
   const auj = aujourdhui(), l = el.dispensesPassees || [];
   if (!el.dispDebut || el.dispDebut >= auj) return l;
-  return [...l, { debut: el.dispDebut, fin: el.dispFin && el.dispFin < auj ? el.dispFin : auj }];
+  return [...l, { debut: el.dispDebut, fin: el.dispFin && el.dispFin < auj ? el.dispFin : auj, ...(el.dispJustif ? { justif: el.dispJustif } : {}) }];
 }
 
 // Dispense longue (plus d'un trimestre, soit 3 mois ou plus du début à la fin — à aujourd'hui si la fin n'est pas
@@ -456,7 +456,9 @@ const BESOINS = {
 // du carnet (comme ceux des séances), l'élève en garde la liste dans `paiDocs` / `bepDocs`.
 const TYPES_DOCS_BESOIN = '.pdf,.doc,.docx,.odt';
 const docsBesoin = (el, type) => (el[BESOINS[type].champDocs] || []).map(id => Donnees.get('documents', id)).filter(Boolean);
-const idsDocsBesoins = el => Object.values(BESOINS).flatMap(b => el[b.champDocs] || []);
+// (Avec les justificatifs de dispense, en cours et anciens : justificatif.js.)
+const idsDocsBesoins = el => [...Object.values(BESOINS).flatMap(b => el[b.champDocs] || []),
+  ...(el.dispJustif ? [el.dispJustif] : []), ...(el.dispensesPassees || []).map(d => d.justif).filter(Boolean)];
 
 function boutonBesoin(el, type) {
   const b = BESOINS[type], actif = b.actif(el), info = el[b.champInfo] || '', nbDocs = (el[b.champDocs] || []).length;
@@ -1440,7 +1442,7 @@ function htmlEleves(c) {
                     title="Du ${esc(el.dispDebut ? dateCourte(el.dispDebut) : '?')} au ${esc(dateCourte(el.dispFin))} — cliquer pour modifier les dates">${esc(s.texte)} ✎</button>
                   ${s.code === 'finie' ? `<button class="lien" data-nouvelle-dispense="${el.id}" title="La dispense terminée reste dans l’historique (fiche bilan)">+ Nouvelle dispense</button>` : ''}` : ''}
               </div>
-              ${(el.dispensesPassees || []).length ? `<span class="aide">${el.dispensesPassees.length} ancienne${el.dispensesPassees.length > 1 ? 's' : ''} : ${el.dispensesPassees.map(d => `${esc(dateCourte(d.debut))} → ${esc(dateCourte(d.fin))}`).join(', ')}</span>` : ''}
+              ${(el.dispensesPassees || []).length ? `<span class="aide">${el.dispensesPassees.length} ancienne${el.dispensesPassees.length > 1 ? 's' : ''} : ${el.dispensesPassees.map(d => `${esc(dateCourte(d.debut))} → ${esc(dateCourte(d.fin))}${boutonJustifAncien(el, d)}`).join(', ')}</span>` : ''}
               ${el.dispense && datesDispenseOuvertes(el) ? `
                 <div class="dates-disp">
                   <label>du <input type="date" data-champ="dispDebut" value="${esc(el.dispDebut || '')}" aria-label="Début de la dispense"></label>
@@ -1448,6 +1450,7 @@ function htmlEleves(c) {
                   ${el.dispFin ? `<button class="replier-disp" data-replier-dispense="${el.id}">OK</button>` : ''}
                 </div>
                 <span class="badge-disp ${s.code}">${esc(s.texte)}</span>` : ''}
+              ${el.dispense ? htmlJustifDispense(el) : ''}
             </td>` : ''}
             <td class="c-rem" data-label="Remarques"><input data-champ="remarque" value="${esc(el.remarque || '')}" aria-label="Remarques" placeholder="${esc(aideRem)}"></td>
             <td class="c-suppr">${ListeClasse.aDesInfos(el) ? `<button class="icone-petit" data-contacts="${el.id}" title="Naissance, dispositifs, responsables" aria-label="Fiche de ${esc(el.nom)}">📇</button>` : ''}<button class="icone-petit" data-supprimer-eleve="${el.id}" title="Supprimer l’élève" aria-label="Supprimer l’élève">🗑</button></td>
@@ -2376,6 +2379,7 @@ function migrerTout() {
   completerPortraitsExemple(); // (et d'avant leur trombinoscope dessiné)
   migrerReglagePP(); // (anciens réglages de base de l'appréciation générale : pp.js)
   reparerDatesDispense();
+  purgerJustificatifs(); // (fin d'année : justificatifs de dispense des années passées effacés — justificatif.js)
   justifierAbsencesDispenses(); // (absences pendant une dispense → « Dispensé », aussi celles venues de l'autre appareil)
 }
 
@@ -3161,6 +3165,25 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.68.0', titre: 'Le justificatif de dispense dans la fiche de l’élève', points: [
+    'Élèves › Modifier la liste : sous les dates d’une dispense, « 📷 Photo » ouvre la caméra avec un cadre pour viser la feuille ; « 📎 Joindre » prend une photo ou un PDF déjà enregistré.',
+    'Touche la vignette pour voir le justificatif en grand, le remplacer ou le retirer. Une ancienne dispense garde le sien (📎) jusqu’à la fin de l’année scolaire.',
+  ] },
+  { version: '1.67.0', titre: 'Ressources : les fractions et les nombres décimaux', discipline: 'ecole', points: [
+    '33 nouvelles ressources sur les fractions (CE1 au CM2) et les nombres décimaux (CM1, CM2), d’après Eduscol : livrets d’accompagnement CE1 et CM2, recommandations pour l’enseignement des fractions, « Fractions et nombres décimaux au cycle 3 », évaluations de début de CM2.',
+    'Fiches élèves fabriquées par le carnet, avec de vraies fractions écrites « en étage » : figures à colorier, lire et écrire, comparer, additionner, fractions égales, demi-droite graduée, fraction d’une quantité, fractions décimales et écriture à virgule, comparer et ranger des décimaux, × et ÷ par 10, 100, 1 000, calcul mental, divisions décimales, problèmes.',
+    'Fiche adaptée : deux nouvelles aides visuelles, le « mur des fractions » et le tableau de numération avec la virgule.',
+  ] },
+  { version: '1.66.0', titre: 'Ressources : la numération et les fiches adaptées', discipline: 'ecole', points: [
+    '24 nouvelles ressources de numération (cycles 2 et 3), d’après Eduscol : les fiches des évaluations de début de CE2 et de CM1 et le guide « Pour enseigner les nombres, le calcul et la résolution de problèmes au CP ».',
+    'Fiches élèves fabriquées par le carnet : dictée de nombres (les nombres à dicter sont sur le corrigé), lettres et chiffres, unités de numération, comparer, encadrer, ranger, suites de nombres, demi-droite graduée.',
+    'Nouveau : « Fiche adaptée » pour les élèves en difficulté ou avec un PAP : écriture plus grande, moins d’exercices, aide toujours visible et une aide visuelle (frise numérique, tableau de numération, table de Pythagore, mots-nombres, schéma en barres) ; « très adaptée » ajoute un exemple déjà fait. Rien sur la feuille ne dit qu’elle est adaptée.',
+  ] },
+  { version: '1.65.0', titre: 'Ressources : multiplication et division', discipline: 'ecole', points: [
+    '20 nouvelles ressources de mathématiques (cycles 2 et 3), toutes d’après Eduscol, avec le document cité sur chaque carte et chaque fiche.',
+    'Fiches élèves fabriquées par le carnet : tables de multiplication, × 10 / × 100 / × 1 000, × 4, × 8, × 5, décomposer pour multiplier, multiplications posées (corrigé avec les produits partiels), divisions en potence, « 17 = 4 × … + … », trouver le bon résultat sans poser, problèmes de partage et de groupement.',
+    'Idées pour la classe : la table de Pythagore, le glisse-nombre, partager avec le matériel avant de poser la division, une séance sur « fois plus, fois moins », toutes les façons de faire un nombre.',
+  ] },
   { version: '1.64.0', titre: 'Listes de classe en XML', points: [
     'L’import d’une liste de classe lit aussi les fichiers .xml (tableur enregistré en XML, exports de l’Éducation nationale, d’ONDE ou d’autres logiciels).',
     'Sur iPad, ces fichiers (et les .xls) peuvent maintenant être choisis : ils n’apparaissent plus grisés.',
@@ -3777,7 +3800,8 @@ document.addEventListener('click', e => {
   if (ds.nouvelleDispense) {
     // L'ancienne dispense (terminée) va dans l'historique ; la nouvelle commence aujourd'hui, dates à corriger si besoin.
     const el = Donnees.get('eleves', ds.nouvelleDispense);
-    Donnees.ecrire('eleves', { ...el, dispensesPassees: dispensesAvecActuelle(el), dispDebut: aujourdhui(), dispFin: '' });
+    Donnees.ecrire('eleves', { ...el, dispensesPassees: dispensesAvecActuelle(el), dispDebut: aujourdhui(), dispFin: '', dispJustif: '' });
+    if (el.dispJustif) supprimerDocumentsInutilises([el.dispJustif]); // (gardé s'il a suivi l'ancienne dispense)
     absencesDispenseAvecMessage(el.id);
     rendreClasses();
     rendreVue();
@@ -3846,10 +3870,11 @@ document.addEventListener('change', e => {
       if (el.dispense && !modif.dispense) {
         // Dispense levée : elle rejoint l'historique ; la prochaine repartira de dates vides.
         modif.dispensesPassees = dispensesAvecActuelle(el);
-        modif.dispDebut = modif.dispFin = '';
+        modif.dispDebut = modif.dispFin = modif.dispJustif = '';
       }
       if (modif.dispense && !modif.dispDebut) modif.dispDebut = aujourdhui();
       Donnees.ecrire('eleves', modif);
+      if (el.dispJustif && !modif.dispJustif) supprimerDocumentsInutilises([el.dispJustif]); // (gardé s'il a suivi l'ancienne dispense)
       absencesDispenseAvecMessage(el.id);
       rendreClasses();
       rendreVue();
@@ -3886,7 +3911,9 @@ function conclureDatesDispense(id) {
   const modif = { ...el };
   if (el.dispense && dateDispenseValable(avant.debut) && dateDispenseValable(avant.fin) && avant.fin >= avant.debut
     && el.dispDebut && el.dispDebut > avant.fin) {
-    modif.dispensesPassees = [...(el.dispensesPassees || []), { debut: avant.debut, fin: avant.fin }];
+    // (Le justificatif déjà pris suit l'ancienne dispense.)
+    modif.dispensesPassees = [...(el.dispensesPassees || []), { debut: avant.debut, fin: avant.fin, ...(el.dispJustif ? { justif: el.dispJustif } : {}) }];
+    modif.dispJustif = '';
     if (el.dispFin === avant.fin) modif.dispFin = '';
   }
   if (modif.dispFin) dispensesEnEdition.delete(id); // date de fin saisie : on replie

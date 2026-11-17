@@ -263,6 +263,7 @@ const TRACES_ECOLE = {
   pansement: '<rect x="2.5" y="8.5" width="19" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="M10.6 10.6h.01M13.4 13.4h.01M10.6 13.4h.01M13.4 10.6h.01" stroke-width="2.25"/>',
   autre: '<circle cx="12" cy="12" r="9"/><path d="M8 12h.01M12 12h.01M16 12h.01" stroke-width="2.5"/>',
   camera: '<rect x="2.5" y="6.5" width="13.5" height="11" rx="2"/><path d="m16 10.5 5.5-3v9l-5.5-3z"/>',
+  appareilPhoto: '<path d="M3.5 8.5a2 2 0 0 1 2-2h2.2L9.2 4.5h5.6l1.5 2h2.2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.5"/>', // (justificatif de dispense)
   medaille: '<circle cx="12" cy="15" r="5.5"/><path d="M8.6 10.7 5.5 3h4l2.5 6M15.4 10.7 18.5 3h-4L12 9M12 13v4"/>',
   natation: '<circle cx="16.5" cy="6" r="2"/><path d="m5 12 4.5-4 3 2.5 3-1"/><path d="M2.5 16c1.6 0 1.6-1.3 3.2-1.3s1.6 1.3 3.2 1.3 1.6-1.3 3.1-1.3 1.6 1.3 3.2 1.3 1.6-1.3 3.2-1.3 1.6 1.3 3.1 1.3M2.5 20c1.6 0 1.6-1.3 3.2-1.3s1.6 1.3 3.2 1.3 1.6-1.3 3.1-1.3 1.6 1.3 3.2 1.3 1.6-1.3 3.2-1.3 1.6 1.3 3.1 1.3"/>',
   podium: '<path d="M8.5 20.5V10h7v10.5M2.5 20.5V14h6M15.5 16.5h6v4M1.5 20.5h21M12 4v3"/>',
