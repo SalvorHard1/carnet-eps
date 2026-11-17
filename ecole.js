@@ -96,7 +96,7 @@ async function reglerNotesEcole(c) {
       <legend>Compétences évaluées</legend>
       <p class="aide">Ajouter tes propres compétences, renommer, ou ne plus proposer celles du programme dont tu ne te sers pas.</p>
       <button value="competences">${iconeEcole('cible')}Créer ou modifier les compétences…</button>
-      ${typeof gererAccordEcole === 'function' ? `<p class="aide">Objectifs détaillés du programme (français, maths, histoire-géographie, sciences, EMC ; CM1 et CM2) : ceux que l’équipe a choisis sont proposés dans les évaluations.</p>
+      ${typeof gererAccordEcole === 'function' ? `<p class="aide">Objectifs détaillés du programme (CM1 et CM2 : français, maths, histoire-géographie, sciences, EMC, langue vivante, arts, EPS ; CP, CE1 et CE2 : toutes les matières) : ceux que l’équipe a choisis sont proposés dans les évaluations.</p>
       <button value="accord">${iconeEcole('ecole')}Compétences de l’école…</button>` : ''}
     </fieldset>`, boutonsModale('Enregistrer'));
   const r = await resultat;

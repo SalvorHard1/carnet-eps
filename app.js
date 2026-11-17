@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.53.1'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.62.4'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -3159,6 +3159,64 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.62.4', titre: 'Appréciations : plus de comparaison avec la classe', points: [
+    'Un élève aux résultats corrects mais sous la moyenne de la classe n’est plus « en retrait par rapport à la classe » dans son appréciation : l’appli parle de ses progrès, de sa marge de progrès ou de ce qu’il peut viser (« progresse à son rythme et peut viser plus haut », « a les moyens d’aller plus loin »…).',
+    'La comparaison reste visible pour toi seul, dans la bulle de la rubrique.',
+  ] },
+  { version: '1.62.2', titre: 'Appréciations : des conseils plus clairs pour les familles', points: [
+    'Quand les compétences sont fragiles, l’appli ne dit plus « mieux fixer ses apprentissages » ni « mémoriser les savoir-faire » : elle propose des conseils concrets (mettre en pratique les conseils donnés en cours, s’appliquer davantage dans les exercices…) et plus de tournures différentes avec « 🎲 Autre formulation ».',
+  ] },
+  { version: '1.62.1', titre: 'Appréciations : compétences cohérentes avec la note', points: [
+    'La rubrique <b>Compétences</b> ne monte plus à « très bien » si la moyenne de la période ne l’est pas aussi (seuils et place dans la classe), ni plus d’un niveau au-dessus de la note.',
+    'L’investissement, le sérieux, le respect relevés en séance comptent dans l’<b>Attitude</b> et le <b>Comportement</b>, plus dans les compétences. Touche « 🔄 Actualiser toutes » pour refaire les textes modifiés à la main.',
+  ] },
+  { version: '1.62.0', titre: 'Appréciations : tout actualiser d’un coup', points: [
+    'Dans <b>✍ Appréciations</b>, le bouton <b>« 🔄 Actualiser toutes »</b> refait les appréciations de la période avec tes réglages actuels.',
+    'Les textes modifiés à la main ne suivent pas les réglages : l’appli te propose de les remplacer aussi, et si tu veux de revenir aux niveaux calculés là où tu avais changé une rubrique. Ce qu’elle a appris de tes corrections est gardé.',
+  ] },
+  { version: '1.61.1', titre: 'Bilan pour le PP : feuille plus courte', discipline: 'eps', points: [
+    'La phrase « Pendant les séances du T1 : … » reste dans la fenêtre, pour toi, mais n’est plus imprimée sur la feuille du PP. Les pastilles (ex. « performances sous la classe en séance ») et ta remarque y sont toujours.',
+  ] },
+  { version: '1.61.0', titre: 'Compétences de l’école : le cycle 2 est complet', discipline: 'ecole', points: [
+    'Questionner le monde (CE1, CE2), histoire-géographie et sciences et technologie (CP) : les objectifs du programme.',
+    'Le CP suit déjà les nouveaux programmes d’histoire-géographie et de sciences ; le CE1 et le CE2 gardent « Questionner le monde » cette année et passeront aux nouveaux programmes tout seuls à la rentrée 2027.',
+    'Toutes les matières du CP au CM2 ont maintenant leurs objectifs : Notes › <b>Compétences</b>.',
+  ] },
+  { version: '1.60.0', titre: 'Compétences de l’école : arts et EPS au cycle 2', discipline: 'ecole', points: [
+    'Enseignements artistiques CP, CE1 et CE2 : les objectifs du programme en arts plastiques et en éducation musicale.',
+    'EPS CP, CE1 et CE2 : les objectifs du programme, par domaine. CP : nouveau programme 2026 ; CE1 et CE2 : programme de 2020 cette année, celui de 2026 à la rentrée 2027.',
+    'Notes › <b>Compétences</b> : choisis la matière « — cycle 2 » en haut de la fenêtre.',
+  ] },
+  { version: '1.59.0', titre: 'Compétences de l’école : la langue vivante au cycle 2', discipline: 'ecole', points: [
+    'Langue vivante CP, CE1 et CE2 : les objectifs du programme, par activité (écouter et comprendre, parler en continu, réagir et dialoguer, lire, écrire, médiation).',
+    'CP : nouveau programme 2026. CE1 et CE2 : programme de 2020 cette année ; celui de 2026 prendra sa place tout seul à la rentrée 2027.',
+    'Notes › <b>Compétences</b> : choisis « Langue vivante — cycle 2 » en haut de la fenêtre.',
+  ] },
+  { version: '1.58.0', titre: 'Compétences de l’école : l’EMC au cycle 2', discipline: 'ecole', points: [
+    'Enseignement moral et civique CP, CE1 et CE2 : les objectifs du programme, thème par thème (CP : se reconnaître comme individu et élève ; CE1 : respecter les autres ; CE2 : apprendre ensemble et vivre ensemble).',
+    'Notes › <b>Compétences</b> : choisis « Enseignement moral et civique — cycle 2 » en haut de la fenêtre.',
+    'Filtre par niveau : les domaines sans objectif pour ce niveau ne s’affichent plus.',
+  ] },
+  { version: '1.57.0', titre: 'Compétences de l’école : le cycle 2 (français et maths)', discipline: 'ecole', points: [
+    'CP, CE1 et CE2 : les objectifs du programme de français (lecture, écriture, oral, vocabulaire, grammaire et orthographe) et de mathématiques (nombres et calcul, grandeurs et mesures, espace et géométrie, données), année par année.',
+    'Chaque objectif compte dans son domaine du livret ; filtre par niveau pour ne voir que ceux du CP, du CE1 ou du CE2.',
+    'Notes › <b>Compétences</b> : choisis « Français — cycle 2 » ou « Mathématiques — cycle 2 » en haut de la fenêtre.',
+  ] },
+  { version: '1.56.0', titre: 'Compétences de l’école : l’EPS', discipline: 'ecole', points: [
+    'EPS CM1 et CM2 : les objectifs du programme, par domaine (se déplacer, construire des équilibres, s’exprimer avec son corps, coopérer et s’opposer).',
+    'CM1 : nouveau programme 2026. CM2 : programme de 2020 cette année ; celui de 2026 prendra sa place tout seul à la rentrée 2027.',
+    'Notes › <b>Compétences</b> : choisis « Éducation physique et sportive » en haut de la fenêtre.',
+  ] },
+  { version: '1.55.0', titre: 'Compétences de l’école : les arts', discipline: 'ecole', points: [
+    'Enseignements artistiques CM1 et CM2 : les objectifs du programme en arts plastiques (créer, mener un projet, parler de son travail et des œuvres), en éducation musicale (chanter, écouter, créer, argumenter) et en histoire des arts.',
+    'Chaque objectif compte dans son domaine du livret : arts plastiques, éducation musicale ou histoire des arts.',
+    'Notes › <b>Compétences</b> : choisis « Enseignements artistiques » en haut de la fenêtre.',
+  ] },
+  { version: '1.54.0', titre: 'Compétences de l’école : la langue vivante', discipline: 'ecole', points: [
+    'Langue vivante CM1 et CM2 : les objectifs du programme, par activité (écouter et comprendre, parler en continu, réagir et dialoguer, lire et comprendre, écrire, médiation), au niveau A1.',
+    'CM1 : nouveau programme 2026. CM2 : programme de 2020 cette année ; celui de 2026 prendra sa place tout seul à la rentrée 2027.',
+    'Notes › <b>Compétences</b> : choisis « Langue vivante » en haut de la fenêtre.',
+  ] },
   { version: '1.53.1', titre: 'Objectifs du programme dans l’ordre du livret', discipline: 'ecole', points: [
     'Dans la fenêtre d’une évaluation, les objectifs du programme suivent maintenant l’ordre des domaines du dessus (en français : Oral, Lecture, Écriture, Langue). Même ordre dans « Compétences de l’école ».',
   ] },
@@ -3264,7 +3322,7 @@ const NOUVEAUTES = [
   ] },
   { version: '1.35.0', titre: 'Bilan pour le PP : ce que montrent les séances', points: [
     'Dans <b>Bilan pour le PP</b>, les élèves à signaler tiennent compte des <b>leçons du trimestre</b>, comparées à la classe : <b>absences</b> aux séances, <b>investissement</b> ou <b>sérieux</b> insuffisants (données relevées sur 1 à 4 ou en liste), <b>performances</b> nettement sous la classe (temps, distances, points, degrés).',
-    'Une phrase l’explique sous l’élève, sur la feuille aussi : « Pendant les séances du T1 : Temps 2:24,9 (classe 2:08,2)… ». Tu peux toujours décocher.',
+    'Une phrase l’explique sous l’élève, dans la fenêtre : « Pendant les séances du T1 : Temps 2:24,9 (classe 2:08,2)… ». Tu peux toujours décocher.',
   ] },
   { version: '1.34.1', titre: 'Chercher un élève dans la grille', points: [
     'Dans <b>Notes</b> et <b>Leçons</b>, un petit champ <b>« Chercher… »</b> sous « Élève » : tape quelques lettres (par exemple « am ») : il ne reste que les élèves dont le <b>nom ou le prénom</b> les contient.',

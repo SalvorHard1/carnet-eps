@@ -123,7 +123,9 @@ const prochesAppr = (x, y) => {
 };
 // (Mots à ne jamais apprendre seuls : une correction de il / elle ou d'accord est une erreur de sexe, pas un style.)
 const MOTS_NEUTRES_APPR = new Set(['il', 'elle', 'lui', 'le', 'la', 'les', 'un', 'une', 'son', 'sa', 'ses', 'de', 'du', 'des', 'et', 'à', 'en', 'je', 'l’', 'j’']);
-const correctionsAppr = () => Donnees.liste('suivis', x => estSuiviAppr(x) && x.texte && x.base && x.texte !== x.base);
+// (x.correction : texte réécrit puis remplacé par « Actualiser toutes » ; gardé pour que l'appli n'oublie pas ce qu'elle en a appris.)
+const correctionAppr = x => (x.texte && x.base && x.texte !== x.base ? x : x.correction?.texte ? { ...x, ...x.correction } : null);
+const correctionsAppr = () => Donnees.liste('suivis', x => estSuiviAppr(x) && !!correctionAppr(x)).map(correctionAppr);
 let cacheApprisAppr = { cle: null, val: null };
 // { tous: [{ de, vers, cle, n }] (vus chez deux élèves au moins), parEleve: Map(eleveId → [{ de, vers, cle }]) }
 function apprisAppr() {
@@ -446,6 +448,9 @@ function analyserAppr(el, periode, eleves, sansAvant = false) {
   const degres = { attitude: [], competences: [], moteur: [], methodo: [], comportement: [], autonomie: [] };
   const ecole = !!profil().ecole, profilAppr = profil().appreciations || {};
   let mieux = 0, pire = 0;
+  // (Investissement, sérieux, respect… comptent dans l'attitude et le comportement, pas dans les compétences :
+  // sinon un élève très investi a « compétences très bien » malgré des degrés moyens. École : inchangé.)
+  const dansCompetences = cat => ecole || (cat !== 'attitude' && cat !== 'comportement');
 
   // Notes
   const moy = moyenneEleve(el.id, evals);
@@ -484,7 +489,7 @@ function analyserAppr(el, periode, eleves, sansAvant = false) {
   for (const { a, valeurs, auto } of comps.values()) {
     const der = valeurs.at(-1);
     if (!auto) noterTheme(a.texte, der);
-    degres.competences.push(der);
+    if (dansCompetences(categorieAppr(a.texte))) degres.competences.push(der);
     degres[categorieAppr(a.texte)].push(der);
     if (!auto) { saisi.competences = true; saisi[categorieAppr(a.texte)] = true; }
     if (valeurs.length > 1) { if (der > valeurs[0]) mieux++; else if (der < valeurs[0]) pire++; }
@@ -518,7 +523,7 @@ function analyserAppr(el, periode, eleves, sansAvant = false) {
       const cat = ind.etape ? 'moteur' : categorieAppr(ind.nom);
       if (!ind.etape) noterTheme(ind.nom, der);
       degres[cat].push(der);
-      degres.competences.push(der);
+      if (dansCompetences(cat)) degres.competences.push(der);
       saisi[cat] = saisi.competences = true;
       if (der < 3) faibles.push({ texte: ind.etape ? texteIndic(ind) : ind.nom, cat, v: der, indic: !ind.etape });
     }
@@ -612,6 +617,13 @@ function analyserAppr(el, periode, eleves, sansAvant = false) {
   // et sera dit en clair (« la coopération avec ses partenaires reste fragile »). Le plus faible d'abord.
   details.savoirEtre = [...parTheme].map(([theme, l]) => ({ theme, m: moyenneListe(l), n: niveauDegre(moyenneListe(l)), nb: l.length }))
     .sort((x, y) => x.m - y.m);
+  // Les compétences restent cohérentes avec la note (même barème) : « très bien » (4) seulement si la moyenne est
+  // elle aussi au niveau 4 (seuils et place dans la classe), et jamais plus d'un niveau au-dessus. École : inchangé.
+  const plafondComp = niveaux.moteur === 4 ? 4 : Math.min(3, (niveaux.moteur || 0) + 1);
+  if (!ecole && moy !== null && niveaux.competences && niveaux.moteur && niveaux.competences > plafondComp) {
+    sources.competences += `\nMoyenne ${fmtD(moy)}/20 (« ${rubriqueAppr('moteur').nom} » ${niveaux.moteur}) : niveau ${plafondComp} au plus`;
+    niveaux.competences = plafondComp;
+  }
   details.niveauCompetencesSeul = niveaux.competences ?? null;
   const pireSE = details.savoirEtre[0];
   if (pireSE && pireSE.n <= 2 && niveaux.competences && pireSE.n <= niveaux.competences) {
@@ -827,16 +839,24 @@ const BILANS_APPR = {
 // Bilan d'ensemble correct d'un élève en retrait par rapport à sa classe (jamais « satisfaisant » sans nuance),
 // ou bon bilan d'un élève parmi les meilleurs de la classe (voir positionClasse).
 const BILANS_CLASSE_APPR = {
-  retrait: { periode: ['{S} réalise un {per} correct, mais un peu en retrait par rapport à la classe.', '{S} réalise un {per} correct, un peu en dessous du niveau de la classe.', '{S} réalise un {per} correct, un peu en retrait par rapport à ses camarades.'],
-    annee: ['{S} réalise une année correcte, mais un peu en retrait par rapport à la classe.', '{S} réalise une année correcte, un peu en dessous du niveau de la classe.', '{S} réalise une année correcte, un peu en retrait par rapport à ses camarades.'] },
+  // (En retrait : jamais comparé aux camarades dans le texte lu par la famille ; la marge de progrès, le potentiel.)
+  retrait: { periode: ['{S} réalise un {per} correct, avec encore une marge de progrès.', '{S} réalise un {per} correct et peut viser plus haut.', '{S} réalise un {per} correct, à confirmer.',
+      '{S} réalise un {per} correct et a les moyens d’aller plus loin.'],
+    annee: ['{S} réalise une année correcte, avec encore une marge de progrès.', '{S} réalise une année correcte et peut viser plus haut.', '{S} réalise une année correcte, à confirmer.',
+      '{S} réalise une année correcte et a les moyens d’aller plus loin.'] },
   tete: { periode: ['{S} réalise un bon {per} et se place parmi les meilleurs de la classe.', '{S} réalise un {per} réussi, parmi les meilleurs de la classe.', '{S} réalise un {per} réussi, parmi les meilleurs élèves.'],
     annee: ['{S} réalise une bonne année et se place parmi les meilleurs de la classe.', '{S} réalise une année réussie, parmi les meilleurs de la classe.', '{S} réalise une année réussie, parmi les meilleurs élèves.'] },
 };
 // Résultats corrects, mais en retrait par rapport à la classe (niveau 3 plafonné) ; quand le bilan l'a déjà dit :
 // des résultats « honorables », sans redire la classe (pas de « bons résultats » juste après « en retrait »).
-const RETRAIT_APPR = { p: ['{S} obtient des résultats corrects{apsa}, mais un peu en retrait par rapport à la classe.', 'Les résultats{apsa} sont corrects, un peu en dessous du niveau de la classe.', 'Les résultats{apsa} sont corrects, un peu en retrait par rapport à ses camarades.'],
-  t: ['Résultats corrects{apsa}, un peu en retrait par rapport à la classe.'] };
-const RETRAIT_DIT_APPR = { p: ['{S} obtient des résultats honorables{apsa}.', 'Les résultats{apsa} sont convenables.'], t: ['Résultats honorables{apsa}.'] };
+// (Sans comparaison avec la classe dans le texte : la marge de progrès, le potentiel.)
+const RETRAIT_APPR = { p: ['{S} obtient des résultats corrects{apsa}, qui peuvent encore progresser.', 'Les résultats{apsa} sont corrects, avec encore une marge de progrès.',
+  '{S} obtient des résultats corrects{apsa} et a les moyens d’aller plus loin.', 'Les résultats{apsa} sont encourageants et peuvent encore s’améliorer.',
+  '{S} progresse à son rythme{apsa} et peut viser plus haut.'],
+  t: ['Résultats corrects{apsa}, perfectibles.', 'Résultats corrects{apsa}, à confirmer.'] };
+// (Après une liaison d'opposition, « Néanmoins, … » : une nuance, pas un compliment.)
+const RETRAIT_DIT_APPR = { p: ['Les résultats{apsa} peuvent encore progresser.', '{S} dispose encore d’une marge de progrès{apsa}.', 'Les résultats{apsa} restent perfectibles.'],
+  t: ['Résultats{apsa} encore perfectibles.', 'Marge de progrès{apsa}.'] };
 
 // Objectifs (verbe à l'infinitif) : un axe de progrès général, selon la rubrique la plus faible
 // (pas une compétence précise : « maintenir ses efforts », « fournir davantage de travail pour consolider ses acquis »…).
@@ -851,8 +871,11 @@ const OBJECTIFS_APPR = {
   securite: ['respecter et faire respecter les règles de sécurité'],
   moteur: ['persévérer pour améliorer ses performances', 'fournir davantage de travail pour progresser', 'gagner en efficacité par un entraînement régulier', 'chercher à se dépasser dans les activités',
     'travailler avec plus d’intensité', 'oser davantage dans les activités', 's’entraîner avec régularité'],
-  competences: ['fournir davantage de travail pour consolider ses acquis', 'consolider ses acquis par un travail régulier', 'mieux fixer ses apprentissages', 'approfondir les savoir-faire travaillés',
-    'réinvestir les conseils donnés en cours', 'mieux mémoriser les savoir-faire'],
+  // (Compréhensibles par les parents : pas de « fixer ses apprentissages », « savoir-faire », « réinvestir ».)
+  competences: ['fournir davantage de travail pour consolider ses acquis', 'consolider ses acquis par un travail régulier', 'mettre davantage en pratique les conseils donnés en cours',
+    'réutiliser les conseils donnés en cours', 's’appliquer davantage dans les exercices proposés', 'prêter plus d’attention aux conseils pour progresser',
+    'retenir et réutiliser ce qui est travaillé en cours', 'refaire avec soin ce qui est travaillé en cours', 'appliquer les conseils reçus', 'consolider ses acquis',
+    's’appliquer davantage', 'suivre davantage les conseils'],
   progression: ['se remobiliser pour retrouver son meilleur niveau', 'maintenir ses efforts pour retrouver de la régularité', 'se remobiliser dans la durée',
     'retrouver son niveau habituel'],
   regularite: ['retrouver de la régularité dans ses résultats', 'maintenir ses efforts dans la durée', 'gagner en constance'],
@@ -1805,9 +1828,26 @@ const LIEES_APPR = {
   justes: { 2: { b: ['encore perfectibles', 'encore justes', 'perfectibles', 'fragiles', 'en demi-teinte'], n: ['encore justes', 'moyens', 'justes', 'modestes'], x: ['insuffisants', 'trop justes', 'en deçà des attentes'] },
     1: { b: ['encore fragiles', 'encore modestes'], n: ['faibles', 'fragiles'], x: ['très insuffisants'] },
     // (Résultats corrects mais sous la moyenne de la classe.)
-    retrait: ['un peu en retrait par rapport à la classe'] },
+    // (Résultats corrects mais sous la moyenne de la classe : jamais comparés aux camarades dans le texte, qui est lu
+    // par la famille — dits sans rien de négatif, ou avec la marge de progrès. Toujours après « restent », « sont » ou
+    // « des résultats » : accordé avec « résultats ».)
+    retrait: ['corrects', 'honorables', 'convenables', 'corrects mais perfectibles', 'corrects, avec encore une marge de progrès',
+      'encore perfectibles', 'corrects, à confirmer'] },
+  // (Après « encore » : « des résultats encore perfectibles ».)
+  justesRetraitSans: ['perfectibles', 'à consolider', 'en construction'],
   // Phrase principale, selon l'engagement (A) et les résultats (M) : + (3 ou 4) ou − (1 ou 2).
   principale: {
+    // Résultats corrects mais sous la moyenne de la classe, engagement correct ou bon (A+R) ou non mentionné (R) :
+    // le potentiel, les progrès, la marge de progrès — jamais la classe. (Mêlées aux phrases « A+M- » / « M- ».)
+    'A+R': ['{Adj}, {P} obtient des résultats corrects{apsa} et a les moyens d’aller encore plus loin.',
+      '{P} fournit un travail {trav}{apsa} : ses résultats sont corrects et peuvent encore progresser.',
+      'Grâce à un engagement {eng}, {P} obtient des résultats corrects{apsa}, qu’{il} peut encore améliorer.',
+      '{Adj}, {P} progresse à son rythme{apsa} et peut viser plus haut.',
+      '{Adj}, {P} construit peu à peu ses progrès{apsa}.',
+      '{Adj}, {P} avance avec sérieux{apsa} et dispose d’une vraie marge de progrès.',
+      'Par son engagement {eng}, {P} se donne les moyens de franchir un nouveau cap{apsa}.'],
+    'R': ['{P} obtient des résultats corrects{apsa}, avec encore une marge de progrès.', '{P} obtient des résultats corrects{apsa} et peut viser plus haut.',
+      '{P} progresse à son rythme{apsa}.', 'Les résultats de {P}{apsa} sont corrects et ne demandent qu’à progresser.'],
     'A+M+': ['{Adj}, {P} s’appuie sur {capa}{apsa} pour progresser régulièrement.',
       '{P} allie {capa}{apsa} à un travail {trav}, si bien qu’{il} réussit dans les activités proposées.',
       '{Adj}, {P} met en valeur {capa}{apsa}, ce qui lui permet d’obtenir {res}.',
@@ -1836,7 +1876,7 @@ const LIEES_APPR = {
       '{Adj}, {P} s’investit pleinement{apsa}, ce qui lui permettra de consolider des résultats qui restent {justes}.',
       '{Adj}, {P} ne se décourage jamais, même si les résultats{apsa} restent {justes}.',
       '{P} fait preuve d’un engagement {eng}{apsa}, qui l’aidera à améliorer des résultats encore {justesSans}.',
-      'Par son attitude {adj}, {P} se donne les moyens de progresser{apsa}, même si les résultats restent {justes}.'],
+      'Par son engagement {eng}, {P} se donne les moyens de progresser{apsa}, même si les résultats restent {justes}.'],
     'A+M1': ['Toujours volontaire, {P} ne ménage pas ses efforts malgré des difficultés réelles{apsa}, ce qui lui permet de progresser à son rythme.',
       'Malgré des difficultés{apsa}, {P} reste {investi|investie} et {sérieux|sérieuse}, un état d’esprit qui lui permettra de progresser.',
       '{Adj}, {P} affronte avec courage des difficultés réelles{apsa}, ce qui est un réel atout pour progresser.'],
@@ -1912,9 +1952,11 @@ const LIEES_APPR = {
         x: ['son comportement, inacceptable, nuit au travail de la classe', 'son comportement est inacceptable et perturbe le groupe', 'son comportement est inacceptable'] },
     },
     competences: {
-      4: ['les compétences travaillées sont très bien maîtrisées', 'la maîtrise des compétences travaillées est excellente'],
-      2: ['la maîtrise des compétences travaillées reste fragile', 'les compétences travaillées restent à consolider'],
-      1: ['les compétences travaillées ne sont pas encore acquises'],
+      4: ['les compétences travaillées sont très bien maîtrisées', 'la maîtrise des compétences travaillées est excellente', 'ce qui est travaillé en cours est très bien maîtrisé'],
+      2: ['la maîtrise des compétences travaillées reste fragile', 'les compétences travaillées restent à consolider', 'ce qui est travaillé en cours n’est pas encore bien maîtrisé',
+        'les acquis restent encore fragiles', 'plusieurs points travaillés en cours restent à consolider', 'certaines compétences ne sont pas encore acquises',
+        'les apprentissages restent fragiles', 'tout n’est pas encore maîtrisé'],
+      1: ['les compétences travaillées ne sont pas encore acquises', 'ce qui est travaillé en cours n’est pas encore acquis', 'les apprentissages ne sont pas encore acquis'],
     },
     absences: ['de nombreuses absences freinent ses progrès', 'des absences fréquentes nuisent à son travail', 'ses absences répétées pèsent sur ses résultats'],
     // (Sans liaison : phrase complète.)
@@ -2009,7 +2051,7 @@ function redigerLieesAppr(el, periode, a, niveauxPerso, r, graine = 0) {
     res: tirer(L.res[kM >= 4 ? 4 : 3], 'res' + n), trav: tirer(L.trav[kA >= 4 ? 4 : 3], 'trav' + n),
     eng: tirer(L.eng[kA >= 4 ? 4 : 3], 'eng' + n), irreg: tirer(selon(L.irreg[kA <= 1 ? 1 : 2]), 'irreg' + n),
     justes: tirer(retrait ? L.justes.retrait : selon(L.justes[kM <= 1 ? 1 : 2]), 'justes' + n),
-    justesSans: tirer(retrait ? L.justes.retrait : L.justesSans[kM <= 1 ? 1 : 2], 'justesSans' + n),
+    justesSans: tirer(retrait ? L.justesRetraitSans : L.justesSans[kM <= 1 ? 1 : 2], 'justesSans' + n),
     capaDe: tirer(L.capaDe[kM >= 4 ? 4 : 3], 'capaDe' + n),
     unBon: tirer(L.unBon[kM >= 4 ? 4 : 3][periode === 'annee' ? 1 : 0], 'unBon' + n).replace('{per}', per),
   });
@@ -2044,13 +2086,16 @@ function redigerLieesAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   const cleP = !A ? (Mp ? 'M+' : 'M-') : A >= 3 ? (Mp ? 'A+M+' : M <= 1 ? 'A+M1' : 'A+M-') : (Mp ? 'A-M+' : 'A-M-');
   let modelesP = selon(L.principale[cleP]);
   if (cleP === 'A+M1') modelesP = [...modelesP, ...selon(L.principale['A+M-'])];
+  // (En retrait : aussi des phrases qui parlent du potentiel ou des progrès, pas seulement des résultats « justes ».)
+  const retraitPositif = retrait && (!A || A >= 3);
+  if (retraitPositif) modelesP = [...L.principale[A ? 'A+R' : 'R'], ...modelesP];
   // (Sans activité ou sans {Adj} : pas de modèle qui laisse une case vide.)
   // (Progression stable ou en baisse : pas de « pour progresser régulièrement ».)
   const nProg = dit('progression');
   if (nProg && nProg <= 2) modelesP = modelesP.filter(t => !/progress\S* régulièrement/.test(t));
   // (Rangés modèle après modèle, trois fois : deux cases voisines de la liste sont deux modèles différents.)
   const candidatsP = [0, 1, 2].flatMap(n => modelesP.map((t, i) => remplir(t, valeurs(i * 3 + n))));
-  const polP = A && A >= 3 && Mp ? 1 : !A && Mp ? 1 : -1;
+  const polP = (A && A >= 3 && Mp) || (!A && Mp) || retraitPositif ? 1 : -1;
 
   // 2. Compléments possibles, du plus important au moins important.
   const comps = [];
@@ -2274,7 +2319,8 @@ async function ouvrirAppreciations(periodeVoulue, eleveVise) {
     <details class="reglages-appr"><summary>⚙ Réglages des appréciations <small>rubriques, ton, style, longueur</small></summary>
       <div data-appr-reglages>${htmlReglageAppr(r)}</div></details>
     <div data-appr-liste></div>`,
-  '<button type="button" data-appr-tout title="Copie « NOM Prénom [tab] appréciation », une ligne par élève (se colle aussi dans Excel)">📋 Copier toutes</button>'
+  '<button type="button" data-appr-actualiser title="Refaire toutes les appréciations de la période avec tes réglages actuels">🔄 Actualiser toutes</button>'
+    + '<button type="button" data-appr-tout title="Copie « NOM Prénom [tab] appréciation », une ligne par élève (se colle aussi dans Excel)">📋 Copier toutes</button>'
     + '<button type="button" data-appr-ed title="Nécessite l’extension Passerelle (bouton puzzle, en bas à gauche). Rien n’est envoyé : c’est toi qui colles et qui enregistres.">📋 Reporter sur École Directe</button>'
     + '<span class="espace aide" data-appr-ed-message role="status"></span>' + htmlIndicateurApprisAppr() + '<button type="button" data-fermer class="primaire">Fermer</button>', 'modale-large modale-appr');
   const form = $('form', d);
@@ -2305,6 +2351,11 @@ async function ouvrirAppreciations(periodeVoulue, eleveVise) {
     if (!b) return;
     if (b.dataset.apprPeriode) { enregistrerTexte(); periode = b.dataset.apprPeriode; $('[data-appr-ed-message]', d).textContent = ''; dessiner(); return; }
     if (b.dataset.apprMonter || b.dataset.apprDescendre) { deplacerRubriqueAppr(b); reglagesModifies(); return; }
+    if (b.matches('[data-appr-actualiser]')) {
+      enregistrerTexte();
+      if (await actualiserToutesAppr(eleves, periode, r)) { dessiner(); majIndicateurApprisAppr(d); }
+      return;
+    }
     if (b.matches('[data-appr-tout]')) {
       enregistrerTexte();
       return copierTexte(eleves.map(el => `${el.nom} ${el.prenom}\t${appreciationEleve(el, periode, eleves, r).texte}`).join('\n'));
@@ -2330,6 +2381,45 @@ async function ouvrirAppreciations(periodeVoulue, eleveVise) {
   await resultat;
   enregistrerTexte();
   rendre();
+}
+
+// « 🔄 Actualiser toutes » : les appréciations proposées par l'appli sont refaites à chaque affichage ; restent figées
+// celles réécrites à la main (texte gardé) et les niveaux choisis par l'enseignant. On lui demande lesquels remplacer.
+// Renvoie true si quelque chose doit être redessiné.
+async function actualiserToutesAppr(eleves, periode, r) {
+  const fiches = eleves.map(el => ({ el, s: Donnees.get('suivis', idAppr(el.id, periode)) })).filter(x => x.s);
+  const manuels = fiches.filter(x => x.s.texte);
+  const choisis = fiches.filter(x => Object.keys(persoUtileAppr(r, null, x.s.niveaux)).length);
+  if (!manuels.length && !choisis.length) {
+    toast('Appréciations actualisées : elles suivent toutes tes réglages.', 'ok');
+    return true;
+  }
+  const noms = l => l.map(x => `${x.el.prenom} ${x.el.nom}`).join(', ');
+  const { resultat } = ouvrirModale('Actualiser toutes les appréciations', `
+    <p>Les appréciations proposées par l’appli sont refaites avec tes réglages actuels. Certaines restent comme tu les as laissées :</p>
+    ${manuels.length ? `<label class="case"><input type="checkbox" name="textes" checked>
+      Remplacer ${manuels.length > 1 ? `les ${manuels.length} textes modifiés` : 'le texte modifié'} à la main par une nouvelle proposition
+      <small class="aide">(${esc(noms(manuels))})</small></label>` : ''}
+    ${choisis.length ? `<label class="case"><input type="checkbox" name="niveaux">
+      Revenir aussi aux niveaux calculés par l’appli, là où tu as changé une rubrique
+      <small class="aide">(${esc(noms(choisis))})</small></label>` : ''}
+    <p class="aide">Ce que l’appli a appris de tes corrections est gardé.</p>`,
+    '<span class="espace"></span><button type="button" data-fermer>Annuler</button><button value="ok" class="primaire">🔄 Actualiser</button>');
+  const res = await resultat;
+  if (res.action !== 'ok') return false;
+  const textes = res.data.textes === 'on', niveaux = res.data.niveaux === 'on';
+  let n = 0;
+  for (const { el, s } of fiches) {
+    const ch = {};
+    if (textes && s.texte) {
+      ch.texte = '';
+      if (s.base && s.texte !== s.base) { ch.correction = { base: s.base, texte: s.texte }; ch.base = ''; }
+    }
+    if (niveaux && choisis.some(x => x.el.id === el.id)) ch.niveaux = {};
+    if (Object.keys(ch).length) { ecrireAppr(el.id, periode, ch); n++; }
+  }
+  toast(n ? `${pluriel(n, 'appréciation')} refaite${n > 1 ? 's' : ''} avec tes réglages.` : 'Appréciations actualisées.', 'ok');
+  return true;
 }
 
 // Cartes d'appréciation (fenêtre ✍ Appréciations et fiche bilan) : toucher une rubrique change son niveau,

@@ -456,10 +456,12 @@ const REFERENTIEL = (() => {
         // `livret` : un domaine du livret, ou plusieurs ([1, 2] : l'objectif compte dans les deux) ; `parent` = le premier.
         // `horsVigueur` : programme pas encore (ou plus) en vigueur cette année scolaire ({ de: 2027 } ou { a: 2026 }) ;
         // il n'est ni proposé ni affiché (sauf dans une évaluation qui l'a déjà), mais reste retenu pour l'année où il le sera.
+        // `niveauxDe` : un niveau n'entre dans le programme qu'à partir d'une année ({ CM2: 2027 } : CM1 tout de suite, CM2 en 2027).
         const ajouter = (o, perso) => {
           const parents = [].concat(o.livret).map(n => `${refId}.${ca}.${n}`);
-          const horsVigueur = (o.de && ANNEE_SCOLAIRE_PROGRAMMES < o.de) || (o.a !== undefined && ANNEE_SCOLAIRE_PROGRAMMES > o.a);
-          const objectif = { ...o, ca, refId, objectif: true, parent: parents[0], parents, retenu: !couvertes.has(`${refId}.${ca}`) || retenus.has(o.id),
+          const niveaux = o.niveauxDe ? o.niveaux.filter(n => !(ANNEE_SCOLAIRE_PROGRAMMES < o.niveauxDe[n])) : o.niveaux;
+          const horsVigueur = !niveaux.length || (o.de && ANNEE_SCOLAIRE_PROGRAMMES < o.de) || (o.a !== undefined && ANNEE_SCOLAIRE_PROGRAMMES > o.a);
+          const objectif = { ...o, niveaux, ca, refId, objectif: true, parent: parents[0], parents, retenu: !couvertes.has(`${refId}.${ca}`) || retenus.has(o.id),
             ...(horsVigueur ? { horsVigueur: true } : {}), ...(perso ? { perso: true } : {}) };
           parId[objectif.id] = objectif;
           champ.objectifs.push(objectif);

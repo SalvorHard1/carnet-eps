@@ -508,8 +508,9 @@ function dessinerBilanPP(c, periode, x) {
   titre('Élèves à signaler au conseil');
   const signales = v.eleves.filter(l => l.aSignaler);
   if (!signales.length) { texte('Aucun élève à signaler.', { couleur: C.gris }); y += 6; }
+  // (La phrase « Pendant les séances du T1 : … » reste dans la fenêtre, pour l'enseignant : pas sur la feuille du PP.)
   for (const l of signales) ligne(`${l.el.nom} ${l.el.prenom}`, { pastilles: l.signaux.map(s => [s.t, C[s.ton] || C.neutre]),
-    texteDroite: phraseLeconsBpp(l.signaux, periode), remarque: l.remarque }); // (texte : ce que les séances ont montré)
+    remarque: l.remarque });
 
   // ④ Élèves à valoriser (seulement s'il y en a)
   const valorises = v.eleves.filter(l => l.aValoriser);

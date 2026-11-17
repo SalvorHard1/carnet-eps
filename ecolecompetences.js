@@ -27,7 +27,7 @@ function htmlRubriqueAccordEcole() {
     ? `<b>${esc(accord.nom || 'Accord de l’école')}</b> : ${retenus} objectif${retenus > 1 ? 's' : ''} retenu${retenus > 1 ? 's' : ''} sur ${objectifs.length}${accord.date ? ` (${esc(dateCourteAccord(accord.date))})` : ''}.`
     : 'Pas encore d’accord d’école : tous les objectifs du programme sont proposés dans les évaluations.'}</p>
     <button value="accord">${iconeEcole('cible')}Choisir les compétences de l’école…</button>
-    <p class="aide">Français, maths, histoire-géographie, sciences et technologie, EMC, CM1 et CM2 : l’équipe coche les objectifs qu’elle travaille, en ajoute si besoin,
+    <p class="aide">CM1 et CM2 : français, maths, histoire-géographie, sciences et technologie, EMC, langue vivante, arts, EPS ; CP, CE1 et CE2 : toutes les matières (questionner le monde, puis histoire-géographie et sciences). L’équipe coche les objectifs qu’elle travaille, en ajoute si besoin,
       puis donne le fichier aux collègues pour que tout le monde ait la même liste. Seuls ces objectifs sont proposés dans les évaluations.</p>`;
 }
 const dateCourteAccord = iso => iso.split('-').reverse().join('/');
@@ -42,7 +42,9 @@ async function gererAccordEcole() {
   const ids = new Set(tous().filter(o => o.retenu).map(o => o.id)); // (une matière encore sans accord : tout est coché)
   const cles = matieres.map(m => `${m.refId}.${m.ca}`); // (en enregistrant, l'accord porte sur toutes les matières)
   let nom = cfg.accord?.nom || '';
-  let matiere = matieres[0], filtre = '';
+  // Première matière du cycle de la classe en cours (cycle 2 ou 3), sinon la première de la liste.
+  const classe = classeActive(), refsClasse = classe ? (niveauxDeClasse(classe).length ? niveauxDeClasse(classe) : [classe.niveau]).map(refDeNiveau) : [];
+  let matiere = matieres.find(m => refsClasse.includes(m.refId)) || matieres[0], filtre = '';
   const ouverts = new Set();
   const refaire = () => REFERENTIEL.personnaliser({ ...cfg, accord: { ids: [...ids], ajouts, matieres: cles } });
 
@@ -52,7 +54,7 @@ async function gererAccordEcole() {
       (aucune donnée d’élève dedans).</p>
     <label>Nom de l’accord<input data-accord-nom maxlength="60" placeholder="ex. Accord cycle 3 — École Jules Ferry"></label>
     <div class="ligne accord-outils">
-      ${matieres.length > 1 ? `<label>Matière<select data-accord-matiere>${matieres.map((m, i) => `<option value="${i}">${esc(m.titre)}</option>`).join('')}</select></label>` : `<p><b>${esc(matiere.titre)}</b></p>`}
+      ${matieres.length > 1 ? `<label>Matière<select data-accord-matiere>${matieres.map((m, i) => `<option value="${i}"${m === matiere ? ' selected' : ''}>${esc(m.titre)}</option>`).join('')}</select></label>` : `<p><b>${esc(matiere.titre)}</b></p>`}
       <div class="filtres-ecole" role="group" aria-label="Filtrer par niveau" data-accord-filtres></div>
     </div>
     <div class="zone-accord"></div>
@@ -74,7 +76,8 @@ async function gererAccordEcole() {
     const visibles = o => !filtre || o.niveaux.includes(filtre);
     zone.innerHTML = ch.domainesProgramme.map(dp => {
       const liste = ch.objectifs.filter(o => o.dom === dp.dom && !o.horsVigueur && visibles(o)); // (programme pas en vigueur cette année : caché, gardé tel quel)
-      const n = liste.filter(o => ids.has(o.id)).length;
+      if (!liste.length) return ''; // (rien pour ce niveau ou cette année : domaine caché, plutôt que « 0 / 0 »)
+      const n =liste.filter(o => ids.has(o.id)).length;
       const comps = [...dp.comps, { code: '', nom: 'Objectifs ajoutés par l’école' }];
       return `<details class="accord-dom" data-dom="${esc(dp.dom)}" ${ouverts.has(dp.dom) ? 'open' : ''}>
         <summary><b>${esc(dp.nom)}</b> <span class="aide">${n} / ${liste.length} retenu${n > 1 ? 's' : ''}</span></summary>
