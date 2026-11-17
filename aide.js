@@ -345,7 +345,7 @@ function rubriquesAideBase() {
                   'Touche <b>« Créer la classe »</b>.'],
                 guide: [ETAPES_ELEVES.nouvelleClasse,
                   { cible: dansFenetre(fenetreClasse, '.modale-actions [value="ecole-directe"]'), texte: 'Touche « 📥 Depuis École Directe / Pronote… », puis choisis le fichier exporté.',
-                    fait: () => !!fenetreListeClasse(), sinon: 'Choisis le fichier de la liste de classe (.xlsx ou .csv) : l’appli va le lire.' },
+                    fait: () => !!fenetreListeClasse(), sinon: 'Choisis le fichier de la liste de classe (.xlsx, .csv ou .xml) : l’appli va le lire.' },
                   etapeZone(fenetreListeClasse, '.bilan-import', 'Voici ce que l’appli a lu dans ton fichier : vérifie la classe et le nombre d’élèves.'),
                   etapeValider(fenetreListeClasse, 'pour créer la classe')],
               },

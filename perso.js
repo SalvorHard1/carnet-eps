@@ -76,7 +76,8 @@ function appliquerPerso(p, sombre, boutons) {
 
 // Tous les onglets, dans l'ordre choisi (ceux que l'ordre enregistré ne connaît pas, à leur place d'origine, à la fin).
 function ordreOnglets() {
-  const tous = Object.keys(NOMS_ONGLETS), choisi = (reglage('onglets').ordre || []).filter(v => tous.includes(v));
+  // (« Ressources » : seulement dans le carnet École, ressources.js)
+  const tous = Object.keys(NOMS_ONGLETS).filter(v => v !== 'ressources' || avecEcole()), choisi = (reglage('onglets').ordre || []).filter(v => tous.includes(v));
   return [...new Set([...choisi, ...tous])];
 }
 // Barre du haut (grand écran) : les boutons suivent l'ordre choisi.

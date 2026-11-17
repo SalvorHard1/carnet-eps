@@ -19,12 +19,14 @@ const articlesTp = tp => (tp?.materiel || []).filter(m => (m.nom || '').trim());
 // Préférences de l'outil (onglet, période de la commande, recherche) : par classe, sur cet appareil.
 // (« 🗑 Tout effacer » ne les remet qu'à zéro : fiches et banque sont dans le carnet.)
 const cfgTp = c => ((etatOutils.tp ??= {})[c.id] ??= { onglet: 'fiches', periode: 'semaine', du: '', au: '', filtreBanque: '' });
+// Banque de séances : la collection `modeles` contient aussi les ressources du carnet École (sorte 'ressource', ressources.js).
+const modelesTp = () => Donnees.liste('modeles', m => m.sorte !== 'ressource');
 
 /* ---------- Affichage ---------- */
 
 function htmlTp(c) {
   const cfg = cfgTp(c);
-  const onglets = [['fiches', '🧾 Fiches TP'], ['commande', '📦 Commande au labo'], ['banque', `⭐ Banque de séances (${Donnees.liste('modeles').length})`]];
+  const onglets = [['fiches', '🧾 Fiches TP'], ['commande', '📦 Commande au labo'], ['banque', `⭐ Banque de séances (${modelesTp().length})`]];
   return `
     <div class="filtres-eleves" role="tablist">${onglets.map(([v, nom]) => `<button type="button" role="tab" data-tp="onglet" data-arg="${v}" class="${cfg.onglet === v ? 'actif' : ''}" aria-selected="${cfg.onglet === v}">${nom}</button>`).join('')}</div>
     ${cfg.onglet === 'commande' ? htmlCommandeTp(cfg) : cfg.onglet === 'banque' ? htmlBanqueTp(c, cfg) : htmlFichesTp(c)}`;
@@ -132,7 +134,7 @@ function htmlBanqueTp(c, cfg) {
     <div class="ligne reglage-outil">
       <input type="search" data-tp-champ="filtreBanque" value="${esc(cfg.filtreBanque || '')}" placeholder="Rechercher un thème, un TP…" aria-label="Rechercher dans la banque">
       <label class="bouton">📥 Recevoir un fichier<input type="file" accept=".json,application/json" data-tp-fichier hidden></label>
-      ${Donnees.liste('modeles').length ? '<button data-tp="envoyer-tout" title="Un fichier avec toute la banque, pour un collègue (aucune donnée d’élève)">📤 Envoyer toute la banque</button>' : ''}
+      ${modelesTp().length ? '<button data-tp="envoyer-tout" title="Un fichier avec toute la banque, pour un collègue (aucune donnée d’élève)">📤 Envoyer toute la banque</button>' : ''}
     </div>
     <p class="aide">Une séance mise dans la banque (⭐ dans « Fiches TP ») garde ses données à relever, sa fiche TP et son déroulé : « Utiliser » la recrée dans une classe, à la date choisie.</p>
     <div data-tp-liste>${htmlListeBanqueTp(c, cfg)}</div>`;
@@ -141,7 +143,7 @@ function htmlBanqueTp(c, cfg) {
 // Cartes de la banque (redessinées seules pendant la recherche).
 function htmlListeBanqueTp(c, cfg) {
   const cherche = sansAccent(cfg.filtreBanque || '');
-  const modeles = Donnees.liste('modeles').filter(m => !cherche || sansAccent(`${m.titre} ${m.apsa} ${m.niveau}`).includes(cherche))
+  const modeles = modelesTp().filter(m => !cherche || sansAccent(`${m.titre} ${m.apsa} ${m.niveau}`).includes(cherche))
     .sort((a, b) => collator.compare(a.apsa || '', b.apsa || '') || collator.compare(a.titre, b.titre));
   return `${modeles.length ? `<div class="cartes-labo">${modeles.map(m => `<div class="carte-labo vu">
       <div class="tete-labo"><b>${esc(m.titre)}</b><span class="espace"></span>
@@ -281,7 +283,7 @@ async function actionTp(action, arg, c) {
     }
     case 'imprimer': return imprimerCommandeTp(cfg);
     case 'copier': return copierTexte(texteCommandeTp(cfg));
-    case 'envoyer-tout': return envoyerModelesTp(Donnees.liste('modeles'), 'Banque de séances');
+    case 'envoyer-tout': return envoyerModelesTp(modelesTp(), 'Banque de séances');
     case 'modele-envoyer': { const m = Donnees.get('modeles', arg); return m && envoyerModelesTp([m], `Séance ${m.titre}`); }
     case 'modele-suppr': {
       const m = Donnees.get('modeles', arg);

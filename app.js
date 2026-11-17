@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.62.4'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.64.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -142,7 +142,8 @@ const EN_PDF = 'en <b>PDF</b> (bouton imprimante, puis « Enregistrer au format 
 const GUIDES_IMPORT = {
   liste: {
     get titre() { return avecEcole() ? '📥 Liste de classe' : '📥 Liste de classe (École Directe / Pronote)'; }, bouton: 'Choisir le fichier…',
-    accept: '.xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv',
+    // (Sur iPad, un type absent de cette liste apparaît grisé : on ne peut pas le choisir.)
+    accept: '.xlsx,.csv,.txt,.xml,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain,text/xml,application/xml',
     ed: {
       etapes: [
         'Connecte-toi à <b>École Directe</b> (espace professeur), de préférence sur un ordinateur.',
@@ -150,7 +151,7 @@ const GUIDES_IMPORT = {
         `Exporte la liste au format <b>Excel (.xlsx)</b> : ${TELECHARGEMENTS}.`,
         'Reviens ici, touche <b>« Choisir le fichier »</b> et sélectionne ce fichier.',
       ],
-      attendu: 'Un fichier <b>.xlsx</b> avec une ligne de titres « Nom », « Date de naissance », « Sexe »… (pas un PDF ni une capture d’écran).',
+      attendu: 'Un fichier <b>.xlsx</b> (ou <b>.csv</b>, <b>.xml</b>) avec une ligne de titres « Nom », « Date de naissance », « Sexe »… (pas un PDF ni une capture d’écran).',
     },
     pronote: {
       etapes: [
@@ -159,7 +160,7 @@ const GUIDES_IMPORT = {
         `Exporte-la avec le bouton d’export (en haut de la liste) au format <b>CSV</b> ou <b>Excel</b> : ${TELECHARGEMENTS}.`,
         'Reviens ici, touche <b>« Choisir le fichier »</b> et sélectionne ce fichier.',
       ],
-      attendu: 'Un fichier <b>.csv</b> ou <b>.xlsx</b> avec une colonne « Élève » ou « Nom » (et si possible « Prénom », « Né(e) le », « Sexe »). '
+      attendu: 'Un fichier <b>.csv</b>, <b>.xlsx</b> ou <b>.xml</b> avec une colonne « Élève » ou « Nom » (et si possible « Prénom », « Né(e) le », « Sexe »). '
         + 'Pas d’export possible ? Sélectionne la liste dans Pronote (Ctrl+A), copie-la (Ctrl+C), puis ici « 📋 Coller une liste ».',
     },
     apres: 'L’appli te montre ce qu’elle a trouvé et tu choisis ce que tu reprends (date de naissance, dispositifs, régime, responsables) avant d’enregistrer.',
@@ -216,7 +217,7 @@ const GUIDES_IMPORT = {
 function htmlGuideImport(type) {
   if (avecEcole() && type === 'liste') { // (école : ONDE, École Directe ou un simple tableur)
     return `<div class="guide-import" data-guide>
-      <ol class="etapes-guide"><li><span>Exporte ou enregistre la liste de ta classe depuis <b>ONDE</b>, <b>École Directe</b> ou ton <b>tableur</b>, en <b>.xlsx</b> ou <b>.csv</b>.</span></li>
+      <ol class="etapes-guide"><li><span>Exporte ou enregistre la liste de ta classe depuis <b>ONDE</b>, <b>École Directe</b> ou ton <b>tableur</b>, en <b>.xlsx</b>, <b>.csv</b> ou <b>.xml</b>.</span></li>
         <li><span>Reviens ici, touche <b>« Choisir le fichier »</b> et sélectionne ce fichier.</span></li></ol>
       <p class="attendu-guide">📄 <b>Fichier attendu :</b> une ligne de titres avec au moins « Nom » et, si possible, « Prénom », « Sexe », « Date de naissance », « Niveau ».</p>
       <p class="aide">${GUIDES_IMPORT.liste.apres} Le fichier est lu sur cet appareil : rien n’est envoyé nulle part.</p>
@@ -810,6 +811,7 @@ function dessinerVue(c) {
   if (ui.vue === 'agenda') { v.innerHTML = htmlAgenda(); apresAgenda(); return; } // (toutes les classes : agenda.js)
   if (ui.vue === 'baremes') { v.innerHTML = htmlBaremes(); return; } // (bibliothèque, sans classe : baremes.js)
   if (ui.vue === 'pp') { v.innerHTML = htmlPP(); return; } // (la classe dont on est professeur principal : pp.js)
+  if (ui.vue === 'ressources') { v.innerHTML = htmlRessources(c); return; } // (carnet École : idées d'activités et fiches à imprimer, ressources.js)
   if (!c) {
     v.innerHTML = `
       <div class="vide">
@@ -1400,7 +1402,7 @@ function htmlEleves(c) {
       ${eleves.length && typeof htmlModeEleves === 'function' ? htmlModeEleves() : ''}
       <button class="primaire" data-action="ajout-eleve">+ Élève</button>
       <button data-action="coller-liste" title="Coller une liste copiée depuis Pronote ou un tableur">📋 Coller une liste</button>
-      <button data-action="import-ed" title="Créer ou compléter les fiches à partir de la liste de classe exportée d’École Directe ou de Pronote (.xlsx, .csv)">${avecEcole() ? `${iconeEcole('telecharger')}Importer une liste` : "📥 École Directe / Pronote"}</button>
+      <button data-action="import-ed" title="Créer ou compléter les fiches à partir de la liste de classe exportée d’École Directe ou de Pronote (.xlsx, .csv, .xml)">${avecEcole() ? `${iconeEcole('telecharger')}Importer une liste` : "📥 École Directe / Pronote"}</button>
       <button data-action="trombi" title="Photos des élèves : importer le trombinoscope de la classe (PDF ou image)">📷 Trombinoscope</button>
       <label class="choix-tri">Ordre
         <select data-tri-classe="${c.id}">
@@ -1454,7 +1456,7 @@ function htmlEleves(c) {
         </tbody>
       </table></div>`
     : `<div class="vide"><p>Aucun élève pour l’instant.</p>
-        <p class="aide">Astuce : ${avecEcole() ? "« 📥 Importer une liste » avec la liste exportée d’ONDE, d’École Directe ou d’un tableur (.xlsx ou .csv), ou copie-la, puis « Coller une liste »" : "« 📥 École Directe / Pronote » avec la liste de classe exportée (.xlsx ou .csv), ou copie la liste depuis Pronote ou un tableur, puis « Coller une liste »"}.</p></div>`}`;
+        <p class="aide">Astuce : ${avecEcole() ? "« 📥 Importer une liste » avec la liste exportée d’ONDE, d’École Directe ou d’un tableur (.xlsx, .csv ou .xml), ou copie-la, puis « Coller une liste »" : "« 📥 École Directe / Pronote » avec la liste de classe exportée (.xlsx, .csv ou .xml), ou copie la liste depuis Pronote ou un tableur, puis « Coller une liste »"}.</p></div>`}`;
 }
 
 /* ---------- ↶ Retour en arrière / ↷ retour vers l'avant (boutons à côté d'« Enregistrer »,
@@ -1917,7 +1919,7 @@ async function editerClasse(id) {
     ? BOUTON_SUPPRIMER + (elevesDe(id).some(el => el.responsables)
       ? '<button value="effacer-coord" formnovalidate title="Retire téléphones, emails et adresses des responsables de toute la classe">Effacer les coordonnées</button>' : '')
     : avecEcole() ? '<button value="ecole-directe" formnovalidate title="Créer la classe et ses élèves à partir d’une liste exportée (ONDE, École Directe, Excel… en .xlsx ou .csv)">📥 Depuis une liste (ONDE, École Directe, Excel)…</button>'
-    : '<button value="ecole-directe" formnovalidate title="Créer la classe et ses élèves à partir de la liste exportée d’École Directe ou de Pronote (.xlsx, .csv)">📥 Depuis École Directe / Pronote…</button>'
+    : '<button value="ecole-directe" formnovalidate title="Créer la classe et ses élèves à partir de la liste exportée d’École Directe ou de Pronote (.xlsx, .csv, .xml)">📥 Depuis École Directe / Pronote…</button>'
       + (classeExemple() || !aClasseExemple() ? '' : `<button value="exemple" formnovalidate title="Une classe inventée, déjà remplie, pour découvrir le carnet">🎓 Classe exemple${exemplesEnPlus().length ? ` (${esc(jeuExemple().niveau)})` : ''}</button>`)
       // (Autres classes exemples de la discipline : SVT 4e.)
       + exemplesEnPlus().filter(j => !Donnees.get('classes', idClasseExemple(j))).map(j => `<button value="exemple:${esc(j.prefixe)}" formnovalidate title="Une classe inventée, déjà remplie, pour découvrir le carnet">🎓 Classe exemple (${esc(j.niveau)})</button>`).join('')), 'modale-large');
@@ -3159,6 +3161,19 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.64.0', titre: 'Listes de classe en XML', points: [
+    'L’import d’une liste de classe lit aussi les fichiers .xml (tableur enregistré en XML, exports de l’Éducation nationale, d’ONDE ou d’autres logiciels).',
+    'Sur iPad, ces fichiers (et les .xls) peuvent maintenant être choisis : ils n’apparaissent plus grisés.',
+  ] },
+  { version: '1.63.1', titre: 'Ressources : des fiches d’activité plus claires', discipline: 'ecole', points: [
+    'La fiche de l’activité se lit d’un coup d’œil : type, durée et niveaux en haut, « En bref », ce que l’élève apprend, le matériel, les étapes numérotées, les variantes.',
+    'Quand le carnet fabrique la fiche élève, un exemple corrigé montre ce que l’élève fera.',
+  ] },
+  { version: '1.63.0', titre: 'Nouvel onglet « Ressources »', discipline: 'ecole', points: [
+    'Choisis la matière, puis le cycle, puis la compétence travaillée : le carnet propose des idées d’activités (fiches, jeux, rituels, séances), tirées de ressources publiques (Eduscol, programmes), avec la source.',
+    'Pour les mathématiques (nombres et calcul, cycles 2 et 3), le carnet fabrique lui-même les fiches élèves : tables d’addition, calcul mental, opérations posées, petits problèmes. De nouveaux nombres à chaque fois, jusqu’à 4 versions différentes, avec le corrigé, en PDF ou à imprimer.',
+    '« Ajouter ma ressource » : range tes propres idées d’activités sous la bonne compétence (dans ton carnet, aucune donnée d’élève).',
+  ] },
   { version: '1.62.4', titre: 'Appréciations : plus de comparaison avec la classe', points: [
     'Un élève aux résultats corrects mais sous la moyenne de la classe n’est plus « en retrait par rapport à la classe » dans son appréciation : l’appli parle de ses progrès, de sa marge de progrès ou de ce qu’il peut viser (« progresse à son rythme et peut viser plus haut », « a les moyens d’aller plus loin »…).',
     'La comparaison reste visible pour toi seul, dans la bulle de la rubrique.',

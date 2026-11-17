@@ -21,7 +21,7 @@ const PALETTES_DEGRES = {
 };
 const COULEURS_CA = { CA1: '#d64545', CA2: '#2e9e5b', CA3: '#8e5bd0', CA4: '#2f78d6', CA5: '#e8891a' };
 // (L'onglet des séances porte le nom que lui donne la discipline : « Leçons » en EPS.)
-const NOMS_ONGLETS = { eleves: 'Élèves', appel: 'Appel', notes: 'Notes', get entrainement() { return mot('lecons'); }, outils: 'Outils', agenda: 'Agenda', baremes: 'Barèmes', pp: 'Prof principal' };
+const NOMS_ONGLETS = { eleves: 'Élèves', appel: 'Appel', notes: 'Notes', get entrainement() { return mot('lecons'); }, outils: 'Outils', agenda: 'Agenda', baremes: 'Barèmes', pp: 'Prof principal', ressources: 'Ressources' };
 // Codes de la barre de saisie rapide (ceux des notes, puis ceux des leçons).
 const CODES_SAISIE = { ABS: 'Absent', DISP: 'Dispensé', NE: 'Non noté', BLE: 'Blessé', MAL: 'Malade', AUT: 'Autre', NR: 'Non rendu' };
 const TAILLES_TEXTE = { petite: ['Petite', 0.9], normale: ['Normale', 1], grande: ['Grande', 1.12], 'tres-grande': ['Très grande', 1.25] };
@@ -470,7 +470,7 @@ async function ouvrirReglages(rubrique = 'apparence') {
   ecrireReglage('competences', { niveaux: [1, 2, 3, 4].map(i => v['niv' + i].trim() || REGLAGES_DEFAUT.competences.niveaux[i - 1]) });
   ecrireReglage('onglets', {
     masques: Object.keys(NOMS_ONGLETS).filter(x => !visibles.includes(x)),
-    noms: Object.fromEntries(Object.keys(NOMS_ONGLETS).map(x => [x, v['nom-' + x].trim()]).filter(([, l]) => l)),
+    noms: Object.fromEntries(Object.keys(NOMS_ONGLETS).map(x => [x, (v['nom-' + x] || '').trim()]).filter(([, l]) => l)),
     demarrage: visibles.includes(v.demarrage) ? v.demarrage : '',
     ordre: (v.ordreOnglets || '').split(',').filter(x => NOMS_ONGLETS[x]),
     ...(typeof htmlReglageDisposition === 'function' ? { favoris } : {}),

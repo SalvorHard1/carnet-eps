@@ -14,10 +14,11 @@ const GROUPES_ONGLETS = [
   { id: 'outils', vues: ['outils'] },
   { id: 'agenda', vues: ['agenda'] },
   { id: 'pp', vues: ['pp'] },
+  { id: 'ressources', vues: ['ressources'] },
 ];
-const ICONES_ONGLETS = { eleves: '👥', appel: '✅', notes: '📝', entrainement: '📋', outils: '⏱', agenda: '📅', baremes: '📏', pp: '⭐' };
+const ICONES_ONGLETS = { eleves: '👥', appel: '✅', notes: '📝', entrainement: '📋', outils: '⏱', agenda: '📅', baremes: '📏', pp: '⭐', ressources: '📚' };
 // Carnet École : icônes au trait du jeu d'ecole.js (pictoEcole), l'émoji reste pour EPS, SVT et PC.
-const ICONES_ONGLETS_ECOLE = { eleves: 'eleves', appel: 'appel', notes: 'notes', entrainement: 'cahier', outils: 'outils', agenda: 'calendrier', baremes: 'regle', pp: 'etoile' };
+const ICONES_ONGLETS_ECOLE = { eleves: 'eleves', appel: 'appel', notes: 'notes', entrainement: 'cahier', outils: 'outils', agenda: 'calendrier', baremes: 'regle', pp: 'etoile', ressources: 'livre' };
 const iconeOnglet = v => (typeof pictoEcole === 'function' ? pictoEcole(ICONES_ONGLETS_ECOLE[v], ICONES_ONGLETS[v]) : ICONES_ONGLETS[v]);
 const FAVORIS_MAX = 4;
 const ecranCompact = matchMedia('(max-width: 1199px), (hover: none) and (pointer: coarse)');
@@ -146,6 +147,6 @@ function htmlReglageDisposition(o) {
       <b>Favoris</b> : tes onglets favoris en haut, les autres dans « Plus ».
       Sur un ordinateur à grand écran, tous les onglets restent affichés en haut.</p>
     <h4>Onglets favoris <span class="appareil">— disposition Favoris, ${FAVORIS_MAX} au plus</span></h4>
-    <div class="favoris-onglets">${Object.keys(NOMS_ONGLETS).map(v => `<label class="case"><input type="checkbox" name="favori-${v}"
+    <div class="favoris-onglets">${ordreOnglets().map(v => `<label class="case"><input type="checkbox" name="favori-${v}"
       ${o.favoris.includes(v) ? 'checked' : ''}> ${iconeOnglet(v)} ${esc((o.noms[v] || '').trim() || NOMS_ONGLETS[v])}</label>`).join('')}</div>`;
 }

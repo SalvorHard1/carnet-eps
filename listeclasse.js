@@ -45,6 +45,9 @@ const ListeClasse = (() => {
     return { nom: t, niveau };
   }
 
+  // Sexe : F / G, Fille / Garçon, Masculin / Féminin, H, ou code 1 (garçon) / 2 (fille) des fichiers de l'Éducation nationale.
+  const sexeLu = s => ({ 1: 'G', 2: 'F', H: 'G' })[String(s).trim().toUpperCase()] || normSexe(s);
+
   // Titre de colonne → champ (les colonnes Téléphone / Email / Adresse suivent leur « Responsable N »).
   function colonnes(entetes) {
     const res = { responsables: [] };
@@ -95,16 +98,121 @@ const ListeClasse = (() => {
     return lignes.filter(l => l.some(Boolean));
   }
 
-  // Fichier → feuilles [{ nom, lignes }] : classeur .xlsx (École Directe, Pronote) ou .csv (export Pronote).
-  async function feuillesDe(fichier) {
-    if (/\.xlsx$/i.test(fichier.name)) return Tableur.lire(fichier);
-    if (/\.(csv|txt)$/i.test(fichier.name)) {
-      const octets = new Uint8Array(await fichier.arrayBuffer());
-      let texte = new TextDecoder('utf-8').decode(octets);
-      if (texte.includes('�')) texte = new TextDecoder('windows-1252').decode(octets); // (export Windows « ANSI »)
-      return [{ nom: fichier.name, lignes: lireCsv(texte.replace(/^﻿/, '')) }];
+  /* ---------- Fichiers XML ----------
+     Trois sortes : classeur Excel enregistré « en XML » (Feuille de calcul XML 2003 : Worksheet › Table › Row › Cell › Data),
+     page web déguisée en « .xls » (tableaux HTML), ou XML « un élève par balise » (SIECLE, ONDE, autres logiciels) :
+     <ELEVE><NOM_DE_FAMILLE>…</NOM_DE_FAMILLE><PRENOM>…</PRENOM>… — les noms des balises servent de titres de colonnes. */
+  const NS_SS = 'urn:schemas-microsoft-com:office:spreadsheet';
+  const enfants = (el, nom) => [...el.children].filter(e => e.localName === nom);
+  const attrSs = (el, n) => el.getAttributeNS(NS_SS, n) || el.getAttribute('ss:' + n) || '';
+
+  function feuillesSpreadsheetMl(feuilles) {
+    return feuilles.map((w, i) => {
+      const lignes = [];
+      for (const row of enfants(w, 'Table').flatMap(t => enfants(t, 'Row'))) {
+        const n = +attrSs(row, 'Index');
+        while (n && lignes.length < n - 1) lignes.push([]);
+        const l = [];
+        for (const cell of enfants(row, 'Cell')) {
+          const k = +attrSs(cell, 'Index');
+          while (k && l.length < k - 1) l.push('');
+          const data = enfants(cell, 'Data')[0];
+          let v = data ? data.textContent.replace(/\s+/g, ' ').trim() : '';
+          if (data && attrSs(data, 'Type') === 'DateTime') v = v.slice(0, 10); // (2012-05-03T00:00:00.000)
+          l.push(v, ...Array(+attrSs(cell, 'MergeAcross') || 0).fill(''));
+        }
+        lignes.push(l);
+      }
+      return { nom: attrSs(w, 'Name') || 'Feuille ' + (i + 1), lignes };
+    });
+  }
+
+  // Nom de balise → titre de colonne que colonnes() connaît (NOM_DE_FAMILLE → Nom, DATE_NAISS → Date de naissance…).
+  function titreBalise(brut) {
+    const t = sansAccent(String(brut).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_.'-]+/g, ' '));
+    const regles = [
+      [/^(eleve )?(nom|noms|nom de famille|nom famille|nom d usage|nom usage|nom patronymique|patronyme|last ?name|family ?name|surname)$/, 'Nom'],
+      [/^(eleve )?(prenoms?|premier prenom|prenom 1|prenom1|first ?name|given ?name)$/, 'Prénom'],
+      [/^(eleve )?(date (de )?naiss(ance)?|naissance|date naissance|birth ?date|date of birth)$/, 'Date de naissance'],
+      [/^(eleve )?((code )?sexe|genre|gender)$/, 'Sexe'],
+      [/^(classe|division|structure)( (nom|libelle|code))?$|^(code|libelle|nom) (classe|division|structure)$/, 'Classe'],
+      [/^(eleve )?(code )?regime( scolaire)?$/, 'Régime'],
+    ];
+    return regles.find(([m]) => m.test(t))?.[1] || t;
+  }
+
+  // XML « un élève par balise » → une feuille. L'enregistrement = la balise répétée qui porte un nom ; ses attributs,
+  // ses balises simples (et celles d'un niveau plus bas) sont les colonnes ; celles de ses parents aussi (« classe nom »).
+  function feuilleEnregistrements(doc, nomFichier) {
+    const simple = e => !e.children.length;
+    const champs = el => {
+      const res = [];
+      for (const a of el.attributes) if (!/^xmlns/.test(a.name)) res.push([a.localName, a.value]);
+      for (const e of el.children) {
+        if (simple(e)) res.push([e.localName, e.textContent]);
+        else for (const f of e.children) if (simple(f)) res.push([e.localName + ' ' + f.localName, f.textContent]);
+      }
+      return res;
+    };
+    const groupes = new Map();
+    for (const el of doc.getElementsByTagName('*')) {
+      const c = champs(el);
+      if (c.length < 2) continue;
+      if (!groupes.has(el.localName)) groupes.set(el.localName, []);
+      groupes.get(el.localName).push(el);
     }
-    throw new Error('Il faut la liste de classe exportée en .xlsx (École Directe, Pronote) ou en .csv (Pronote).');
+    const avecNom = els => champs(els[0]).some(([n]) => titreBalise(n) === 'Nom');
+    const tous = [...groupes.values()];
+    const choisi = (tous.some(avecNom) ? tous.filter(avecNom) : tous).sort((a, b) => b.length - a.length)[0];
+    if (!choisi) return { nom: nomFichier, lignes: [] };
+    const lignesDe = choisi.map(el => {
+      const valeurs = [];
+      for (let p = el.parentElement; p; p = p.parentElement) {
+        for (const a of p.attributes) if (!/^xmlns/.test(a.name)) valeurs.push([p.localName + ' ' + a.localName, a.value]);
+        for (const e of p.children) if (simple(e)) valeurs.push([p.localName + ' ' + e.localName, e.textContent]);
+      }
+      return [...champs(el), ...valeurs];
+    });
+    const titres = [];
+    for (const l of lignesDe) for (const [n] of l) if (!titres.includes(n)) titres.push(n);
+    return {
+      nom: nomFichier,
+      lignes: [titres.map(titreBalise), ...lignesDe.map(l => {
+        const m = new Map(); l.forEach(([n, v]) => { if (!m.has(n)) m.set(n, String(v).replace(/\s+/g, ' ').trim()); });
+        return titres.map(n => m.get(n) ?? '');
+      })],
+    };
+  }
+
+  // Texte du fichier : encodage annoncé par l'en-tête XML, sinon UTF-8, sinon Windows-1252 (export Windows « ANSI »).
+  async function texteDe(fichier) {
+    const octets = new Uint8Array(await fichier.arrayBuffer());
+    const annonce = new TextDecoder('latin1').decode(octets.slice(0, 200)).match(/^\s*<\?xml[^>]*encoding=["']([\w.:-]+)["']/i)?.[1];
+    if (annonce && !/^utf-?8$/i.test(annonce)) { try { return new TextDecoder(annonce).decode(octets); } catch { /* encodage inconnu */ } }
+    const texte = new TextDecoder('utf-8').decode(octets);
+    return (texte.includes('�') ? new TextDecoder('windows-1252').decode(octets) : texte).replace(/^﻿/, '');
+  }
+
+  // Fichier → feuilles [{ nom, lignes }] : classeur .xlsx (École Directe, Pronote), .csv (Pronote, ONDE), ou XML.
+  // (Reconnu par son contenu, pas par son nom : sur iPad, le nom du fichier téléchargé n'est pas toujours le bon.)
+  async function feuillesDe(fichier) {
+    const debut = new Uint8Array(await fichier.slice(0, 8).arrayBuffer());
+    if (debut[0] === 0x50 && debut[1] === 0x4b) return Tableur.lire(fichier); // « PK » : vrai classeur .xlsx
+    if (debut[0] === 0xd0 && debut[1] === 0xcf) throw new Error('Ce fichier est à l’ancien format Excel (.xls) : ouvre-le dans Excel ou LibreOffice, « Enregistrer sous » au format .xlsx, puis importe ce nouveau fichier.');
+    if (String.fromCharCode(...debut.slice(0, 4)) === '%PDF') throw new Error('Ce fichier est un PDF : il faut la liste de classe exportée en .xlsx, .csv ou .xml.');
+    const texte = await texteDe(fichier);
+    if (/^\s*</.test(texte)) {
+      const doc = new DOMParser().parseFromString(texte, 'application/xml');
+      const casse = doc.getElementsByTagName('parsererror').length > 0;
+      if (casse || doc.documentElement.localName.toLowerCase() === 'html') {
+        if (/<table/i.test(texte)) return lireClasseurNotes(fichier); // (page web : un tableau par feuille)
+        throw new Error('Fichier XML illisible : il est peut-être abîmé ou incomplet. Exporte-le à nouveau.');
+      }
+      const feuilles = [...doc.getElementsByTagName('*')].filter(e => e.localName === 'Worksheet');
+      return feuilles.length ? feuillesSpreadsheetMl(feuilles) : [feuilleEnregistrements(doc, fichier.name)];
+    }
+    if (texte.includes('\u0000')) throw new Error('Format de fichier non reconnu : il faut la liste de classe exportée en .xlsx, .csv ou .xml.');
+    return [{ nom: fichier.name, lignes: lireCsv(texte) }];
   }
 
   // Classeur → { classe, effectif, eleves: [...], titres } ; erreur claire si le format n'est pas reconnu
@@ -125,7 +233,7 @@ const ListeClasse = (() => {
       const eleves = L.slice(h + 1).filter(l => l && val(l, col.nom) && !val(l, col.nom).includes(':')).map(l => {
         const { nom, prenom } = col.prenom !== undefined ? { nom: val(l, col.nom), prenom: val(l, col.prenom) } : separerNom(val(l, col.nom));
         return {
-          nom: majuscules(nom), prenom, sexe: normSexe(val(l, col.sexe)),
+          nom: majuscules(nom), prenom, sexe: sexeLu(val(l, col.sexe)),
           naissance: lireDateExcel(val(l, col.naissance)), regime: val(l, col.regime), dispositifs: val(l, col.dispositifs),
           classe: val(l, col.classe), niveau: val(l, col.niveau),
           responsables: col.responsables.map(r => ({
