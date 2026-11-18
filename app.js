@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.68.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.69.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -3165,6 +3165,10 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.69.0', titre: 'Appréciations : le vouvoiement', points: [
+    'Dans ✍ Appréciations › ⚙ Réglages, le nouveau menu <b>Adresse</b> propose le <b>vouvoiement</b> : « Vous réalisez un bon trimestre. Vous devez vous investir davantage dans vos rôles. »',
+    'Il marche avec tous les styles et tous les tons, et la longueur maximale est respectée. Par défaut, rien ne change (3e personne).',
+  ] },
   { version: '1.68.0', titre: 'Le justificatif de dispense dans la fiche de l’élève', points: [
     'Élèves › Modifier la liste : sous les dates d’une dispense, « 📷 Photo » ouvre la caméra avec un cadre pour viser la feuille ; « 📎 Joindre » prend une photo ou un PDF déjà enregistré.',
     'Touche la vignette pour voir le justificatif en grand, le remplacer ou le retirer. Une ancienne dispense garde le sien (📎) jusqu’à la fin de l’année scolaire.',

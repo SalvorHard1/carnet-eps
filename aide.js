@@ -1262,6 +1262,7 @@ function rubriquesAideBase() {
                 '<b>Ordre (↑ ↓)</b> : l’ordre des phrases dans le texte, et la priorité quand la place manque (les dernières sautent d’abord).',
                 '<b>Bilan général</b> : une première phrase qui résume la période (« Léa réalise un bon trimestre. »).',
                 '<b>Ton</b> : bienveillant, neutre ou exigeant ; il change surtout les phrases des difficultés (niveaux 1 et 2) et la façon de dire l’objectif.',
+                '<b>Adresse</b> : à la 3e personne (« Léa réalise… Elle… ») ou en vouvoyant l’élève (« Vous réalisez… vos efforts »).',
                 '<b>Style</b> : des phrases (« Léa s’investit… ») ou télégraphique (« Investissement sérieux. »).',
                 '<b>Longueur max.</b> : la limite de caractères de ton bulletin (ex. 300) ; le compteur passe en rouge si ton texte la dépasse.',
                 'Pour un seul élève : touche ses pastilles (niveaux), 🎲, ou réécris le texte. Pour les résultats de toute la classe : règle les seuils <b>« ⚙ Note → degré »</b> dans l’onglet Notes.'],

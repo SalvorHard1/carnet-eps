@@ -20,6 +20,8 @@ const RUBRIQUES_APPR = {
   objectif: { nom: 'Objectif', aide: 'piste pour la suite' },
 };
 const TONS_APPR = { bienveillant: 'Bienveillant', neutre: 'Neutre', exigeant: 'Exigeant' };
+// Adresse : à la 3e personne, ou en vouvoyant l'élève (texte rédigé à la 3e personne puis transformé, voir vouvoyerAppr).
+const ADRESSES_APPR = { il: '3e personne', vous: 'Vouvoiement' };
 const STYLES_APPR = { phrases: 'Phrases (« Léa s’investit… Elle… »)', telegraphique: 'Télégraphique (« Investissement sérieux. »)' };
 // Style « Liées » (phrases reliées) : en EPS, rédigé à part (redigerLieesAppr, ses phrases parlent de capacités
 // motrices) ; à l'école, les phrases de l'école reliées entre elles (redigerAppr › lier). Pas en SVT ni en PC.
@@ -248,6 +250,7 @@ function reglageAppr() {
   r.ordre = [...new Set([...r.ordre.filter(k => connues.includes(k)), ...connues])];
   r.actives = r.actives.filter(k => connues.includes(k));
   if (!TONS_APPR[r.ton]) r.ton = 'bienveillant';
+  if (!ADRESSES_APPR[r.adresse]) r.adresse = 'il';
   if (!stylesAppr()[r.style]) r.style = 'phrases';
   // (EPS et école : « Liées » est mieux écrit. Un carnet resté en « Phrases » y passe une fois ; un choix fait ensuite dans les
   // réglages est gardé — lireReglageAppr pose la marque.)
@@ -278,6 +281,7 @@ function htmlReglageAppr(r) {
     ${profil().appreciations?.liens ? `<label class="case"><input type="checkbox" name="appr-liens" ${r.liens ? 'checked' : ''}> Faire le lien avec la période précédente (« Il a pris confiance en lui depuis le premier trimestre. »)</label>` : ''}` : ''}
     ${htmlApprisAppr(r)}
     <div class="ligne">
+      <label class="largeur-texte">Adresse<select name="appr-adresse">${Object.entries(ADRESSES_APPR).map(([v, n]) => `<option value="${v}" ${r.adresse === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label>Ton<select name="appr-ton">${Object.entries(TONS_APPR).map(([v, n]) => `<option value="${v}" ${r.ton === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label>Style<select name="appr-style">${Object.entries(stylesAppr()).map(([v, n]) => `<option value="${v}" ${r.style === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="etroit">Longueur max.<input type="number" name="appr-longueur" min="80" max="2000" step="10" value="${r.longueur}"></label>
@@ -291,6 +295,7 @@ function lireReglageAppr(form) {
   return {
     ordre, actives: ordre.filter(k => form.elements['appr-' + k]?.checked),
     bilan: !!form.elements['appr-bilan']?.checked,
+    adresse: form.elements['appr-adresse']?.value || 'il',
     ton: form.elements['appr-ton']?.value || 'bienveillant', style: form.elements['appr-style']?.value || 'phrases', stylePasseLiees: true,
     longueur: Math.max(80, Math.min(2000, +form.elements['appr-longueur']?.value || 250)),
     // (École seulement : cases absentes ailleurs, la valeur enregistrée est alors gardée.)
@@ -1107,6 +1112,114 @@ function butAdresse(but, vous = false) {
   }
   return { tu, deTu, imp };
 }
+
+/* ---------- Vouvoiement (réglage « Adresse ») ----------
+   Le texte est rédigé à la 3e personne, puis dit à l'élève : « Léa réalise un bon trimestre. Elle doit s’investir
+   davantage dans ses rôles. » → « Vous réalisez un bon trimestre. Vous devez vous investir davantage dans vos rôles. »
+   Sujet (prénom, il / elle) + verbe, « Qu’elle garde… » → « Gardez… », « de Léa », « l’ / lui / la », possessifs,
+   verbes pronominaux à l'infinitif. */
+// Verbe à la 3e personne du singulier → 2e personne du pluriel.
+const VOUS_IRREG_APPR = {
+  est: 'êtes', a: 'avez', fait: 'faites', doit: 'devez', peut: 'pouvez', sait: 'savez', va: 'allez', veut: 'voulez', dit: 'dites',
+  vit: 'vivez', suit: 'suivez', poursuit: 'poursuivez', écrit: 'écrivez', lit: 'lisez', croit: 'croyez', voit: 'voyez', conduit: 'conduisez',
+  construit: 'construisez', produit: 'produisez', sort: 'sortez', part: 'partez', sert: 'servez', sent: 'sentez', ressent: 'ressentez',
+  bat: 'battez', combat: 'combattez', débat: 'débattez', résout: 'résolvez', boit: 'buvez', reçoit: 'recevez', aperçoit: 'apercevez', rit: 'riez',
+  court: 'courez', parcourt: 'parcourez', conclut: 'concluez', appelle: 'appelez', rappelle: 'rappelez', jette: 'jetez', rejette: 'rejetez',
+  soit: 'soyez', ait: 'ayez', fasse: 'faites', sache: 'sachez', puisse: 'puissiez',
+};
+// (Verbes en e muet + consonne + er : « mène » → « menez » ; les autres « è » redeviennent « é » : « gère » → « gérez ».)
+const E_MUET_APPR = /^(a|em|pro|ra)?mène$|^(é|en|sou|re)?lève$|^achève$|^pèse$|^achète$|^gèle$/;
+function verbeVousAppr(v, mode = 'ind') {
+  const m = v.toLocaleLowerCase('fr');
+  const maj = s => (v[0] !== m[0] ? s[0].toLocaleUpperCase('fr') + s.slice(1) : s);
+  let r;
+  if (mode === 'subj') {
+    r = { soit: 'soyez', ait: 'ayez', fasse: 'fassiez', sache: 'sachiez', puisse: 'puissiez' }[m]
+      || (/ienne$/.test(m) ? m.replace(/ienne$/, 'eniez') : /e$/.test(m) ? m.replace(/e$/, 'iez') : null);
+  } else if (mode === 'imp' && /ienne$/.test(m)) r = m.replace(/ienne$/, 'enez');
+  if (!r) r = VOUS_IRREG_APPR[m];
+  if (!r) {
+    if (/(t|v)ient$/.test(m)) r = m.replace(/ient$/, 'enez');                  // obtient, maintient, parvient
+    else if (/prend$/.test(m)) r = m.replace(/prend$/, 'prenez');             // apprend, comprend, reprend
+    else if (/met$/.test(m)) r = m + 'tez';                                   // permet, remet
+    else if (/aît$/.test(m)) r = m.replace(/aît$/, 'aissez');                 // connaît, paraît
+    else if (/.ra$/.test(m)) r = m.replace(/a$/, 'ez');                       // devra, pourra (futur)
+    else if (/.ait$/.test(m)) r = m.replace(/ait$/, 'iez');                   // pourrait, gagnerait, était
+    else if (/[nr]d$/.test(m)) r = m + 'ez';                                  // rend, perd, attend, répond
+    else if (/it$/.test(m)) r = m.replace(/it$/, 'issez');                    // réussit, investit, fournit
+    else if (/[oua]ie$/.test(m)) r = m.replace(/ie$/, 'yez');                 // appuie, emploie
+    else if (/e$/.test(m)) {
+      r = m.replace(/e$/, 'ez');
+      const acc = r.match(/è([^aeiouyéèêàâîôû]+ez)$/);
+      if (acc) r = r.slice(0, -acc[0].length) + (E_MUET_APPR.test(m) ? 'e' : 'é') + acc[1];
+    } else r = m;
+  }
+  return maj(r);
+}
+// Verbes repris après « et » / « mais » sans redire le sujet (« Vous obtenez … et avez les moyens »).
+const COORD_VOUS_APPR = new Set(['a', 'peut', 'doit', 'pourrait', 'obtient', 'dispose', 'avance', 'participe', 'progresse', 'réussit', 'maintient', 'sait', 'mérite', 'montre', 'confirme', 'réalise', 'se place', 's’organise', 'se distingue']);
+// (Ces pronominaux parlent aussi des choses : « les résultats peuvent s’améliorer » reste tel quel.)
+const PRONOMINAUX_CHOSES_APPR = /^(améliorer|amélior\p{L}*|dégrader|installer|confirmer|poursuivre|faire|traduire|ressentir|stabiliser|voir)$/u;
+const IMPERSONNEL_APPR = /^(faut|faudra|faudrait|fallait|y |s’agit|convient|importe|suffit|reste (?:encore )?à|est (?:essentiel|important|nécessaire|indispensable|temps|primordial|impératif|urgent|souhaitable|dommage|regrettable|utile)|serait (?:bon|utile|souhaitable|dommage))/;
+
+function vouvoyerAppr(texte, prenom, sexe, tele = false) {
+  const echap = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const P = prenom ? echap(prenom) : null, L = '\\p{L}';
+  const vous = (pris, debut) => (debut ? 'Vous' : 'vous');
+  let t = String(texte).replace(/(^|[^\p{L}])(?:lui|elle)-même(?![\p{L}])/gu, '$1vous-même');
+  if (P) {
+    // « Les résultats de Léa » → « Vos résultats » ; « permettrait à Léa de » → « vous permettrait de ».
+    // (« des possibilités de Léa » → « de vos possibilités », « du travail de Léa » → « de votre travail », « au… », « aux… ».)
+    t = t.replace(new RegExp(`(^|[^${L}])([Dd]es|[Dd]u|[Aa]ux|[Aa]u) ([${L}-]+) (?:de |d’)${P}(?![${L}])`, 'gu'),
+      (x, a, art, nom) => a + ({ des: 'de vos', du: 'de votre', aux: 'à vos', au: 'à votre' }[art.toLowerCase()].replace(/^./, c => (art[0] === art[0].toUpperCase() ? c.toUpperCase() : c))) + ' ' + nom);
+    t = t.replace(new RegExp(`(^|[^${L}])([Ll]es|[Ll]e|[Ll]a|[Ll]’) ?([${L}-]+) (?:de |d’)${P}(?![${L}])`, 'gu'),
+      (x, a, art, nom) => a + (art[0] === 'L' ? 'V' : 'v') + (/^les$/i.test(art) ? 'os' : 'otre') + ' ' + nom)
+      .replace(new RegExp(`(^|[^${L}])([${L}]+) à ${P}(?![${L}])`, 'gu'), '$1vous $2')
+      .replace(new RegExp(`(^|[^${L}])(aide|aidera|aiderait|aideront) ${P}(?![${L}])`, 'gu'), '$1vous $2');
+  }
+  // Pronoms d'objet et pronoms toniques.
+  t = t.replace(/(^|[^\p{L}])l’(aidera|aiderait|aideront|aident|encourage|invite|empêche|empêchera|empêcherait|incite|accompagne|amènera|pousse)(?![\p{L}])/gu, '$1vous $2')
+    .replace(/(^|[^\p{L}])([Jj]e|[Cc]ela|qui|résultats|[Cc]e) (?:le|la) (félicite|sais|place|placent|placera|crois|trouve|vois)(?![\p{L}])/gu, '$1$2 vous $3')
+    .replace(/(^|[^\p{L}])([Ll])ui(?![\p{L}-])/gu, (x, a, l) => a + (l === 'L' ? 'Vous' : 'vous'))
+    .replace(/(^|[^\p{L}])d’elle(?![\p{L}])/gu, '$1de vous');
+  if (sexe === 'F') t = t.replace(/(^|[^\p{L}])(sur|en|pour|avec|à|À|envers|chez|de) elle(?![\p{L}])/gu, '$1$2 vous');
+  // Sujet + verbe, phrase par phrase (« et » / « mais » + verbe ensuite, avec le même sujet).
+  const sujets = [P, sexe === 'F' ? '[Ee]lle' : sexe === 'G' ? '[Ii]l' : null].filter(Boolean).join('|');
+  const reSujet = new RegExp(`(^|[^${L}’])([Qq]u’)?(${sujets})\\s+(n’|ne\\s+)?(se\\s+|s’)?(en\\s+|y\\s+)?([${L}]+)`, 'gu');
+  const phrases = t.split(/(?<=[.!?])\s+/).map(ph => {
+    let touche = false;
+    if (sujets) ph = ph.replace(reSujet, (x, a, qu, suj, ne, se, en, verbe, pos, tout) => {
+      const avant = tout.slice(0, pos) + a;
+      if (/^[Ii]l$/.test(suj) && IMPERSONNEL_APPR.test(tout.slice(pos + a.length + (qu || '').length + suj.length).trimStart())) return x;
+      if (/^[Ee]lle$|^[Ii]l$/.test(suj) && /(?:^|\s)(?:sur|en|pour|avec|à|envers|chez|de)\s*$/i.test(avant)) return x;
+      touche = true;
+      const debut = /(^|[.!?]\s*)$/.test(avant);
+      const refl = se ? 'vous ' : '', neg = ne ? (ne.startsWith('n’') ? 'n’' : 'ne ') : '', pr = en ? en : '';
+      if (qu && debut) { // « Qu’elle garde cette exigence » → « Gardez cette exigence »
+        const v = verbeVousAppr(verbe, 'imp');
+        if (ne) return a + 'Ne ' + refl + pr + v;
+        const imp = v + (se ? '-vous' : '');
+        return a + imp[0].toLocaleUpperCase('fr') + imp.slice(1);
+      }
+      if (qu) {
+        const subj = /(attends|attend|souhaite|veux|faut|faudrait|faudra|essentiel|important)(\s+de\s+vous)?\s+$/.test(avant);
+        return a + (qu[0] === 'Q' ? 'Que' : 'que') + ' vous ' + neg + refl + pr + verbeVousAppr(verbe, subj ? 'subj' : 'ind');
+      }
+      return a + vous(suj, debut) + ' ' + neg + refl + pr + verbeVousAppr(verbe);
+    });
+    if (touche) ph = ph.replace(/(^|[^\p{L}])(et|mais) (ne |n’)?(se |s’)?([\p{L}]+)(?![\p{L}’])/gu, (x, a, et, ne, se, verbe) =>
+      (COORD_VOUS_APPR.has((se ? se.trim().replace('se', 'se ') : '') + verbe) ? `${a}${et} ${ne || ''}${se ? 'vous ' : ''}${verbeVousAppr(verbe)}` : x));
+    return ph;
+  });
+  t = phrases.join(' ');
+  // Possessifs.
+  t = t.replace(/(^|[^\p{L}’])([Ss])(es|on|a)(?=\s)/gu, (x, a, s, f) => a + (s === 'S' ? 'V' : 'v') + (f === 'es' ? 'os' : 'otre'));
+  // Pronominaux à l'infinitif ou au gérondif (« il faut s’accrocher », « en s’investissant »).
+  if (!tele) t = t.replace(/(^|[^\p{L}])(se |s’)([\p{L}]+(?:er|ir|re|ant))(?![\p{L}])/gu, (x, a, se, v, pos, tout) =>
+    (PRONOMINAUX_CHOSES_APPR.test(v) && !/(^|[^\p{L}])vous [\p{L}]+ (?:[\p{L}]+ )?$/u.test(tout.slice(0, pos) + a) ? x : `${a}vous ${v}`));
+  return t;
+}
+
 // Début de phrase « pour la suite » : « Pour le prochain trimestre »… ; après la dernière période ou pour l'année :
 // « Pour l’année prochaine »… (Plusieurs : « trimestre » est souvent déjà écrit dans le bilan.)
 const suiteAppr = (periode, per) => (periode === 'annee' || periodesAnnee().at(-1)?.id === periode ? ['Pour l’année prochaine', 'L’an prochain']
@@ -1636,7 +1749,10 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
         const sans = modelesDits.filter(m => !/Bravo|Courage/.test(m));
         modelesDits = sans.length ? sans : ['Il faut maintenant {but}.', '{Suite}, il faudra {but}.'];
       }
-      let t = remplir(choisir(modelesObjectifAppr(modelesDits, but, false, suite), g('objectif'), 20), 0);
+      // (Vouvoiement : « Je vous conseille de vous entraîner », « Entraînez-vous ».)
+      const vousA = r.adresse === 'vous';
+      if (vousA) modelesDits = modelesDits.map(m => m.replace(/\bJe te /g, 'Je vous '));
+      let t = remplir(choisir(modelesObjectifAppr(modelesDits, but, vousA, suite), g('objectif'), 20), 0);
       t = t[0].toUpperCase() + t.slice(1);
       ajouter({ cle: 'objectif', pour: att ? 'attention-' + att.id : o.cle, texte: t }); // (pour : la difficulté qu'il vise, voir lier)
     }
@@ -1716,7 +1832,7 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
           const memeSujet = debutSujet.test(t) && (prec.startsWith(prenom + ' ') || /^(Il|Elle) /.test(prec));
           // (Après une incise « , notamment en … » : « , et ».)
           const joint = /, notamment [^,]*\.$/.test(prec) ? ', et ' : ' et ';
-          sortie[sortie.length - 1] = prec.slice(0, -1) + joint + (memeSujet ? t.replace(debutSujet, '') : debutMinuscule(t));
+          sortie[sortie.length - 1] = prec.slice(0, -1) + joint + (memeSujet ? (r.adresse === 'vous' ? vouvoyerAppr(t, prenom, sexe, tele).replace(/^Vous /, '') : t.replace(debutSujet, '')) : debutMinuscule(t));
           lies++; clesPhrases.at(-1)?.add(m.cle); avant = m;
           continue;
         }
@@ -1733,7 +1849,9 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
     let t = lier(liste);
     const i = t.indexOf(per);
     if (i >= 0) t = t.slice(0, i + per.length) + t.slice(i + per.length).split(' ' + ce).join('');
-    return corrigerAppr(t, { retirerAdverbes: true });
+    t = corrigerAppr(t, { retirerAdverbes: true });
+    // (Vouvoiement : avant de compter la longueur, le texte transformé est un peu plus long.)
+    return r.adresse === 'vous' ? corrigerAppr(vouvoyerAppr(t, prenom, sexe, tele)) : t;
   };
   // Longueur : phrases les plus courtes, puis on retire les dernières rubriques (avant l'objectif), puis le bilan.
   const essayer = () => {
@@ -1774,7 +1892,7 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   // Toujours commencer par le prénom (style télégraphique : « Léa : investissement sérieux. … »).
   let texte = finir(morceaux);
   // (École : une ouverture sans prénom, « Excellent début d’année ! », reste en tête.)
-  if (texte && !texte.startsWith(prenom) && !morceaux[0]?.exclam) texte = `${prenom} : ${texte[0].toLocaleLowerCase('fr')}${texte.slice(1)}`;
+  if (texte && !texte.startsWith(prenom) && !morceaux[0]?.exclam && r.adresse !== 'vous') texte = `${prenom} : ${texte[0].toLocaleLowerCase('fr')}${texte.slice(1)}`;
   return { texte, retirees, remarques: relireAppr(texte, el).filter(x => x.grave).length };
   };
   // Relecture : si le texte garde une répétition ou une faute, d'autres formulations sont essayées ; on garde la meilleure
@@ -1999,6 +2117,7 @@ const LIEES_APPR = {
 function redigerLieesAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   const sexe = ['F', 'G'].includes(el.sexe) ? el.sexe : '';
   if (!sexe) return null;
+  const vousLiees = t => (r.adresse === 'vous' ? corrigerAppr(vouvoyerAppr(t, (el.prenom || '').trim() || el.nom, sexe)) : t);
   niveauxPerso = persoUtileAppr(r, a, niveauxPerso);
   const niv = { ...a.niveaux };
   for (const [k, v] of Object.entries(niveauxPerso)) niv[k] = v || null; // 0 = ne pas en parler
@@ -2155,7 +2274,7 @@ function redigerLieesAppr(el, periode, a, niveauxPerso, r, graine = 0) {
     mettre(choisir(finsRemplies, 'fin', ecrit, court));
     return fini(morceaux, utiles.slice(nbComp), false);
   };
-  const fini = (morceaux, laisses, sansFin) => ({ texte: corrigerAppr(morceaux.join(' '), { retirerAdverbes: true }),
+  const fini = (morceaux, laisses, sansFin) => ({ texte: vousLiees(corrigerAppr(morceaux.join(' '), { retirerAdverbes: true })),
     retirees: [...laisses.map(c => c.cle).filter(k => RUBRIQUES_APPR[k]), ...(sansFin && modelesFin.length && but ? ['objectif'] : [])] });
   // Le plus de compléments possible dans la longueur ; les formulations courtes avant de retirer un complément ;
   // en dernier recours (longueur très courte), sans la fin.

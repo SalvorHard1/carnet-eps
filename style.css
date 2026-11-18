@@ -687,6 +687,7 @@ button.lien.justif-ancien { min-height: 0; padding: 0 2px; }
 .modale .ligne { display: flex; gap: 10px; flex-wrap: wrap; }
 .modale .ligne label { min-width: 110px; }
 .modale .ligne label.etroit { flex: 0 0 90px; min-width: 0; }
+.modale .ligne label.largeur-texte, .reglages .ligne > label.largeur-texte { flex: 0 0 auto; } /* (menu court gardé entier : « Vouvoiement ») */
 /* Boutons du bas toujours visibles (collés en bas de la fenêtre quand elle défile) : on peut valider sans aller au bout. */
 .modale-actions { display: flex; gap: 8px; flex-wrap: wrap; position: sticky; bottom: 0; z-index: 3;
   margin: 20px calc(-1 * var(--pad-modale, 20px)) calc(-1 * var(--pad-modale, 20px));

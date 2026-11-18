@@ -53,7 +53,7 @@ const REGLAGES_DEFAUT = {
     ordre: ['attitude', 'competences', 'moteur', 'methodo', 'comportement', 'progression', 'objectif'],
     actives: ['attitude', 'competences', 'moteur', 'objectif'],
     stylePasseLiees: false, // (v1.42.0 : un carnet resté en « Phrases » passe une fois en « Liées », voir reglageAppr)
-    bilan: true, ton: 'bienveillant', style: 'liees', longueur: 250, // (limite d'École Directe ; 400 puis 300 auparavant : voir reglageAppr)
+    bilan: true, adresse: 'il', ton: 'bienveillant', style: 'liees', longueur: 250, // (adresse : 'il' 3e personne, 'vous' vouvoiement) // (limite d'École Directe ; 400 puis 300 auparavant : voir reglageAppr)
     oublis: [], // (remplacements appris que l'enseignant a décochés, carnet École)
     voix: true, fetes: true, liens: true, // (carnet École seulement : « Je le félicite » en fin d'appréciation, souhaits de fêtes en décembre, lien avec la période précédente)
   },
