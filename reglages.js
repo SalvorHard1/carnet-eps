@@ -54,6 +54,7 @@ const REGLAGES_DEFAUT = {
     actives: ['attitude', 'competences', 'moteur', 'objectif'],
     stylePasseLiees: false, // (v1.42.0 : un carnet resté en « Phrases » passe une fois en « Liées », voir reglageAppr)
     bilan: true, adresse: 'il', ton: 'bienveillant', style: 'liees', longueur: 250, // (adresse : 'il' 3e personne, 'vous' vouvoiement) // (limite d'École Directe ; 400 puis 300 auparavant : voir reglageAppr)
+    anonyme: false, // (v1.71.0 : sans prénom, « L’élève… », pour Parcoursup ; voir anonymiserAppr)
     oublis: [], // (remplacements appris que l'enseignant a décochés, carnet École)
     voix: true, fetes: true, liens: true, // (carnet École seulement : « Je le félicite » en fin d'appréciation, souhaits de fêtes en décembre, lien avec la période précédente)
   },
@@ -66,6 +67,8 @@ const REGLAGES_DEFAUT = {
     mentions: true, felicitations: 16, compliments: 14, mentionsMasquees: [], mentionsPerso: [], // (liste des mentions de l'établissement)
     reglesMentions: {}, // { mention: { min, max, critere } } (pp.js › regleMentionPP ; vide = règle de base)
   },
+  // Fiche bilan (fichenotes.js) : parties gardées dans le PDF (null = toutes ; voir PARTIES_FICHE_PDF).
+  fichePdf: { parties: null },
   // Discipline du carnet (discipline.js). Jamais exportée avec les réglages partagés : chaque collègue garde la sienne.
   discipline: { code: 'eps' },
 };
@@ -75,7 +78,7 @@ const FICHES_REGLAGES = Object.keys(REGLAGES_DEFAUT);
 // fiche « nom@discipline » (ex. notes@ecole). Tant qu'une discipline n'a pas encore la sienne, elle lit l'ancienne fiche
 // commune « nom », qui n'est plus jamais modifiée : rien ne se perd, rien n'est remis à zéro au passage à cette version.
 // Restent communs : la discipline elle-même, le prof principal (pp), l'agenda, les modèles…
-const REGLAGES_PAR_DISCIPLINE = ['apparence', 'notes', 'competences', 'onglets', 'perso', 'appreciations', 'periodes'];
+const REGLAGES_PAR_DISCIPLINE = ['apparence', 'notes', 'competences', 'onglets', 'perso', 'appreciations', 'periodes', 'fichePdf'];
 const idReglage = nom => (REGLAGES_PAR_DISCIPLINE.includes(nom) && typeof disciplineActive === 'function' ? `${nom}@${disciplineActive()}` : nom);
 function ficheReglage(nom) {
   if (typeof Donnees !== 'object') return null;

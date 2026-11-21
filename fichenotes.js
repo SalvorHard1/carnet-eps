@@ -250,8 +250,31 @@ function pointsEtAxes(el, s) {
 const anonymiserTexteFiche = (texte, prenom) => texte.split(prenom).reduce((t, morceau, i) =>
   (i ? t + (!t.trim() || /[.!?]\s*$/.test(t) ? 'L’élève' : 'l’élève') + morceau : morceau), '');
 
-// Contenu de la fiche bilan. opts : { classe (moyennes de la classe par axe), impression (tout déplié, sans boutons), anonyme }.
+// Parties de la fiche que l'enseignant peut garder ou retirer du PDF (bouton « Contenu du PDF »). sensible : jamais
+// dans la fiche anonyme.
+const PARTIES_FICHE_PDF = [
+  { id: 'synthese', nom: 'Synthèse', aide: 'toile et moyennes par axe' },
+  { id: 'signaux', nom: 'Vie scolaire', aide: 'absences, retards, oublis', sensible: true },
+  { id: 'dispenses', nom: 'Dispenses', aide: 'dates des dispenses', sensible: true },
+  { id: 'appreciation', nom: 'Appréciation' },
+  { id: 'appui', nom: 'Points d’appui et axes de progression' },
+  { id: 'evolution', nom: 'Évolution', aide: 'graphique des notes' },
+  { id: 'competences', nom: 'Compétences', aide: 'degrés et compétences validées' },
+  { id: 'notes', nom: 'Notes', aide: 'détail des évaluations' },
+  { id: 'sante', nom: 'Présence et santé', aide: 'présence, blessé, malade, dispensé', sensible: true },
+];
+// Parties choisies (toutes par défaut ; une partie ajoutée par une version plus récente est gardée).
+function partiesFichePdf() {
+  const p = reglage('fichePdf').parties;
+  return new Set(Array.isArray(p) ? p.filter(k => PARTIES_FICHE_PDF.some(x => x.id === k)) : PARTIES_FICHE_PDF.map(x => x.id));
+}
+// Parties réellement imprimées (la fiche anonyme retire les parties sensibles).
+const partiesImprimees = (parties, anonyme) => PARTIES_FICHE_PDF.filter(x => parties.has(x.id) && !(anonyme && x.sensible));
+
+// Contenu de la fiche bilan. opts : { classe (moyennes de la classe par axe), impression (tout déplié, sans boutons), anonyme,
+// parties (PDF : Set des parties gardées, voir PARTIES_FICHE_PDF ; absent = tout) }.
 function htmlFicheNotes(el, periode, eleves, opts = {}) {
+  const voir = k => !opts.parties || opts.parties.has(k);
   const toutes = evalsDe(el.classeId), evals = periode === 'annee' ? toutes : toutes.filter(e => periodeDe(e.date) === periode);
   const seances = seancesPeriode(el.classeId, periode);
   if (!evals.length && !seances.length) return `<p class="aide">Aucune évaluation ni ${motMin('lecon')} ${periode === 'annee' ? 'pour cette classe' : 'sur cette période'}.</p>`;
@@ -294,39 +317,45 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
       return `<li class="${horsPeriode ? 'hors-periode' : ''}"><b>${esc(dates)}</b>${jours ? ` <span class="aide">· ${jours} jour${jours > 1 ? 's' : ''}</span>` : ''}${pers.length ? ` <span class="aide">· ${esc(pers.join('–'))}</span>` : ''}${dispenseLongue(dp) ? ' <span class="aide">· plus d’un trimestre : absences justifiées</span>' : ''}
         <span class="badge-disp ${st.code}">${{ avenir: 'à venir', encours: 'en cours', bientot: 'se termine bientôt' }[st.code] || 'terminée'}</span></li>`;
     }).join('')}</ul></div>` : '';
-  let html = `<div class="synthese-fiche">
+  // (Vie scolaire : ni absences ni santé dans la fiche anonyme.)
+  const htmlSignaux = !voir('signaux') || opts.anonyme ? ''
+    : signaux.length ? `<div class="signaux-fiche"><span class="aide">À signaler :</span> ${signaux.map(x => `<span class="signal-fiche">${x}</span>`).join('')}</div>` : '<p class="aide">Rien à signaler en vie scolaire.</p>';
+  const htmlDisp = voir('dispenses') ? htmlDispenses : '';
+  let html = voir('synthese') ? `<div class="synthese-fiche">
     <div class="radar-bloc">${radarSynthese(s.valeurs, classe)}
       <p class="aide legende-graph"><span class="trait-eleve"></span> ${esc(opts.anonyme ? 'élève' : el.prenom)} <span class="trait-classe"></span> moyenne de la classe</p></div>
     <div class="valeurs-synthese">
       ${AXES_SYNTHESE.map(([k, nom]) => `<div class="valeur-axe"><span>${esc(nomAxeSynthese(k, nom))}</span><b>${valeurAxe(k, s.valeurs[k])}</b><small>${classeAxe(k, classe[k])}</small></div>`).join('')}
-      ${signaux.length ? `<div class="signaux-fiche"><span class="aide">À signaler :</span> ${signaux.map(x => `<span class="signal-fiche">${x}</span>`).join('')}</div>` : '<p class="aide">Rien à signaler en vie scolaire.</p>'}
-      ${htmlDispenses}
+      ${htmlSignaux}
+      ${htmlDisp}
     </div>
-  </div>`;
+  </div>` : htmlSignaux || htmlDisp ? `<div class="vie-scolaire-fiche">${htmlSignaux}${htmlDisp}</div>` : '';
 
   // 2. Appréciation : la même que dans ✍ Appréciations (même texte enregistré, mêmes réglages : rubriques, ton, style,
   // longueur). Ici on peut toucher les rubriques, demander une autre formulation, réécrire, copier.
   if (opts.impression) {
+    if (voir('appreciation')) {
     let texte = appreciationEleve(el, periode, eleves).texte;
     if (opts.anonyme && el.prenom) texte = anonymiserTexteFiche(texte, el.prenom); // (PDF anonyme : pas de prénom)
     html += `<h3>Appréciation</h3><p class="texte-appr-fiche texte-bilan">${esc(texte)}</p>`;
+    }
   } else {
     html += `<h3>Appréciation <span class="aide">${avecEcole() ? 'proposée par l’appli' : 'la même que dans ✍ Appréciations (onglet Notes)'} : touche une rubrique pour changer son niveau</span></h3>
       ${htmlCarteAppr(el, periode, eleves, reglageAppr(), htmlReglagesFiche(opts.reglagesOuverts))}`;
   }
 
   // 3. Dépliables
-  html += `<details class="depli-fiche"${deplie}><summary>${pictoEcole('boussole', '🧭')} Points d’appui et axes de progression</summary>
+  if (voir('appui')) html += `<details class="depli-fiche"${deplie}><summary>${pictoEcole('boussole', '🧭')} Points d’appui et axes de progression</summary>
     <div class="deux-col-fiche"><div><h4>${opts.anonyme ? 'Ce que l’élève' : /^[aeiouyhàâéèêëîïôöûü]/i.test(el.prenom || '') ? `Ce qu’${esc(el.prenom)}` : `Ce que ${esc(el.prenom)}`} sait faire</h4>${pa.forts.length ? `<ul class="liste-fiche">${pa.forts.slice(0, 3).map(x => `<li>${esc(x.texte)}</li>`).join('')}</ul>` : '<p class="aide">Pas encore assez de données.</p>'}</div>
     <div><h4>Axes de progression <span class="aide">(2 au plus)</span></h4><ol class="liste-fiche priorites">${pa.axes.map(x => `<li><b>${esc(x.phrase[0].toUpperCase() + x.phrase.slice(1))}</b><br><span class="aide">${esc(x.texte)}</span></li>`).join('')}</ol></div></div></details>`;
-  if (notees.length >= 2) {
+  if (notees.length >= 2 && voir('evolution')) {
     const tendance = tendanceNotes(notees.map(l => l.n));
     const motTendance = tendance === null ? '' : tendance >= 1 ? `<span class="tendance progres">↗ en progrès (+${fmt1(tendance)})</span>`
       : tendance <= -1 ? `<span class="tendance regres">↘ en baisse (${fmt1(tendance)})</span>` : '<span class="tendance">= stable</span>';
     html += `<details class="depli-fiche"${deplie}><summary>📈 Évolution ${motTendance}</summary>${graphiqueNotes(lignes.map(l => ({ eleve: l.n, classe: l.classe, date: l.e.date, titre: l.e.titre })))}
       <p class="aide legende-graph"><span class="trait-eleve"></span> ${esc(opts.anonyme ? 'élève' : el.prenom)} <span class="trait-classe"></span> moyenne de la classe (notes ramenées sur 20)</p></details>`;
   }
-  if (s.comps.length) {
+  if (s.comps.length && voir('competences')) {
     const validees = s.comps.filter(c => c.valeurs.at(-1) >= 3).length;
     html += `<details class="depli-fiche"${deplie}><summary>${pictoEcole('cible', '🎯')} Compétences développées <span class="aide">${validees}/${s.comps.length} validées</span></summary>
       <table class="tableau-fiche"><tbody>${s.comps.map(({ a, valeurs }) => {
@@ -336,7 +365,7 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
       return `<tr><th><b>${esc(a.code)}</b> ${esc(a.texte)}</th><td>${suite}${evol} ${ok ? '<span class="valide-fiche">✔ validée</span>' : ''}</td></tr>`;
     }).join('')}</tbody></table></details>`;
   }
-  if (lignes.length) {
+  if (lignes.length && voir('notes')) {
     // École : une évaluation sans note montre ses degrés ; la rubrique s'appelle alors « Évaluations », avec la moyenne seulement s'il y a des notes.
     const avecDegres = lignes.some(l => sansNoteEval(l.e));
     const degresLigne = l => competencesEval(l.e).map(a => [a, +Donnees.note(l.e.id, el.id, a.id)]).filter(([, d]) => d >= 1 && d <= 4)
@@ -351,7 +380,7 @@ function htmlFicheNotes(el, periode, eleves, opts = {}) {
       : `${l.e.nonSignificative ? '(' : ''}<b>${esc(affichage(l.v))}</b>/${fmt(l.e.max)}${l.e.nonSignificative ? ')' : ''}${l.e.max !== 20 ? ` <span class="aide">(${fmt1(l.n)}/20)</span>` : ''}`}
         ${l.n !== null && l.classe !== null ? `<span class="aide"> · classe ${fmt1(l.classe)}/20</span>` : ''}</td></tr>`).join('')}</tbody></table></details>`;
   }
-  if (!opts.anonyme) {
+  if (!opts.anonyme && voir('sante')) {
     const presence = htmlLeconsFiche(el, periode, moy);
     if (presence) html += `<details class="depli-fiche info-sensible"${deplie}><summary>${pictoEcole('sante', '🩺')} Présence et santé</summary>${presence.replace(/^<h3>.*?<\/h3>/, '')}</details>`;
   }
@@ -381,19 +410,41 @@ function syntheseClasse(eleves, periode) {
 }
 
 // PDF : la fiche toute dépliée dans une page à imprimer (« Enregistrer au format PDF »), anonyme si demandé.
-function imprimerFiche(el, periode, eleves, classe, anonyme) {
+function imprimerFiche(el, periode, eleves, classe, anonyme, parties = partiesFichePdf()) {
   const c = Donnees.get('classes', el.classeId), p = periodesAnnee().find(x => x.id === periode);
   let zone = $('#zone-impression');
   if (!zone) { zone = document.createElement('div'); zone.id = 'zone-impression'; document.body.append(zone); }
   zone.innerHTML = `<div class="impression-fiche">
     <h1>Fiche bilan — ${anonyme ? 'élève (anonyme)' : esc(`${el.nom} ${el.prenom}`)}</h1>
     <p>${esc(c?.nom || '')} · ${esc(periode === 'annee' ? 'toute l’année' : `${p?.code || ''} (${p?.texte || ''})`)} · ${esc(profil().nom)} · ${dateCourte(aujourdhui())}</p>
-    ${htmlFicheNotes(el, periode, eleves, { classe, impression: true, anonyme })}</div>`;
+    ${htmlFicheNotes(el, periode, eleves, { classe, impression: true, anonyme, parties })}</div>`;
   document.body.classList.add('impression-bareme');
   const fin = () => { document.body.classList.remove('impression-bareme'); window.removeEventListener('afterprint', fin); };
   window.addEventListener('afterprint', fin);
   window.print();
   setTimeout(fin, 1000);
+}
+
+// Fenêtre « Contenu du PDF » : une case par partie ; le choix est gardé pour les fiches suivantes.
+async function choisirContenuFichePdf(anonyme = false) {
+  const parties = partiesFichePdf();
+  const { d, resultat } = ouvrirModale('Contenu du PDF', `
+    <p class="aide">Coche ce que la fiche bilan imprimée doit contenir. Ton choix est gardé pour tous les élèves.
+      Tes observations n’y sont jamais.</p>
+    <div class="parties-pdf-fiche">${PARTIES_FICHE_PDF.map(x => `<label class="case"><input type="checkbox" name="partie" value="${x.id}" ${parties.has(x.id) ? 'checked' : ''}>
+      <span class="texte-partie-pdf"><b>${esc(x.nom)}</b>${x.aide ? ` <span class="aide">${esc(x.aide)}</span>` : ''}${x.sensible && anonyme ? ' <span class="aide">· retirée car « anonyme » est coché</span>' : ''}</span></label>`).join('')}</div>
+    <p class="boutons-parties-pdf"><button type="button" data-parties-tout>Tout cocher</button><button type="button" data-parties-rien>Tout décocher</button></p>`,
+    '<button type="button" data-fermer>Annuler</button><button value="ok" class="primaire">Valider</button>', 'modale-parties-pdf');
+  d.addEventListener('click', e => {
+    const tout = e.target.closest('[data-parties-tout]'), rien = e.target.closest('[data-parties-rien]');
+    if (tout || rien) d.querySelectorAll('[name="partie"]').forEach(c => { c.checked = !!tout; });
+  });
+  const res = await resultat;
+  if (res.action !== 'ok') return false;
+  const choisies = res.fd.getAll('partie');
+  // (Tout coché : null, pour qu'une partie ajoutée plus tard soit aussi imprimée.)
+  ecrireReglage('fichePdf', { parties: choisies.length === PARTIES_FICHE_PDF.length ? null : choisies });
+  return true;
 }
 
 async function ficheNotes(eleveId) {
@@ -402,13 +453,16 @@ async function ficheNotes(eleveId) {
   let idx = eleves.findIndex(x => x.id === eleveId);
   if (idx < 0) return;
   let periode = periodeAffichee();
-  const aLecons = seancesDe(c.id).length > 0;
   const { d, resultat } = ouvrirModale('Fiche bilan', '<div class="fiche-onglets" data-fiche-onglets></div><div class="fiche" data-fiche></div>',
     '<button type="button" data-fiche-nav="-1">◀ Précédent</button><button type="button" data-fiche-nav="1">Suivant ▶</button>'
-    + (aLecons && !avecEcole() ? `<button type="button" data-fiche-lecons title="Ouvrir sa fiche de l’onglet ${esc(mot('lecons'))}">Fiche ${esc(mot('lecons'))}</button>` : '')
-    + '<span class="espace"></span><label class="case anonyme-fiche" title="Sans nom, prénom, photo ni présence / santé"><input type="checkbox" data-fiche-anonyme> anonyme</label>'
+    + '<span class="espace"></span>'
     + (typeof htmlIndicateurApprisAppr === 'function' ? htmlIndicateurApprisAppr() : '')
-    + '<button type="button" data-fiche-pdf title="Imprimer ou enregistrer la fiche en PDF">📄 PDF</button>'
+    + '<label class="case anonyme-fiche" title="Sans nom, prénom, photo ni présence / santé"><input type="checkbox" data-fiche-anonyme> anonyme</label>'
+    // « Contenu du PDF » et « PDF » côte à côte.
+    // (École : la fiche est dessinée à part, voir apercuFicheEcole ; le choix des parties ne vaut que pour la fiche imprimée.)
+    + '<span class="groupe-pdf-fiche">'
+    + (avecEcole() ? '' : '<button type="button" data-fiche-contenu title="Choisir ce que contiendra le PDF (santé, compétences, notes…)"></button>')
+    + '<button type="button" data-fiche-pdf title="Imprimer ou enregistrer la fiche en PDF">📄 PDF</button></span>'
     + '<button type="button" data-fermer class="primaire">Fermer</button>', 'modale-large modale-fiche');
 
   // Moyennes de la classe (calculées une fois par période).
@@ -469,16 +523,27 @@ async function ficheNotes(eleveId) {
     if (ordre) { deplacerRubriqueAppr(ordre); reglagesModifies(); return; }
     if (onglet) { enregistrerObs(); cartes.enregistrerTexte(); periode = onglet.dataset.fichePeriode; dessiner(); }
     if (nav) { enregistrerObs(); cartes.enregistrerTexte(); idx = Math.max(0, Math.min(eleves.length - 1, idx + +nav.dataset.ficheNav)); dessiner(); }
-    if (e.target.closest('[data-fiche-lecons]')) { enregistrerObs(); cartes.enregistrerTexte(); const id = eleves[idx].id; d.fermer(); lancer(() => ficheEleve(id)); }
     if (e.target.closest('[data-fiche-pdf]')) {
       enregistrerObs();
       cartes.enregistrerTexte();
       // (École : aperçu des pages dessinées, puis PDF ou impression, comme le livret ; ailleurs : la fiche imprimée.)
       const anonyme = $('[data-fiche-anonyme]', d).checked;
       if (avecEcole() && typeof apercuFicheEcole === 'function') lancer(() => apercuFicheEcole(eleves[idx], periode, eleves, moyClasse(), anonyme));
-      else lancer(() => imprimerFiche(eleves[idx], periode, eleves, moyClasse(), anonyme));
+      else if (!partiesImprimees(partiesFichePdf(), anonyme).length) {
+        toast(anonyme ? 'Rien à imprimer : les parties choisies sont retirées de la fiche anonyme. Touche « Contenu du PDF ».' : 'Rien à imprimer : coche au moins une partie dans « Contenu du PDF ».');
+      } else lancer(() => imprimerFiche(eleves[idx], periode, eleves, moyClasse(), anonyme));
     }
+    if (e.target.closest('[data-fiche-contenu]')) lancer(async () => { await choisirContenuFichePdf($('[data-fiche-anonyme]', d).checked); majBoutonContenu(); });
   });
+  // « Contenu du PDF » : le bouton dit combien de parties seront imprimées (la case anonyme en retire).
+  const majBoutonContenu = () => {
+    const b = $('[data-fiche-contenu]', d);
+    if (!b) return;
+    const n = partiesImprimees(partiesFichePdf(), $('[data-fiche-anonyme]', d).checked).length;
+    b.textContent = `Contenu du PDF (${n}/${PARTIES_FICHE_PDF.length})`;
+  };
+  majBoutonContenu();
+  d.addEventListener('change', e => { if (e.target.matches('[data-fiche-anonyme]')) majBoutonContenu(); });
   // 👑 Délégué de classe : enregistré aussitôt ; la liste des élèves est redessinée à la fermeture.
   let delegueModifie = false;
   d.addEventListener('change', e => {

@@ -34,9 +34,22 @@ const estSuiviAppr = s => /^appréciation /i.test(s.apsa || '');
 // Selon la discipline (discipline.js) : noms des rubriques, phrases et objectifs propres (ex. en SVT, « motricité » → « connaissances »).
 const rubriqueAppr = k => ({ ...RUBRIQUES_APPR[k], ...(profil().appreciations?.noms?.[k] || {}) });
 // (Phrases propres à la discipline : remplacent celles de l'EPS niveau par niveau ; les niveaux non redéfinis restent communs.)
+// (Phrases en plus, phrasesEnPlus : ajoutées aux listes du niveau, ton par ton : plus de choix pour « Autre formulation ».)
+// Deux listes de phrases mises bout à bout ; une liste unique (niveaux 3 et 4) vaut pour les trois tons.
+function concatAppr(a, b) {
+  if (!b) return a;
+  if (!a) return b;
+  if (Array.isArray(a) && Array.isArray(b)) return [...a, ...b];
+  const ton = (x, t) => (Array.isArray(x) ? x : x[t] || []);
+  return Object.fromEntries(['b', 'n', 'x'].map(t => [t, [...ton(a, t), ...ton(b, t)]]));
+}
 const phrasesAppr = () => {
-  const propres = profil().appreciations?.phrases || {};
-  return Object.fromEntries(Object.keys({ ...PHRASES_APPR, ...propres }).map(k => [k, { ...PHRASES_APPR[k], ...(propres[k] || {}) }]));
+  const propres = profil().appreciations?.phrases || {}, plus = profil().appreciations?.phrasesEnPlus || {};
+  return Object.fromEntries(Object.keys({ ...PHRASES_APPR, ...propres }).map(k => {
+    const niv = { ...PHRASES_APPR[k], ...(propres[k] || {}) };
+    for (const [n, x] of Object.entries(plus[k] || {})) niv[n] = { p: concatAppr(niv[n]?.p, x.p), t: concatAppr(niv[n]?.t, x.t) };
+    return [k, niv];
+  }));
 };
 // L'activité (ou le thème) au milieu d'une phrase : « en badminton », « en génétique », « sur le corps humain et la santé ».
 // Rien si le nom ne se glisse pas dans une phrase (trop long, virgule, « À la recherche… ») : la phrase reste juste sans lui.
@@ -50,7 +63,11 @@ function activiteDansPhrase(nom) {
   if (/^(à|au|aux|de|du|des|un|une)\s/i.test(n)) return '';
   return ' en ' + n[0].toLocaleLowerCase('fr') + n.slice(1);
 }
-const objectifsAppr = () => ({ ...OBJECTIFS_APPR, ...(profil().appreciations?.objectifs || {}) });
+const objectifsAppr = () => {
+  const o = { ...OBJECTIFS_APPR, ...(profil().appreciations?.objectifs || {}) };
+  for (const [k, l] of Object.entries(profil().appreciations?.objectifsEnPlus || {})) o[k] = [...new Set([...(o[k] || []), ...l])];
+  return o;
+};
 
 // École : portrait de l'élève (pastilles de la fiche : qualités, points d'attention, situations ; discipline.js).
 // Gardé dans l'appréciation de la période ; une période sans portrait reprend celui de la dernière période qui en a un.
@@ -265,6 +282,11 @@ function reglageAppr() {
 
 function htmlReglageAppr(r) {
   return `
+    <label class="bascule-anonyme-appr" title="Pour Parcoursup : le prénom est retiré de toutes les appréciations proposées (et de celles réécrites à la main)">
+      <input type="checkbox" name="appr-anonyme" ${r.anonyme ? 'checked' : ''}>
+      <span class="texte-bascule-anonyme"><b>Appréciations anonymes</b>
+        <small>Pour Parcoursup : sans prénom, « L’élève, sérieuse et impliquée… »</small></span>
+      <span class="etat-bascule-anonyme"><span class="si-oui">Activées</span><span class="si-non">Désactivées</span></span></label>
     <p class="aide">Coche les rubriques à aborder, et range-les dans l’ordre voulu (↑ ↓). Si la place manque,
       les dernières rubriques sont laissées de côté (l’objectif est gardé jusqu’au bout).
       Une rubrique décochée n’est jamais mentionnée. Si ce que tu as rempli (observations, mots-clés…) signale une difficulté dans une rubrique cochée, elle passe en priorité (⚠) ; touche-la jusqu’à « non mentionné » pour l’écarter.</p>
@@ -295,6 +317,7 @@ function lireReglageAppr(form) {
   return {
     ordre, actives: ordre.filter(k => form.elements['appr-' + k]?.checked),
     bilan: !!form.elements['appr-bilan']?.checked,
+    anonyme: !!form.elements['appr-anonyme']?.checked,
     adresse: form.elements['appr-adresse']?.value || 'il',
     ton: form.elements['appr-ton']?.value || 'bienveillant', style: form.elements['appr-style']?.value || 'phrases', stylePasseLiees: true,
     longueur: Math.max(80, Math.min(2000, +form.elements['appr-longueur']?.value || 250)),
@@ -649,6 +672,13 @@ function analyserAppr(el, periode, eleves, sansAvant = false) {
     const mots = motsCles(observations, MOTS_APPR.attitude), morceaux = [];
     let n = null;
     if (degres.attitude.length) { n = niveauDegre(moyenneListe(degres.attitude)); morceaux.push(`critère engagement : degré ${fmtD(moyenneListe(degres.attitude))}`); }
+    // SVT, PC (attitudeSelonNotes, discipline.js) : sans critère d'engagement relevé, l'attitude suit la moyenne
+    // (7/20 → 1). Proposée seulement : l'enseignant la change d'un toucher.
+    const sa = profilAppr.attitudeSelonNotes;
+    if (n === null && sa && moy !== null) {
+      n = moy >= sa[2] ? 4 : moy >= sa[1] ? 3 : moy >= sa[0] ? 2 : 1;
+      morceaux.push(`d’après la moyenne ${fmtD(moy)}/20 (niveau 2 dès ${sa[0]}, 3 dès ${sa[1]}, 4 dès ${sa[2]}) : à ajuster si besoin`);
+    }
     const total = presences + abs;
     if (total) {
       const taux = presences / total;
@@ -721,7 +751,11 @@ function analyserAppr(el, periode, eleves, sansAvant = false) {
       n2 = r >= 0.5 ? 4 : r >= 0.15 ? 3 : r > -0.15 ? 2 : 1;
       morceaux.push(`${mieux} critère${mieux > 1 ? 's' : ''} en progrès, ${pire} en baisse (degrés, performances)`);
     }
-    if (n1 !== null || n2 !== null) {
+    // SVT, PC (progressionApresP1) : à la 1re période, pas encore de progression à dire ; non mentionnée d'office
+    // (toucher la pastille pour en parler quand même).
+    if (profilAppr.progressionApresP1 && k === 0) {
+      sources.progression = `${periodes[0].code} : progression non mentionnée d’office${morceaux.length ? ` (${morceaux.join(' · ')})` : ''}`;
+    } else if (n1 !== null || n2 !== null) {
       niveaux.progression = n1 !== null && n2 !== null ? Math.round((n1 + n2) / 2) : n1 ?? n2;
       sources.progression = morceaux.join(' · ');
     }
@@ -1089,6 +1123,7 @@ const IMPERATIFS_APPR = {
   fournir: ['fournis', 'fournissez'], investir: ['investis', 'investissez'], approfondir: ['approfondis', 'approfondissez'],
   venir: ['viens', 'venez'], maintenir: ['maintiens', 'maintenez'], apprendre: ['apprends', 'apprenez'], prendre: ['prends', 'prenez'],
   reprendre: ['reprends', 'reprenez'], mettre: ['mets', 'mettez'], poursuivre: ['poursuis', 'poursuivez'],
+  revoir: ['revois', 'revoyez'], refaire: ['refais', 'refaites'], réagir: ['réagis', 'réagissez'],
 };
 // → { tu : infinitif à la 2e personne (« t’investir », « tes acquis »), deTu : « de … » / « d’… », imp : impératif ou null }
 function butAdresse(but, vous = false) {
@@ -1220,6 +1255,31 @@ function vouvoyerAppr(texte, prenom, sexe, tele = false) {
   return t;
 }
 
+/* ---------- Appréciations anonymes (réglage « anonyme », pour Parcoursup) ----------
+   Le texte est rédigé avec le prénom, puis le prénom est retiré : « Léa réalise un bon trimestre. Elle… Léa doit… »
+   → « L’élève réalise un bon trimestre. Elle… Cette élève doit… ». Élisions refaites (« d’Inès » → « de l’élève »,
+   « qu’Inès » → « que l’élève ») ; « Léa : » en tête (style télégraphique) retiré ; « Léa Martin » → « l’élève ».
+   Les accords (sérieuse, impliquée, elle) restent ceux de l'élève. */
+function anonymiserAppr(texte, el, sexe = el?.sexe) {
+  const prenom = (el?.prenom || '').trim() || (el?.nom || '').trim();
+  if (!texte || !prenom) return texte || '';
+  const echap = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), L = '\\p{L}';
+  const nom = (el.nom || '').trim(), P = echap(prenom) + (nom && nom !== prenom ? `(?:\\s+${echap(nom)})?` : '');
+  let t = String(texte).replace(new RegExp(`^\\s*${P}\\s*:\\s*(\\p{L})`, 'u'), (x, c) => c.toLocaleUpperCase('fr'));
+  t = t.replace(new RegExp(`(^|[^${L}])(d|qu|lorsqu|puisqu|jusqu)[’'](?=${P}(?![${L}]))`, 'giu'), (x, a, m) => `${a}${m}e `);
+  let vu = 0;
+  t = t.replace(new RegExp(`(^|[^${L}’'])${P}(?![${L}])`, 'gu'), (x, a, pos, tout) => {
+    const debut = /(^|[.!?…]\s*|«\s*)$/.test(tout.slice(0, pos) + a);
+    // (2e fois : « cette élève » / « cet élève » pour ne pas répéter « l’élève » ; sans sexe connu, « l’élève ».)
+    const mot = vu++ === 0 ? 'l’élève' : sexe === 'F' ? 'cette élève' : sexe === 'G' ? 'cet élève' : 'l’élève';
+    return a + (debut ? mot[0].toLocaleUpperCase('fr') + mot.slice(1) : mot);
+  });
+  return t;
+}
+const anonymeAppr = (r, texte, el) => (r?.anonyme ? anonymiserAppr(texte, el) : texte);
+// (Relecture d'un texte anonyme : « élève » joue le rôle du prénom, sa reprise n'est pas une répétition.)
+const elRelecture = (r, el) => (r?.anonyme ? { ...el, prenom: 'élève' } : el);
+
 // Début de phrase « pour la suite » : « Pour le prochain trimestre »… ; après la dernière période ou pour l'année :
 // « Pour l’année prochaine »… (Plusieurs : « trimestre » est souvent déjà écrit dans le bilan.)
 const suiteAppr = (periode, per) => (periode === 'annee' || periodesAnnee().at(-1)?.id === periode ? ['Pour l’année prochaine', 'L’an prochain']
@@ -1307,7 +1367,8 @@ const LETTRE_APPR = /[\p{L}\p{M}]/u;
 const normAppr = t => sansAccent(String(t)).toLocaleLowerCase('fr').replace(/[’']/g, '’');
 const motsAppr = t => normAppr(t).split(/[^\p{L}\p{M}]+/u).filter(Boolean);
 // « progresser », « progrès », « progression » : même famille (7 premières lettres).
-const racineAppr = m => (m.length > 7 ? m.slice(0, 7) : m.replace(/s$/, ''));
+// (« connaît » et « connaissances » : même racine, sinon la répétition n'apparaît qu'au vouvoiement, « Vous connaissez ».)
+const racineAppr = m => { m = m.replace(/^(re)?connait/, '$1connaiss'); return m.length > 7 ? m.slice(0, 7) : m.replace(/s$/, ''); };
 const contientAppr = (texteNorm, expr) => new RegExp(`(^|[^\\p{L}\\p{M}])${expr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{M}])`, 'u').test(texteNorm);
 
 const RE_LIAISONS_APPR = Object.entries(LIAISONS_APPR).flatMap(([fam, exprs]) => exprs.map(e =>
@@ -1658,7 +1719,8 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
         if (!classe && k >= 3 && a.details.position?.ecart < 0 && niv.moteur && niv.moteur <= 2) k = 2;
         // (École : ses bilans, les mêmes pour une période et pour l'année, voir discipline.js.)
         const propres = profil().appreciations?.bilans;
-        const banque = classe ? BILANS_CLASSE_APPR[classe][cote] : selonTon(propres ? propres[k] : BILANS_APPR[cote][k], ton);
+        const plus = profil().appreciations?.bilansEnPlus?.[cote]?.[k]; // (SVT, PC : bilans ajoutés)
+        const banque = classe ? BILANS_CLASSE_APPR[classe][cote] : selonTon(concatAppr(propres ? propres[k] : BILANS_APPR[cote][k], plus), ton);
         if (classe === 'retrait') retraitDit = true;
         ajouter({ cle: 'bilan', pol: classe === 'retrait' ? -1 : k >= 3 ? 1 : -1, texte: remplir(choisir(banque, g('bilan'), 0, options), classe === 'retrait' ? 2 : k) });
       }
@@ -1850,8 +1912,8 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
     const i = t.indexOf(per);
     if (i >= 0) t = t.slice(0, i + per.length) + t.slice(i + per.length).split(' ' + ce).join('');
     t = corrigerAppr(t, { retirerAdverbes: true });
-    // (Vouvoiement : avant de compter la longueur, le texte transformé est un peu plus long.)
-    return r.adresse === 'vous' ? corrigerAppr(vouvoyerAppr(t, prenom, sexe, tele)) : t;
+    // (Vouvoiement, anonyme : avant de compter la longueur, le texte transformé change de longueur.)
+    return anonymeAppr(r, r.adresse === 'vous' ? corrigerAppr(vouvoyerAppr(t, prenom, sexe, tele)) : t, el);
   };
   // Longueur : phrases les plus courtes, puis on retire les dernières rubriques (avant l'objectif), puis le bilan.
   const essayer = () => {
@@ -1892,8 +1954,9 @@ function redigerAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   // Toujours commencer par le prénom (style télégraphique : « Léa : investissement sérieux. … »).
   let texte = finir(morceaux);
   // (École : une ouverture sans prénom, « Excellent début d’année ! », reste en tête.)
-  if (texte && !texte.startsWith(prenom) && !morceaux[0]?.exclam && r.adresse !== 'vous') texte = `${prenom} : ${texte[0].toLocaleLowerCase('fr')}${texte.slice(1)}`;
-  return { texte, retirees, remarques: relireAppr(texte, el).filter(x => x.grave).length };
+  // (Anonyme : pas de prénom en tête.)
+  if (texte && !texte.startsWith(prenom) && !morceaux[0]?.exclam && r.adresse !== 'vous' && !r.anonyme) texte = `${prenom} : ${texte[0].toLocaleLowerCase('fr')}${texte.slice(1)}`;
+  return { texte, retirees, remarques: relireAppr(texte, elRelecture(r, el)).filter(x => x.grave).length };
   };
   // Relecture : si le texte garde une répétition ou une faute, d'autres formulations sont essayées ; on garde la meilleure
   // (le moins de remarques, puis le moins de rubriques laissées de côté).
@@ -2117,7 +2180,7 @@ const LIEES_APPR = {
 function redigerLieesAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   const sexe = ['F', 'G'].includes(el.sexe) ? el.sexe : '';
   if (!sexe) return null;
-  const vousLiees = t => (r.adresse === 'vous' ? corrigerAppr(vouvoyerAppr(t, (el.prenom || '').trim() || el.nom, sexe)) : t);
+  const vousLiees = t => anonymeAppr(r, r.adresse === 'vous' ? corrigerAppr(vouvoyerAppr(t, (el.prenom || '').trim() || el.nom, sexe)) : t, el);
   niveauxPerso = persoUtileAppr(r, a, niveauxPerso);
   const niv = { ...a.niveaux };
   for (const [k, v] of Object.entries(niveauxPerso)) niv[k] = v || null; // 0 = ne pas en parler
@@ -2281,7 +2344,7 @@ function redigerLieesAppr(el, periode, a, niveauxPerso, r, graine = 0) {
   // (Un texte qui tient mais garde une répétition : on essaie encore avec un complément de moins ; le plus juste gagne.)
   const essayer = () => {
     let res = null;
-    const noter = x => ({ ...x, remarques: relireAppr(x.texte, el).filter(y => y.grave).length });
+    const noter = x => ({ ...x, remarques: relireAppr(x.texte, elRelecture(r, el)).filter(y => y.grave).length });
     // 1er passage : la phrase principale garde du choix (courtP 0 ou 1) ; un complément secondaire est laissé de côté
     // plutôt que de prendre partout la même phrase courte (jamais un point de vigilance, prio ≥ 5).
     // 2e passage : la phrase principale la plus courte, avec tous les compléments possibles.
@@ -2314,7 +2377,9 @@ function appreciationEleve(el, periode, eleves, r = reglageAppr()) {
   const enreg = Donnees.get('suivis', idAppr(el.id, periode));
   const analyse = analyserAppr(el, periode, eleves);
   const propose = redigerAppr(el, periode, analyse, enreg?.niveaux, r, enreg?.graine || 0);
-  return { enreg, analyse, propose, texte: enreg?.texte || propose.texte, manuel: !!enreg?.texte };
+  // (Anonyme : aussi un texte réécrit à la main, et par sécurité la proposition, si un remplacement appris remet le prénom.)
+  if (r.anonyme) propose.texte = anonymiserAppr(propose.texte, el);
+  return { enreg, analyse, propose, texte: anonymeAppr(r, enreg?.texte || propose.texte, el), manuel: !!enreg?.texte };
 }
 
 function ecrireAppr(eleveId, periode, changements) {
@@ -2435,7 +2500,7 @@ async function ouvrirAppreciations(periodeVoulue, eleveVise) {
       (présence, données relevées) et mots-clés de tes observations. Touche une rubrique pour changer son niveau ;
       tu peux aussi réécrire le texte. Tout reste dans ton carnet (chiffré sur la clé).</p>
     <div class="fiche-onglets" data-appr-periodes></div>
-    <details class="reglages-appr"><summary>⚙ Réglages des appréciations <small>rubriques, ton, style, longueur</small></summary>
+    <details class="reglages-appr"><summary>⚙ Réglages des appréciations <small>rubriques, ton, style, longueur</small><span class="puce-anonyme-appr" data-appr-puce-anonyme hidden>Anonymes</span></summary>
       <div data-appr-reglages>${htmlReglageAppr(r)}</div></details>
     <div data-appr-liste></div>`,
   '<button type="button" data-appr-actualiser title="Refaire toutes les appréciations de la période avec tes réglages actuels">🔄 Actualiser toutes</button>'
@@ -2448,6 +2513,7 @@ async function ouvrirAppreciations(periodeVoulue, eleveVise) {
   const dessiner = () => {
     $('[data-appr-periodes]', d).innerHTML = [...periodes.map(p => [p.id, p.code]), ['annee', 'Toute l’année']]
       .map(([v, nom]) => `<button type="button" class="${v === periode ? 'actif' : ''}" data-appr-periode="${v}">${nom}</button>`).join('');
+    $('[data-appr-puce-anonyme]', d).hidden = !r.anonyme; // (rappel visible même réglages repliés)
     const evals = evalsPeriode(c.id, periode), seances = seancesPeriode(c.id, periode);
     $('[data-appr-liste]', d).innerHTML = (evals.length || seances.length ? ''
       : `<p class="aide">⚠ Aucune évaluation ni ${motMin('lecon')} sur cette période : les propositions ne s’appuient que sur tes observations.</p>`)

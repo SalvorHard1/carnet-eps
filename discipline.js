@@ -8,6 +8,83 @@
 // pour rester lisibles par les versions précédentes de l'appli.
 // (Fichier chargé tôt : il n'utilise les autres fichiers qu'au moment des appels.)
 
+// Appréciations des carnets de SVT et de physique-chimie : phrases AJOUTÉES à celles de la banque (appreciations.js ›
+// phrasesAppr, objectifsAppr, bilans), pour que « 🎲 Autre formulation » change vraiment la tournure. Écrites d'après des
+// appréciations de SVT données par l'enseignant (v1.72.0) : « travail irrégulier », « leçons », « il est urgent de réagir »…
+// Niveaux 3 et 4 : une liste ; niveaux 1 et 2 : une liste par ton (b bienveillant, n neutre, x exigeant) ; t = télégraphique.
+const PLUS_SCIENCES_APPR = {
+  attitude: {
+    4: { p: ['{S} fournit un travail sérieux et régulier, en classe comme à la maison.', '{S} travaille avec beaucoup de sérieux et de régularité.',
+      '{S} participe activement et avec pertinence en classe.', 'Le travail fourni est sérieux, régulier et approfondi.',
+      'Le sérieux et la régularité du travail sont remarquables {ce}.', '{S} fait preuve d’une implication sans faille.'],
+    t: ['Travail sérieux et régulier.', 'Participation active et pertinente.', 'Très grand sérieux.'] },
+    3: { p: ['{S} fait preuve de bonne volonté en classe.', '{S} travaille avec sérieux.', 'Le travail fourni est sérieux.',
+      'L’implication en classe est réelle.', '{S} s’implique volontiers dans les activités proposées.', 'La participation en classe est régulière et constructive.',
+      '{S} montre une réelle bonne volonté.'],
+    t: ['Bonne volonté.', 'Participation régulière.', 'Implication réelle.'] },
+    2: { p: { b: ['{S} doit gagner en régularité dans son travail.', 'Le travail fourni est encore irrégulier : un effort de constance est attendu.',
+        '{S} montre de la bonne volonté, qui doit maintenant devenir plus régulière.', 'L’engagement est réel mais irrégulier.',
+        '{S} est capable de mieux avec un peu plus de travail personnel.'],
+      n: ['{S} montre un engagement irrégulier.', 'Le travail fourni est trop irrégulier.', 'L’investissement reste inégal d’une séance à l’autre.',
+        'Le travail personnel manque de régularité.'],
+      x: ['{S} doit s’investir davantage dans ses apprentissages.', 'Le travail fourni est trop irrégulier et insuffisant.', '{S} manque trop souvent de sérieux dans le travail.',
+        'Il faut accentuer les efforts : le travail reste insuffisant.', '{S} est capable de bien mieux en s’investissant davantage.'] },
+    t: { b: ['Travail à rendre plus régulier.', 'Bonne volonté à confirmer.'], n: ['Travail irrégulier.', 'Investissement inégal.'], x: ['Travail trop irrégulier.', 'Efforts insuffisants.'] } },
+    1: { p: { b: ['{S} doit se remobiliser : un travail régulier lui permettra de progresser.', 'Il faut se remettre au travail sans attendre : {s} en a les moyens.',
+        '{S} doit retrouver le goût de l’effort pour reprendre confiance.'],
+      n: ['{S} s’investit trop peu dans le travail.', 'Le travail fourni est insuffisant.', '{S} doit fournir de gros efforts.'],
+      x: ['Le manque de travail est inquiétant : il est urgent de réagir.', '{S} doit fournir de gros efforts sans attendre.',
+        'Il est urgent de réagir : le travail fourni est très insuffisant.', 'Le travail fourni est très insuffisant.'] },
+    t: { b: ['Remobilisation nécessaire.'], n: ['Travail insuffisant.'], x: ['Manque de travail inquiétant.', 'Réaction urgente nécessaire.'] } },
+  },
+  progression: {
+    4: { p: ['{S} a réalisé de très nets progrès {ce}.', 'La progression est remarquable {ce}.', 'Les efforts fournis portent pleinement leurs fruits {ce}.'],
+      t: ['Progression remarquable.'] },
+    3: { p: ['Les résultats progressent {ce}.', 'Les efforts portent leurs fruits {ce}.', 'Une progression encourageante se dessine {ce}.'],
+      t: ['Résultats en hausse.', 'Efforts récompensés.'] },
+    2: { p: { b: ['Le niveau se maintient : {s} peut encore progresser.'], n: ['Le niveau se maintient {ce}.'], x: ['Les résultats ne progressent pas.', 'Le niveau ne progresse plus.'] },
+      t: { b: ['Niveau maintenu.'], n: ['Niveau maintenu.'], x: ['Pas de progrès.'] } },
+    1: { p: { b: ['Une baisse se fait sentir {ce} : il faut se remobiliser.'], n: ['Les résultats baissent {ce}.'], x: ['Les résultats chutent nettement {ce}.'] },
+      t: { b: ['Baisse : se remobiliser.'], n: ['Résultats en baisse.'], x: ['Chute des résultats.'] } },
+  },
+};
+// Résultats (rubrique « Connaissances »), niveaux 1 et 2 : communs aux deux disciplines.
+const PLUS_RESULTATS_SCIENCES_APPR = {
+  2: { p: { b: ['Les résultats{apsa} sont corrects mais encore fragiles.', '{S} obtient un ensemble correct{apsa}, qui peut encore progresser.',
+      'Le niveau{apsa} est correct et peut s’améliorer avec un travail plus régulier.'],
+    n: ['Les résultats{apsa} sont encore trop justes.', 'Les résultats{apsa} restent irréguliers.', 'Le niveau{apsa} reste fragile.'],
+    x: ['Les résultats{apsa} sont trop justes.', 'Les connaissances{apsa} ne sont pas assez approfondies.', 'Le niveau{apsa} reste trop fragile.'] },
+  t: { b: ['Résultats corrects mais fragiles{apsa}.'], n: ['Résultats trop justes{apsa}.'], x: ['Connaissances pas assez approfondies{apsa}.'] } },
+  1: { p: { b: ['Les résultats{apsa} sont encore fragiles : un travail régulier permettra de progresser.',
+      '{S} rencontre de réelles difficultés{apsa}, qu’un travail plus régulier aidera à surmonter.'],
+    n: ['Les résultats{apsa} sont insuffisants.', 'Les résultats{apsa} sont très fragiles.'],
+    x: ['Les résultats{apsa} sont très insuffisants et inquiétants.', 'Les résultats{apsa} sont insuffisants et inquiétants.'] },
+  t: { b: ['Résultats fragiles{apsa}.'], n: ['Résultats insuffisants{apsa}.'], x: ['Résultats inquiétants{apsa}.'] } },
+};
+// Objectifs ajoutés (infinitif, 3e personne : « ses leçons » devient « tes leçons » quand le texte s'adresse à l'élève).
+const OBJECTIFS_PLUS_SCIENCES_APPR = {
+  attitude: ['fournir un travail plus régulier', 'accentuer ses efforts', 's’investir davantage dans ses apprentissages', 'se remobiliser sans attendre',
+    'fournir davantage de travail à la maison', 'participer plus activement en classe'],
+  competences: ['approfondir son travail personnel', 'revoir régulièrement ce qui est fait en classe'],
+  progression: ['se remobiliser pour retrouver de bons résultats', 'réagir rapidement pour retrouver son niveau'],
+  regularite: ['travailler avec plus de régularité', 'viser des résultats plus réguliers'],
+  haut: ['continuer sur cette voie', 'poursuivre avec la même détermination', 'garder ce rythme de travail', 'continuer dans ce sens'],
+};
+// Bilans d'ouverture ajoutés (case « Commencer par un bilan général »).
+const BILANS_PLUS_SCIENCES_APPR = {
+  periode: { 4: ['{S} termine ce {per} avec d’excellents résultats.', '{S} réalise un {per} remarquable, fruit d’un travail sérieux.'],
+    3: ['{S} réalise un {per} plutôt réussi.', '{S} réalise un ensemble satisfaisant.'],
+    2: { b: ['{S} réalise un ensemble correct, mais encore irrégulier.', '{S} réalise un {per} correct, avec une marge de progrès.'],
+      n: ['{S} réalise un ensemble correct mais trop irrégulier.', '{S} réalise un {per} mitigé.'], x: ['{S} réalise un {per} trop irrégulier.', '{S} signe un {per} plutôt décevant.'] },
+    1: { b: ['{S} réalise un {per} fragile, mais rien n’est perdu.'], n: ['{S} réalise un {per} insuffisant.'], x: ['{S} réalise un {per} inquiétant.', '{S} signe un {per} décevant par manque de travail.'] } },
+  annee: { 4: ['{S} termine l’année avec d’excellents résultats.'], 3: ['{S} réalise une année plutôt réussie.'],
+    2: { b: ['{S} réalise une année correcte, mais encore irrégulière.'], n: ['{S} réalise une année correcte mais trop irrégulière.'], x: ['{S} réalise une année trop irrégulière.'] },
+    1: { b: ['{S} réalise une année fragile.'], n: ['{S} réalise une année insuffisante.'], x: ['{S} réalise une année inquiétante.'] } },
+};
+// Attitude d'après la moyenne quand aucun critère d'engagement n'est relevé (moins de 9 → 1, de 9 à 13 → 2, de 13 à 16 → 3,
+// 16 et plus → 4) : niveau proposé, modifiable d'un toucher. Seuils choisis d'après les appréciations de l'enseignant.
+const ATTITUDE_NOTES_SCIENCES = [9, 13, 16];
+
 const DISCIPLINES = {
   eps: {
     id: 'eps', nom: 'EPS', nomComplet: 'Éducation physique et sportive', carnet: 'Carnet EPS',
@@ -204,10 +281,34 @@ const DISCIPLINES = {
           t: { b: ['Démarche à construire.'], n: ['Démarche peu maîtrisée.'], x: ['Démarche non maîtrisée.'] } },
         },
       },
-      objectifs: {
-        moteur: ['approfondir et apprendre régulièrement ses leçons', 'consolider les connaissances'],
-        methodo: ['gagner en rigueur dans les démarches et les manipulations', 'mieux justifier ses raisonnements'],
+      // Phrases ajoutées (voir PLUS_SCIENCES_APPR) : plus de tournures pour « 🎲 Autre formulation ».
+      phrasesEnPlus: {
+        ...PLUS_SCIENCES_APPR,
+        moteur: {
+          ...PLUS_RESULTATS_SCIENCES_APPR,
+          4: { p: ['Les résultats sont d’un très bon niveau{apsa}.', '{S} maîtrise très bien les connaissances{apsa} et sait les mobiliser.', '{S} obtient d’excellents résultats{apsa}.',
+            'Le niveau atteint{apsa} est excellent.'], t: ['Résultats d’un très bon niveau{apsa}.', 'Connaissances solides{apsa}.'] },
+          3: { p: ['Les résultats sont satisfaisants{apsa}.', 'Les connaissances sont bien maîtrisées{apsa}.', '{S} obtient des résultats satisfaisants{apsa}.',
+            'Les bases{apsa} sont solides.', '{S} réalise un ensemble satisfaisant{apsa}.'], t: ['Résultats satisfaisants{apsa}.', 'Bases solides{apsa}.'] },
+        },
+        methodo: {
+          4: { p: ['La démarche scientifique est menée avec rigueur et autonomie.', '{S} raisonne avec rigueur et argumente avec précision.'], t: ['Raisonnement rigoureux.'] },
+          3: { p: ['La démarche scientifique est bien menée.', '{S} mène les activités pratiques avec soin.'], t: ['Activités pratiques soignées.'] },
+          2: { p: { b: ['Plus de rigueur dans les démarches permettrait de progresser.'], n: ['La démarche manque encore de rigueur.'], x: ['Les raisonnements manquent de rigueur et de précision.'] },
+            t: { b: ['Démarche à préciser.'], n: ['Démarche peu rigoureuse.'], x: ['Raisonnements imprécis.'] } },
+          1: { p: { b: ['La démarche scientifique reste à construire, avec de l’aide.'], n: ['La démarche scientifique est peu maîtrisée.'], x: ['Les démarches et les raisonnements ne sont pas maîtrisés.'] },
+            t: { b: ['Démarche à construire avec aide.'], n: ['Démarche fragile.'], x: ['Raisonnements non maîtrisés.'] } },
+        },
       },
+      objectifs: {
+        moteur: ['approfondir et apprendre régulièrement ses leçons', 'consolider les connaissances', 'revoir ses leçons après chaque séance',
+          'consolider ses connaissances par un travail régulier', 'approfondir ses connaissances', 'apprendre ses leçons avec plus de régularité'],
+        methodo: ['gagner en rigueur dans les démarches et les manipulations', 'mieux justifier ses raisonnements', 'soigner la rédaction et les schémas', 'mieux argumenter ses réponses'],
+      },
+      objectifsEnPlus: OBJECTIFS_PLUS_SCIENCES_APPR,
+      bilansEnPlus: BILANS_PLUS_SCIENCES_APPR,
+      attitudeSelonNotes: ATTITUDE_NOTES_SCIENCES, // (attitude proposée d'après la moyenne, voir analyserAppr)
+      progressionApresP1: true, // (1re période : progression non mentionnée d'office, à toucher pour en parler)
       // Fiche bilan (onglet Notes) : points d'appui et axes de progression, [intitulé, phrase].
       fiche: {
         niveauFort: ['Bonnes connaissances', 'maîtrise bien les connaissances'],
@@ -365,10 +466,33 @@ const DISCIPLINES = {
           t: { b: ['Démarche à construire.'], n: ['Démarche peu maîtrisée.'], x: ['Démarche non maîtrisée.'] } },
         },
       },
-      objectifs: {
-        moteur: ['apprendre régulièrement ses leçons et refaire les exercices', 'consolider les connaissances'],
-        methodo: ['gagner en rigueur dans les mesures et les calculs', 'mieux justifier ses raisonnements'],
+      phrasesEnPlus: {
+        ...PLUS_SCIENCES_APPR,
+        moteur: {
+          ...PLUS_RESULTATS_SCIENCES_APPR,
+          4: { p: ['Les résultats sont d’un très bon niveau{apsa}.', '{S} maîtrise très bien les notions{apsa} et sait les mobiliser.', '{S} obtient d’excellents résultats{apsa}.',
+            'Le niveau atteint{apsa} est excellent.'], t: ['Résultats d’un très bon niveau{apsa}.', 'Notions solides{apsa}.'] },
+          3: { p: ['Les résultats sont satisfaisants{apsa}.', 'Les notions sont bien maîtrisées{apsa}.', '{S} obtient des résultats satisfaisants{apsa}.',
+            'Les bases{apsa} sont solides.', '{S} réalise un ensemble satisfaisant{apsa}.'], t: ['Résultats satisfaisants{apsa}.', 'Bases solides{apsa}.'] },
+        },
+        methodo: {
+          4: { p: ['La démarche expérimentale est menée avec rigueur et autonomie.', '{S} raisonne avec rigueur et présente des calculs soignés.'], t: ['Raisonnement rigoureux.'] },
+          3: { p: ['La démarche expérimentale est bien menée.', '{S} mène les mesures et les calculs avec soin.'], t: ['Mesures et calculs soignés.'] },
+          2: { p: { b: ['Plus de rigueur dans les calculs permettrait de progresser.'], n: ['La démarche manque encore de rigueur.'], x: ['Les raisonnements et les calculs manquent de rigueur.'] },
+            t: { b: ['Calculs à soigner.'], n: ['Démarche peu rigoureuse.'], x: ['Raisonnements imprécis.'] } },
+          1: { p: { b: ['La démarche expérimentale reste à construire, avec de l’aide.'], n: ['La démarche expérimentale est peu maîtrisée.'], x: ['Les démarches et les calculs ne sont pas maîtrisés.'] },
+            t: { b: ['Démarche à construire avec aide.'], n: ['Démarche fragile.'], x: ['Calculs non maîtrisés.'] } },
+        },
       },
+      objectifs: {
+        moteur: ['apprendre régulièrement ses leçons et refaire les exercices', 'consolider les connaissances', 'revoir ses leçons après chaque séance',
+          'refaire les exercices pour mieux retenir les notions', 'approfondir ses connaissances', 's’entraîner régulièrement sur les exercices'],
+        methodo: ['gagner en rigueur dans les mesures et les calculs', 'mieux justifier ses raisonnements', 'soigner la rédaction et les unités', 'mieux argumenter ses réponses'],
+      },
+      objectifsEnPlus: OBJECTIFS_PLUS_SCIENCES_APPR,
+      bilansEnPlus: BILANS_PLUS_SCIENCES_APPR,
+      attitudeSelonNotes: ATTITUDE_NOTES_SCIENCES,
+      progressionApresP1: true,
       fiche: {
         niveauFort: ['Bonnes connaissances', 'maîtrise bien les notions'],
         niveauFaible: ['Connaissances fragiles', 'consolider ses connaissances par un travail régulier'],

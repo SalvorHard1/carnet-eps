@@ -1,5 +1,5 @@
 'use strict';
-const VERSION_APP = '1.69.0'; // garder identique à VERSION dans sw.js
+const VERSION_APP = '1.72.0'; // garder identique à VERSION dans sw.js
 
 const $ = (s, racine = document) => racine.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -3165,6 +3165,19 @@ async function boutonVersion() {
 /* ---------- Nouveautés : montrées une fois par appareil, après une mise à jour ---------- */
 
 const NOUVEAUTES = [
+  { version: '1.72.0', titre: 'Appréciations : plus de tournures', discipline: ['svt', 'pc'], points: [
+    '🎲 <b>Autre formulation</b> propose beaucoup plus de phrases : travail régulier ou irrégulier, leçons, bonne volonté, « il est urgent de réagir »…',
+    'L’<b>attitude</b> est proposée d’après la moyenne quand aucun critère d’engagement n’est relevé (7/20 → 1, 11/20 → 2, 14/20 → 3, 17/20 → 4). Touche la pastille pour la changer.',
+    'Au <b>1er trimestre</b>, la progression n’est plus mentionnée d’office. Touche la pastille « Progression » pour en parler quand même.',
+  ] },
+  { version: '1.71.0', titre: 'Appréciations anonymes, pour Parcoursup', points: [
+    'Dans ✍ Appréciations › ⚙ Réglages, le bouton violet <b>Appréciations anonymes</b> retire le prénom de toutes les appréciations : « L’élève réalise un bon trimestre. Elle… Cette élève doit… ».',
+    'Le sens et la longueur maximale sont gardés ; les textes réécrits à la main perdent aussi le prénom. Désactive-le pour revenir au bulletin habituel.',
+  ] },
+  { version: '1.70.0', titre: 'Fiche bilan : choisis ce que contient le PDF', points: [
+    'Dans la fiche bilan d’un élève, le bouton <b>Contenu du PDF</b>, collé au bouton « 📄 PDF », te fait cocher les parties à imprimer : synthèse, vie scolaire, dispenses, appréciation, points d’appui, évolution, compétences, notes, présence et santé.',
+    'Par exemple seulement « Présence et santé », ou seulement « Compétences ». Ton choix est gardé pour tous les élèves. Avec « anonyme », la vie scolaire, les dispenses et la santé restent toujours retirées.',
+  ] },
   { version: '1.69.0', titre: 'Appréciations : le vouvoiement', points: [
     'Dans ✍ Appréciations › ⚙ Réglages, le nouveau menu <b>Adresse</b> propose le <b>vouvoiement</b> : « Vous réalisez un bon trimestre. Vous devez vous investir davantage dans vos rôles. »',
     'Il marche avec tous les styles et tous les tons, et la longueur maximale est respectée. Par défaut, rien ne change (3e personne).',
@@ -3594,8 +3607,8 @@ const retenirVersionVue = () => { try { localStorage.setItem(CLE_VERSION_VUE, VE
 const nomVersion = v => (/^\d/.test(v) ? `v${v}` : 'version d’avant la 1.0'); // (« ancienne » : rien n'était retenu)
 
 async function afficherNouveautes(depuis) {
-  // (Nouveauté propre à une discipline, « discipline: 'eps' » : montrée seulement dans un carnet de cette discipline.)
-  const liste = NOUVEAUTES.filter(n => (!n.discipline || n.discipline === disciplineActive()) && n.sauf !== disciplineActive() && (!/^\d/.test(depuis) || Cle.compareVersions(n.version, depuis) > 0)
+  // (Nouveauté propre à une discipline, « discipline: 'eps' » ou « discipline: ['svt', 'pc'] » : montrée seulement dans un carnet de ces disciplines.)
+  const liste = NOUVEAUTES.filter(n => (!n.discipline || [].concat(n.discipline).includes(disciplineActive())) && n.sauf !== disciplineActive() && (!/^\d/.test(depuis) || Cle.compareVersions(n.version, depuis) > 0)
     && Cle.compareVersions(n.version, VERSION_APP) <= 0);
   if (!liste.length) return;
   const { resultat } = ouvrirModale(`${avecEcole() ? '' : '🎉 '}Quoi de neuf ? (v${VERSION_APP})`,

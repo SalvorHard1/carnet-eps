@@ -814,6 +814,25 @@ button.lien.justif-ancien { min-height: 0; padding: 0 2px; }
 .rubriques-appr li { display: flex; align-items: center; gap: 6px; padding: 2px 0; border-bottom: 1px solid var(--bord); }
 .rubriques-appr li .case { flex: 1; min-width: 0; }
 .rubriques-appr .icone-petit { min-height: 32px; min-width: 36px; padding: 0 8px; }
+/* Réglages des appréciations › bouton coloré « Appréciations anonymes » (case à cocher habillée en bouton). */
+/* (Classe triplée : passe devant « .modale label:not(.bouton) », qui met les étiquettes en colonne.) */
+.bascule-anonyme-appr.bascule-anonyme-appr.bascule-anonyme-appr { display: flex; flex-direction: row; align-items: center; gap: 12px; margin: 6px 0 12px; padding: 10px 14px; cursor: pointer;
+  font-size: 14px; font-weight: 400; text-align: left;
+  border: 2px solid var(--ca3); border-radius: calc(12px * var(--arrondi, 1)); background: color-mix(in srgb, var(--ca3) 12%, var(--surface)); color: var(--texte); }
+.bascule-anonyme-appr input { position: absolute; opacity: 0; pointer-events: none; }
+.bascule-anonyme-appr.bascule-anonyme-appr.bascule-anonyme-appr:hover { background: color-mix(in srgb, var(--ca3) 20%, var(--surface)); }
+.bascule-anonyme-appr:focus-within { outline: 2px solid var(--ca3); outline-offset: 2px; }
+.texte-bascule-anonyme { flex: 1 1 auto; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.texte-bascule-anonyme b { font-size: 15px; }
+.texte-bascule-anonyme small { font-size: 13px; color: var(--texte2); }
+.etat-bascule-anonyme { flex: 0 0 auto; padding: 4px 12px; border-radius: calc(999px * var(--arrondi, 1)); font-weight: 700; font-size: 13px;
+  border: 1px solid var(--ca3); color: var(--ca3); background: var(--surface); }
+.bascule-anonyme-appr .si-oui, .bascule-anonyme-appr:has(input:checked) .si-non { display: none; }
+.bascule-anonyme-appr:has(input:checked) .si-oui { display: inline; }
+.bascule-anonyme-appr.bascule-anonyme-appr.bascule-anonyme-appr:has(input:checked) { background: var(--ca3); border-color: var(--ca3); color: #fff; }
+.bascule-anonyme-appr:has(input:checked) small { color: rgba(255, 255, 255, .85); }
+.bascule-anonyme-appr:has(input:checked) .etat-bascule-anonyme { background: #fff; color: var(--ca3); border-color: #fff; }
+.puce-anonyme-appr { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: calc(999px * var(--arrondi, 1)); background: var(--ca3); color: #fff; font-size: 12px; font-weight: 700; }
 .reglages-appr { margin-bottom: 10px; border: 1px solid var(--bord); border-radius: calc(8px * var(--arrondi, 1)); padding: 6px 10px; }
 .reglages-appr summary { cursor: pointer; font-weight: 600; }
 .reglages-appr summary small { font-weight: 400; color: var(--texte2); }
@@ -2252,6 +2271,19 @@ body[data-densite="compacte"] .grille .photo-grille { width: 22px; height: 22px;
 @media (max-width: 640px) { .deux-col-fiche { grid-template-columns: 1fr; } }
 .deux-col-fiche h4 { margin: 4px 0; font-size: 14px; }
 .anonyme-fiche { align-self: center; }
+/* Fiche bilan : « Contenu du PDF » et « PDF » collés, comme un seul bouton en deux parties. */
+.groupe-pdf-fiche { display: inline-flex; }
+.groupe-pdf-fiche > button { margin: 0; }
+.groupe-pdf-fiche > button + button { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; }
+.groupe-pdf-fiche > button:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+/* Fiche bilan › Contenu du PDF (fichenotes.js › choisirContenuFichePdf) */
+.parties-pdf-fiche { display: flex; flex-direction: column; gap: 2px; margin: 8px 0; }
+.parties-pdf-fiche .case { padding: 6px 4px; border-bottom: 1px solid var(--bord); }
+.parties-pdf-fiche .case:last-child { border-bottom: 0; }
+.parties-pdf-fiche .case input { flex: 0 0 auto; }
+.texte-partie-pdf { flex: 1 1 auto; min-width: 0; }
+.boutons-parties-pdf { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 0; }
+.vie-scolaire-fiche { margin: 4px 0 8px; }
 @media print {
   #zone-impression { --texte: #111; --texte2: #555; --bord: #bbb; --surface: #fff; --surface2: #f1f4f3; --accent: #1f6f5c; --accent-doux: #e3f1ec; --accent-texte: #fff; color: #111; }
   #zone-impression .impression-fiche h3 { font-size: 13pt; margin: 10pt 0 4pt; color: #1f6f5c; }
